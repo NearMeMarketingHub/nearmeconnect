@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+.local/
+dist/
+.env
+.DS_Store
+project.zip
+ziushOUS
