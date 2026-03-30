@@ -1192,7 +1192,7 @@ export default function AdminMeetings() {
       </div>
 
       <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedRequest?.status === "pending" ? "Approve Meeting Request" : "Edit Meeting"}</DialogTitle>
             <DialogDescription>
@@ -1580,7 +1580,7 @@ export default function AdminMeetings() {
       </Dialog>
 
       <Dialog open={requestMeetingOpen} onOpenChange={setRequestMeetingOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Request Meeting</DialogTitle>
             <DialogDescription>
@@ -1689,29 +1689,61 @@ export default function AdminMeetings() {
                   <Users className="h-4 w-4" />
                   Attendees
                 </Label>
-                <div className="border rounded-md p-3 max-h-[200px] overflow-y-auto">
+                <div className="border rounded-md p-3 max-h-[300px] overflow-y-auto">
                   <div className="space-y-2">
-                    {requestMeetingCompanyUsers.map(user => (
-                      <div key={user.id} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`attendee-${user.id}`}
-                          checked={requestMeetingAttendees.includes(user.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setRequestMeetingAttendees(prev => [...prev, user.id]);
-                            } else {
-                              setRequestMeetingAttendees(prev => prev.filter(id => id !== user.id));
-                            }
-                          }}
-                          data-testid={`checkbox-attendee-${user.id}`}
-                        />
-                        <label htmlFor={`attendee-${user.id}`} className="text-sm cursor-pointer flex-1">
-                          {user.firstName} {user.lastName}
-                          <span className="text-muted-foreground ml-1 text-xs">({user.email})</span>
-                          {user.isAdmin && <Badge variant="secondary" className="ml-1">Admin</Badge>}
-                        </label>
-                      </div>
-                    ))}
+                    {agencyAdminUsers.length > 0 && (
+                      <>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agency</p>
+                        {agencyAdminUsers.map(user => (
+                          <div key={user.id} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`attendee-${user.id}`}
+                              checked={requestMeetingAttendees.includes(user.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setRequestMeetingAttendees(prev => [...prev, user.id]);
+                                } else {
+                                  setRequestMeetingAttendees(prev => prev.filter(id => id !== user.id));
+                                }
+                              }}
+                              data-testid={`checkbox-attendee-${user.id}`}
+                            />
+                            <label htmlFor={`attendee-${user.id}`} className="text-sm cursor-pointer flex-1">
+                              {user.firstName} {user.lastName}
+                              <span className="text-muted-foreground ml-1 text-xs">({user.email})</span>
+                              <Badge variant="secondary" className="ml-1">Agency</Badge>
+                            </label>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {requestMeetingCompanyMembers.filter(m => !agencyAdminUsers.some(a => a.id === m.id)).length > 0 && (
+                      <>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2">Client</p>
+                        {requestMeetingCompanyMembers
+                          .filter(m => !agencyAdminUsers.some(a => a.id === m.id))
+                          .map(user => (
+                          <div key={user.id} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`attendee-${user.id}`}
+                              checked={requestMeetingAttendees.includes(user.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setRequestMeetingAttendees(prev => [...prev, user.id]);
+                                } else {
+                                  setRequestMeetingAttendees(prev => prev.filter(id => id !== user.id));
+                                }
+                              }}
+                              data-testid={`checkbox-attendee-${user.id}`}
+                            />
+                            <label htmlFor={`attendee-${user.id}`} className="text-sm cursor-pointer flex-1">
+                              {user.firstName} {user.lastName}
+                              <span className="text-muted-foreground ml-1 text-xs">({user.email})</span>
+                            </label>
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
