@@ -728,7 +728,7 @@ export default function CompanyDashboard() {
     meetingType: meetingTypes.find(t => t.id === r.meetingTypeId),
   }));
 
-  const [meetingStatusFilter, setMeetingStatusFilter] = useState<string>("all");
+  const [meetingStatusFilter, setMeetingStatusFilter] = useState<string>("pending");
   const [expandedCompanyMeetings, setExpandedCompanyMeetings] = useState<Set<string>>(new Set());
   const [createMeetingOpen, setCreateMeetingOpen] = useState(false);
   const [newMeetingTypeId, setNewMeetingTypeId] = useState("");
@@ -755,9 +755,13 @@ export default function CompanyDashboard() {
   const [editMeetingDuration, setEditMeetingDuration] = useState("");
 
   const filteredCompanyMeetings = companyMeetings.filter(m => {
-    if (meetingStatusFilter === "all") return true;
     return m.status === meetingStatusFilter;
   });
+
+  const pendingMeetingsCount = companyMeetings.filter(m => m.status === "pending").length;
+  const approvedMeetingsCount = companyMeetings.filter(m => m.status === "approved").length;
+  const completedMeetingsCount = companyMeetings.filter(m => m.status === "completed").length;
+  const rejectedMeetingsCount = companyMeetings.filter(m => m.status === "rejected").length;
 
   const toggleCompanyMeetingExpanded = (id: string) => {
     const newSet = new Set(expandedCompanyMeetings);
@@ -3624,38 +3628,65 @@ export default function CompanyDashboard() {
 
           {/* Meetings Tab */}
           <TabsContent value="meetings" className="space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <h2 className="text-xl font-semibold">Meetings</h2>
-              <div className="flex items-center gap-3 flex-wrap">
-                <Select value={meetingStatusFilter} onValueChange={setMeetingStatusFilter}>
-                  <SelectTrigger className="w-48" data-testid="select-company-meeting-status">
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
+            <Tabs value={meetingStatusFilter} onValueChange={setMeetingStatusFilter}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <MobileTabMenu
+                  tabs={[
+                    { value: "pending", label: "Pending" },
+                    { value: "approved", label: "Approved" },
+                    { value: "completed", label: "Completed" },
+                    { value: "rejected", label: "Rejected" },
+                  ]}
+                  activeTab={meetingStatusFilter}
+                  onTabChange={setMeetingStatusFilter}
+                  title="Meetings"
+                />
+                <TabsList className="hidden md:inline-flex">
+                  <TabsTrigger value="pending" data-testid="tab-company-meeting-pending">
+                    <Clock className="w-4 h-4 mr-2" />
+                    Pending
+                    {pendingMeetingsCount > 0 && (
+                      <Badge variant="secondary" className="ml-2">{pendingMeetingsCount}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="approved" data-testid="tab-company-meeting-approved">
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Approved
+                    {approvedMeetingsCount > 0 && (
+                      <Badge variant="secondary" className="ml-2">{approvedMeetingsCount}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="completed" data-testid="tab-company-meeting-completed">
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Completed
+                    {completedMeetingsCount > 0 && (
+                      <Badge variant="secondary" className="ml-2">{completedMeetingsCount}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="rejected" data-testid="tab-company-meeting-rejected">
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Rejected
+                    {rejectedMeetingsCount > 0 && (
+                      <Badge variant="secondary" className="ml-2">{rejectedMeetingsCount}</Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
                 <Button onClick={() => setCreateMeetingOpen(true)} data-testid="button-create-meeting">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Meeting
                 </Button>
               </div>
-            </div>
 
-            {filteredCompanyMeetings.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <Video className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-                  <p className="text-muted-foreground">No meetings found</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {filteredCompanyMeetings.map(meeting => (
+              {filteredCompanyMeetings.length === 0 ? (
+                <Card className="mt-4">
+                  <CardContent className="py-8 text-center">
+                    <Video className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <p className="text-muted-foreground">No {meetingStatusFilter} meetings found</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3 mt-4">
+                  {filteredCompanyMeetings.map(meeting => (
                   <Card key={meeting.id}>
                     <Collapsible open={expandedCompanyMeetings.has(meeting.id)} onOpenChange={() => toggleCompanyMeetingExpanded(meeting.id)}>
                       <CollapsibleTrigger asChild>
@@ -3834,6 +3865,8 @@ export default function CompanyDashboard() {
                 ))}
               </div>
             )}
+
+            </Tabs>
 
             {/* Create Meeting Dialog */}
             <Dialog open={createMeetingOpen} onOpenChange={(open) => { setCreateMeetingOpen(open); if (!open) resetCreateMeetingForm(); }}>
