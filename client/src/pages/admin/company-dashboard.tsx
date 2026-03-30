@@ -3632,10 +3632,10 @@ export default function CompanyDashboard() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <MobileTabMenu
                   tabs={[
-                    { value: "pending", label: "Pending" },
-                    { value: "approved", label: "Approved" },
-                    { value: "completed", label: "Completed" },
-                    { value: "rejected", label: "Rejected" },
+                    { value: "pending", label: "Pending", count: pendingMeetingsCount },
+                    { value: "approved", label: "Approved", count: approvedMeetingsCount },
+                    { value: "completed", label: "Completed", count: completedMeetingsCount },
+                    { value: "rejected", label: "Rejected", count: rejectedMeetingsCount },
                   ]}
                   activeTab={meetingStatusFilter}
                   onTabChange={setMeetingStatusFilter}
