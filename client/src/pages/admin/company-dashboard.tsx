@@ -3837,7 +3837,7 @@ export default function CompanyDashboard() {
 
             {/* Create Meeting Dialog */}
             <Dialog open={createMeetingOpen} onOpenChange={(open) => { setCreateMeetingOpen(open); if (!open) resetCreateMeetingForm(); }}>
-              <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create Meeting</DialogTitle>
                 </DialogHeader>
@@ -3944,7 +3944,7 @@ export default function CompanyDashboard() {
 
                   <div className="space-y-2">
                     <Label>Attendees</Label>
-                    <ScrollArea className="max-h-[200px] border rounded-md p-2">
+                    <ScrollArea className="max-h-[300px] border rounded-md p-2">
                       {agencyAdmins.length > 0 && (
                         <>
                           <p className="text-xs font-medium text-muted-foreground mb-1 px-1">Agency</p>
