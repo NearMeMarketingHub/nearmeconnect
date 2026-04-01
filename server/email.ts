@@ -5,6 +5,10 @@ import { formatDateET, formatDateTimeET } from './timezone';
 let connectionSettings: any;
 
 async function getCredentials(retries = 2, delayMs = 3000) {
+  if (process.env.RESEND_API_KEY) {
+    return { apiKey: process.env.RESEND_API_KEY, fromEmail: process.env.EMAIL_SENDER_ADDRESS || null };
+  }
+
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY 
     ? 'repl ' + process.env.REPL_IDENTITY 
@@ -13,7 +17,7 @@ async function getCredentials(retries = 2, delayMs = 3000) {
     : null;
 
   if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+    throw new Error('Resend not configured: set RESEND_API_KEY or connect the Resend integration');
   }
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -39,11 +43,8 @@ async function getCredentials(retries = 2, delayMs = 3000) {
   throw new Error('Resend not connected');
 }
 
-// WARNING: Never cache this client.
-// Access tokens expire, so a new client must be created each time.
 export async function getUncachableResendClient() {
   const { apiKey, fromEmail } = await getCredentials();
-  // Priority: 1. Environment variable, 2. Connection settings, 3. Default
   const senderEmail = process.env.EMAIL_SENDER_ADDRESS || fromEmail || 'hello@nearmemarketinghub.com';
   return {
     client: new Resend(apiKey),

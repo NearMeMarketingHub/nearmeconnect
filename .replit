@@ -49,4 +49,4 @@ integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.
 [userenv]
 
 [userenv.shared]
-EMAIL_SENDER_ADDRESS = "hello@nearmemarketinghub.com"
+EMAIL_SENDER_ADDRESS = "Hello@nearmemarketinghub.com"
