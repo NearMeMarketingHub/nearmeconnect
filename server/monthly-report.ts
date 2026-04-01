@@ -6,10 +6,22 @@ import {
   monthlyReportNotes
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, or, isNull } from "drizzle-orm";
 import { getUncachableResendClient, sendOnboardingReminderEmail } from "./email";
 import { formatDateShortET } from "./timezone";
 import { log } from "./index";
+
+function getNowET(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+}
+
+function getMonthYearET(): string {
+  const et = getNowET();
+  return `${et.getFullYear()}-${String(et.getMonth() + 1).padStart(2, '0')}`;
+}
+
+let creditResetRunning = false;
+let cadenceGenerationRunning = false;
 
 interface CompletedTaskReport {
   title: string;
@@ -659,47 +671,69 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
 }
 
 export async function generateCadenceTasks() {
-  const { storage } = await import('./storage');
-  const activeCadences = await storage.getAllActiveCadences();
-  
-  if (activeCadences.length === 0) {
-    log('No active cadences to process', 'cadence-generator');
-    return { tasksCreated: 0, cadencesProcessed: 0 };
+  if (cadenceGenerationRunning) {
+    log('Cadence generation already in progress, skipping', 'cadence-generator');
+    return { tasksCreated: 0, cadencesProcessed: 0, skipped: 0 };
   }
-
-  let tasksCreated = 0;
-  let cadencesProcessed = 0;
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  
-  const billingPeriodStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const billingPeriodEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-  for (const cadence of activeCadences) {
-    try {
-      const company = await storage.getCompany(cadence.companyId);
-      if (!company) {
-        log(`Skipping cadence ${cadence.id}: company ${cadence.companyId} not found`, 'cadence-generator');
-        continue;
-      }
-
-      const dates = getDatesForCadence(cadence, year, month);
-      const count = await createTasksForCadenceDates(cadence, dates, billingPeriodStart, billingPeriodEnd);
-      tasksCreated += count;
-
-      await storage.updateCadence(cadence.id, {
-        lastGeneratedAt: now.toISOString(),
-      });
-      cadencesProcessed++;
-    } catch (error: any) {
-      log(`Failed to generate tasks for cadence ${cadence.id}: ${error.message}`, 'cadence-generator');
+  cadenceGenerationRunning = true;
+  try {
+    const { storage } = await import('./storage');
+    const activeCadences = await storage.getAllActiveCadences();
+    
+    if (activeCadences.length === 0) {
+      log('No active cadences to process', 'cadence-generator');
+      return { tasksCreated: 0, cadencesProcessed: 0, skipped: 0 };
     }
-  }
 
-  log(`Cadence generation complete: ${tasksCreated} tasks created for ${cadencesProcessed} cadences`, 'cadence-generator');
-  return { tasksCreated, cadencesProcessed };
+    let tasksCreated = 0;
+    let cadencesProcessed = 0;
+    let skipped = 0;
+    const et = getNowET();
+    const year = et.getFullYear();
+    const month = et.getMonth();
+    const currentMonthYear = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const now = new Date();
+    
+    const billingPeriodStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const billingPeriodEnd = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    for (const cadence of activeCadences) {
+      try {
+        if (cadence.lastGeneratedAt) {
+          const lastGen = new Date(cadence.lastGeneratedAt);
+          const lastGenET = new Date(lastGen.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+          const lastGenMonth = `${lastGenET.getFullYear()}-${String(lastGenET.getMonth() + 1).padStart(2, '0')}`;
+          if (lastGenMonth === currentMonthYear) {
+            skipped++;
+            continue;
+          }
+        }
+
+        const company = await storage.getCompany(cadence.companyId);
+        if (!company) {
+          log(`Skipping cadence ${cadence.id}: company ${cadence.companyId} not found`, 'cadence-generator');
+          continue;
+        }
+
+        const dates = getDatesForCadence(cadence, year, month);
+        const count = await createTasksForCadenceDates(cadence, dates, billingPeriodStart, billingPeriodEnd);
+        tasksCreated += count;
+
+        await storage.updateCadence(cadence.id, {
+          lastGeneratedAt: now.toISOString(),
+        });
+        cadencesProcessed++;
+      } catch (error: any) {
+        log(`Failed to generate tasks for cadence ${cadence.id}: ${error.message}`, 'cadence-generator');
+      }
+    }
+
+    log(`Cadence generation complete: ${tasksCreated} tasks created for ${cadencesProcessed} cadences (${skipped} already done this month)`, 'cadence-generator');
+    return { tasksCreated, cadencesProcessed, skipped };
+  } finally {
+    cadenceGenerationRunning = false;
+  }
 }
 
 export async function generateCadenceTasksForRemainingMonth(cadence: any) {
@@ -888,26 +922,58 @@ function setLastReportSentMonth(monthYear: string): void {
 }
 
 async function runCreditReset(): Promise<{ resetCount: number }> {
-  const now = new Date();
-  const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  
-  const allCompanies = await db.select().from(companies);
-  let resetCount = 0;
-
-  for (const company of allCompanies) {
-    if (!company.creditsLastReset || company.creditsLastReset !== currentMonthYear) {
-      await db.update(companies)
-        .set({
-          credits: company.monthlyCredits,
-          bonusCredits: 0,
-          creditsLastReset: currentMonthYear,
-        })
-        .where(eq(companies.id, company.id));
-      resetCount++;
-    }
+  if (creditResetRunning) {
+    log('Credit reset already in progress, skipping', 'credit-reset');
+    return { resetCount: 0 };
   }
+  creditResetRunning = true;
+  try {
+    const currentMonthYear = getMonthYearET();
+    const now = new Date();
+    
+    const allCompanies = await db.select().from(companies);
+    let resetCount = 0;
 
-  return { resetCount };
+    for (const company of allCompanies) {
+      if (!company.creditsLastReset || company.creditsLastReset !== currentMonthYear) {
+        await db.transaction(async (tx) => {
+          const [updated] = await tx.update(companies)
+            .set({
+              credits: company.monthlyCredits,
+              bonusCredits: 0,
+              creditsLastReset: currentMonthYear,
+            })
+            .where(and(
+              eq(companies.id, company.id),
+              or(
+                isNull(companies.creditsLastReset),
+                ne(companies.creditsLastReset, currentMonthYear)
+              )
+            ))
+            .returning({ id: companies.id });
+
+          if (updated) {
+            await tx.insert(creditTransactions).values({
+              id: crypto.randomUUID(),
+              companyId: company.id,
+              taskId: null,
+              amount: String(company.monthlyCredits),
+              type: 'credit',
+              description: 'Monthly Allocation',
+              createdAt: now.toISOString(),
+              balanceAfter: String(company.monthlyCredits),
+            });
+            log(`Reset credits for ${company.name}: ${company.monthlyCredits} credits, bonus cleared`, 'credit-reset');
+            resetCount++;
+          }
+        });
+      }
+    }
+
+    return { resetCount };
+  } finally {
+    creditResetRunning = false;
+  }
 }
 
 export async function setupMonthlyReportScheduler() {
@@ -928,15 +994,19 @@ export async function setupMonthlyReportScheduler() {
     });
     log('Credit reset scheduler started (1st of each month at midnight ET)', 'credit-reset');
 
-    // --- Startup catch-up: reset any companies that missed their credit reset ---
-    try {
-      const result = await runCreditReset();
-      if (result.resetCount > 0) {
-        log(`Startup credit reset catch-up: ${result.resetCount} companies reset`, 'credit-reset');
+    // --- Cadence task generation: 1st of each month at 6 AM ET ---
+    cron.schedule('0 6 1 * *', async () => {
+      log('Running cadence task generation job', 'cadence-generator');
+      try {
+        const result = await generateCadenceTasks();
+        log(`Cadence generation result: ${result.tasksCreated} tasks, ${result.cadencesProcessed} cadences`, 'cadence-generator');
+      } catch (error: any) {
+        log(`Cadence generation failed: ${error.message}`, 'cadence-generator');
       }
-    } catch (error: any) {
-      log(`Startup credit reset catch-up failed: ${error.message}`, 'credit-reset');
-    }
+    }, {
+      timezone: 'America/New_York'
+    });
+    log('Cadence task generator started (1st of each month at 6:00 AM ET)', 'cadence-generator');
 
     // --- Monthly reports: 1st of each month at 8 AM ET ---
     cron.schedule('0 8 1 * *', async () => {
@@ -954,13 +1024,75 @@ export async function setupMonthlyReportScheduler() {
     });
     log('Monthly report scheduler started (1st of each month at 8:00 AM ET)', 'monthly-report');
 
-    // --- Startup catch-up: send monthly report if it was missed ---
+    // --- HOURLY CATCH-UP: Resilient fallback for all monthly 1st-of-month jobs ---
+    // If the server was sleeping at midnight/6AM/8AM, this ensures catch-up
+    // within 1 hour of the server waking up. All functions are idempotent.
+    cron.schedule('0 * * * *', async () => {
+      const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const dayOfMonth = now.getDate();
+
+      try {
+        const resetResult = await runCreditReset();
+        if (resetResult.resetCount > 0) {
+          log(`Hourly catch-up: credit reset applied to ${resetResult.resetCount} companies`, 'credit-reset');
+        }
+      } catch (error: any) {
+        log(`Hourly catch-up credit reset failed: ${error.message}`, 'credit-reset');
+      }
+
+      try {
+        const cadenceResult = await generateCadenceTasks();
+        if (cadenceResult.tasksCreated > 0) {
+          log(`Hourly catch-up: cadence generation created ${cadenceResult.tasksCreated} tasks for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+        }
+      } catch (error: any) {
+        log(`Hourly catch-up cadence generation failed: ${error.message}`, 'cadence-generator');
+      }
+
+      if (dayOfMonth <= 5) {
+        try {
+          const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          const lastSent = getLastReportSentMonth();
+          if (lastSent !== currentMonthYear) {
+            log('Hourly catch-up: monthly report not yet sent, sending now...', 'monthly-report');
+            const reportResult = await generateAndSendMonthlyReports();
+            setLastReportSentMonth(currentMonthYear);
+            log(`Hourly catch-up report result: ${reportResult.companiesSent} companies, ${reportResult.totalEmails} emails, ${reportResult.errors.length} errors`, 'monthly-report');
+          }
+        } catch (error: any) {
+          log(`Hourly catch-up monthly report failed: ${error.message}`, 'monthly-report');
+        }
+      }
+    }, {
+      timezone: 'America/New_York'
+    });
+    log('Hourly catch-up scheduler started (runs every hour to catch missed monthly jobs)', 'catch-up');
+
+    // --- Startup catch-up: immediately run all monthly jobs if missed ---
     try {
-      const now = new Date();
-      const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const result = await runCreditReset();
+      if (result.resetCount > 0) {
+        log(`Startup credit reset catch-up: ${result.resetCount} companies reset`, 'credit-reset');
+      }
+    } catch (error: any) {
+      log(`Startup credit reset catch-up failed: ${error.message}`, 'credit-reset');
+    }
+
+    try {
+      const cadenceResult = await generateCadenceTasks();
+      if (cadenceResult.tasksCreated > 0) {
+        log(`Startup cadence catch-up: ${cadenceResult.tasksCreated} tasks created for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+      }
+    } catch (error: any) {
+      log(`Startup cadence catch-up failed: ${error.message}`, 'cadence-generator');
+    }
+
+    try {
+      const etNow = getNowET();
+      const currentMonthYear = getMonthYearET();
       const lastSent = getLastReportSentMonth();
       if (lastSent !== currentMonthYear) {
-        const dayOfMonth = now.getDate();
+        const dayOfMonth = etNow.getDate();
         if (dayOfMonth <= 5) {
           log('Startup catch-up: monthly report not yet sent this month, sending now...', 'monthly-report');
           const result = await generateAndSendMonthlyReports();
@@ -975,19 +1107,6 @@ export async function setupMonthlyReportScheduler() {
     } catch (error: any) {
       log(`Startup report catch-up failed: ${error.message}`, 'monthly-report');
     }
-
-    cron.schedule('0 6 1 * *', async () => {
-      log('Running cadence task generation job', 'cadence-generator');
-      try {
-        const result = await generateCadenceTasks();
-        log(`Cadence generation result: ${result.tasksCreated} tasks, ${result.cadencesProcessed} cadences`, 'cadence-generator');
-      } catch (error: any) {
-        log(`Cadence generation failed: ${error.message}`, 'cadence-generator');
-      }
-    }, {
-      timezone: 'America/New_York'
-    });
-    log('Cadence task generator started (1st of each month at 6:00 AM ET)', 'cadence-generator');
 
     cron.schedule('0 9 * * *', async () => {
       log('Running onboarding reminder check', 'onboarding-reminder');
