@@ -8332,6 +8332,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/monthly-report/status", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { getMonthlyReportStatus } = await import("./monthly-report");
+      res.json(getMonthlyReportStatus());
+    } catch (error) {
+      console.error("Monthly report status error:", error);
+      res.status(500).json({ error: "Failed to get report status" });
+    }
+  });
+
   app.post("/api/admin/monthly-report/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -8341,8 +8357,11 @@ export async function registerRoutes(
       }
 
       const { year, month } = req.body;
-      const { generateAndSendMonthlyReports } = await import("./monthly-report");
+      const { generateAndSendMonthlyReports, markReportSent } = await import("./monthly-report");
       const result = await generateAndSendMonthlyReports(year, month);
+      if (result.success && result.companiesSent > 0) {
+        markReportSent();
+      }
       res.json(result);
     } catch (error) {
       console.error("Monthly report error:", error);

@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight } from "lucide-react";
+import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight, Mail, CheckCircle2, AlertCircle, Send } from "lucide-react";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link } from "wouter";
 import type { Company } from "@shared/schema";
@@ -169,6 +169,32 @@ export default function AdminSettings() {
     },
     onError: () => {
       toast({ title: "Failed to sync to SharePoint", variant: "destructive" });
+    },
+  });
+
+  const { data: reportStatus, isLoading: reportStatusLoading } = useQuery<{
+    sent: boolean;
+    lastSentMonth: string | null;
+    lastSentAt: string | null;
+    currentMonth: string;
+  }>({
+    queryKey: ["/api/admin/monthly-report/status"],
+  });
+
+  const sendMonthlyReportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/monthly-report/send", {});
+      return res.json();
+    },
+    onSuccess: (data: { companiesSent: number; totalEmails: number; errors: string[] }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/monthly-report/status"] });
+      const desc = data.errors.length > 0
+        ? `Sent to ${data.companiesSent} companies (${data.totalEmails} emails). ${data.errors.length} error(s).`
+        : `Successfully sent to ${data.companiesSent} companies (${data.totalEmails} emails).`;
+      toast({ title: "Monthly Reports Sent", description: desc });
+    },
+    onError: () => {
+      toast({ title: "Failed to send monthly reports", variant: "destructive" });
     },
   });
 
@@ -434,6 +460,62 @@ export default function AdminSettings() {
                   >
                     {syncToSharePointMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
                     {syncToSharePointMutation.isPending ? "Syncing..." : "Sync to SharePoint"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  Monthly Reports
+                </CardTitle>
+                <CardDescription>
+                  Monthly reports are automatically sent on the 1st of each month.
+                  Use the button below to check status or manually trigger a send.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium" data-testid="text-report-title">Report Status</p>
+                      {reportStatusLoading ? (
+                        <Badge variant="secondary" data-testid="badge-report-loading">
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Checking...
+                        </Badge>
+                      ) : reportStatus?.sent ? (
+                        <Badge className="bg-green-500/10 text-green-600 border-green-500/20" data-testid="badge-report-sent">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Sent
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20" data-testid="badge-report-not-sent">
+                          <AlertCircle className="w-3 h-3 mr-1" />
+                          Not sent yet
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1" data-testid="text-report-status">
+                      {reportStatusLoading
+                        ? "Checking report status..."
+                        : reportStatus?.sent && reportStatus.lastSentAt
+                        ? `Last sent: ${new Date(reportStatus.lastSentAt).toLocaleString()}`
+                        : reportStatus?.lastSentMonth
+                        ? `Last sent for month: ${reportStatus.lastSentMonth}`
+                        : "No reports have been sent yet."}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => sendMonthlyReportMutation.mutate()}
+                    disabled={sendMonthlyReportMutation.isPending}
+                    data-testid="button-send-monthly-report"
+                  >
+                    {sendMonthlyReportMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                    {sendMonthlyReportMutation.isPending ? "Sending..." : "Send Report"}
                   </Button>
                 </div>
               </CardContent>

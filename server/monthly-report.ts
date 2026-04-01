@@ -901,6 +901,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const REPORT_TRACKER_PATH = join(process.cwd(), '.local', 'last_report_sent.txt');
+const REPORT_SENT_AT_PATH = join(process.cwd(), '.local', 'last_report_sent_at.txt');
 
 function getLastReportSentMonth(): string | null {
   try {
@@ -916,9 +917,32 @@ function setLastReportSentMonth(monthYear: string): void {
     const dir = join(process.cwd(), '.local');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(REPORT_TRACKER_PATH, monthYear, 'utf-8');
+    writeFileSync(REPORT_SENT_AT_PATH, new Date().toISOString(), 'utf-8');
   } catch (err) {
     log(`Failed to persist report tracker: ${err}`, 'monthly-report');
   }
+}
+
+export function markReportSent(): void {
+  const currentMonth = getMonthYearET();
+  setLastReportSentMonth(currentMonth);
+}
+
+export function getMonthlyReportStatus(): { sent: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string } {
+  const currentMonth = getMonthYearET();
+  const lastSentMonth = getLastReportSentMonth();
+  let lastSentAt: string | null = null;
+  try {
+    if (existsSync(REPORT_SENT_AT_PATH)) {
+      lastSentAt = readFileSync(REPORT_SENT_AT_PATH, 'utf-8').trim() || null;
+    }
+  } catch {}
+  return {
+    sent: lastSentMonth === currentMonth,
+    lastSentMonth,
+    lastSentAt,
+    currentMonth,
+  };
 }
 
 async function runCreditReset(): Promise<{ resetCount: number }> {
