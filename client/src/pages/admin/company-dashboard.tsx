@@ -5765,6 +5765,15 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
     },
   });
 
+  const { data: companyMeetings = [] } = useQuery<MeetingRequest[]>({
+    queryKey: ["/api/companies", companyId, "meeting-requests"],
+    queryFn: async () => {
+      const res = await fetch(`/api/companies/${companyId}/meeting-requests`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   useEffect(() => {
     if (!noteLoading) {
       setNotesText(reportNote?.notes || "");
@@ -5822,6 +5831,12 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
     }
   }
 
+  const monthMeetings = companyMeetings.filter(m => {
+    if (m.status !== 'approved' && m.status !== 'completed') return false;
+    const dateStr = m.proposedDate?.slice(0, 10);
+    return dateStr && dateStr >= monthStart && dateStr < monthEnd;
+  });
+
   const deliverableCounts: Record<string, number> = {};
   for (const t of completedTasks) {
     if (t.deliverableType) {
@@ -5870,8 +5885,8 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
         </Card>
         <Card>
           <CardContent className="pt-6 text-center">
-            <div className="text-3xl font-bold text-purple-600">{monthTasks.filter(t => t.status === "pending").length}</div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Pending Tasks</div>
+            <div className="text-3xl font-bold text-purple-600" data-testid="text-report-meetings">{monthMeetings.length}</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Meetings Held</div>
           </CardContent>
         </Card>
       </div>
@@ -5933,6 +5948,24 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
           </CardContent>
         </Card>
       </div>
+
+      {monthMeetings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Meetings Held ({monthMeetings.length})</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {monthMeetings.map(m => (
+                <div key={m.id} className="flex justify-between items-center text-sm p-2 rounded bg-muted/50" data-testid={`report-meeting-${m.id}`}>
+                  <span className="truncate mr-2">{m.title}</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{m.proposedDate} at {m.proposedTime}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -114,7 +114,8 @@ async function gatherCompanyReportData(
   const allTasks = await db.select().from(tasks).where(eq(tasks.companyId, companyId));
   const completedTasks = allTasks.filter(t => {
     if (t.status !== 'completed') return false;
-    const taskDate = t.dueDate || t.createdAt;
+    if (t.approvalStatus === 'rejected') return false;
+    const taskDate = t.billingPeriodStart || t.dueDate || t.createdAt;
     return isDateInRange(taskDate, startDate, endDate);
   });
 
@@ -900,8 +901,9 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-const REPORT_TRACKER_PATH = join(process.cwd(), '.local', 'last_report_sent.txt');
-const REPORT_SENT_AT_PATH = join(process.cwd(), '.local', 'last_report_sent_at.txt');
+const TRACKER_DIR = process.env.NODE_ENV === 'production' ? '/tmp' : join(process.cwd(), '.local');
+const REPORT_TRACKER_PATH = join(TRACKER_DIR, 'last_report_sent.txt');
+const REPORT_SENT_AT_PATH = join(TRACKER_DIR, 'last_report_sent_at.txt');
 
 function getLastReportSentMonth(): string | null {
   try {
@@ -914,8 +916,7 @@ function getLastReportSentMonth(): string | null {
 
 function setLastReportSentMonth(monthYear: string): void {
   try {
-    const dir = join(process.cwd(), '.local');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!existsSync(TRACKER_DIR)) mkdirSync(TRACKER_DIR, { recursive: true });
     writeFileSync(REPORT_TRACKER_PATH, monthYear, 'utf-8');
     writeFileSync(REPORT_SENT_AT_PATH, new Date().toISOString(), 'utf-8');
   } catch (err) {
