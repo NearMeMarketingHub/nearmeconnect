@@ -4,7 +4,7 @@ import { formatDateET, formatDateTimeET } from './timezone';
 
 let connectionSettings: any;
 
-async function getCredentials() {
+async function getCredentials(retries = 2, delayMs = 3000) {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY 
     ? 'repl ' + process.env.REPL_IDENTITY 
@@ -16,20 +16,27 @@ async function getCredentials() {
     throw new Error('X_REPLIT_TOKEN not found for repl/depl');
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=resend',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    connectionSettings = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=resend',
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X_REPLIT_TOKEN': xReplitToken
+        }
       }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
+    ).then(res => res.json()).then(data => data.items?.[0]);
 
-  if (!connectionSettings || (!connectionSettings.settings.api_key)) {
-    throw new Error('Resend not connected');
+    if (connectionSettings?.settings?.api_key) {
+      return { apiKey: connectionSettings.settings.api_key, fromEmail: connectionSettings.settings.from_email };
+    }
+
+    if (attempt < retries) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
-  return { apiKey: connectionSettings.settings.api_key, fromEmail: connectionSettings.settings.from_email };
+
+  throw new Error('Resend not connected');
 }
 
 // WARNING: Never cache this client.

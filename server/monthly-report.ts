@@ -1094,26 +1094,28 @@ export async function setupMonthlyReportScheduler() {
       }
     }
 
-    try {
-      const etNow = getNowET();
-      const currentMonthYear = getMonthYearET();
-      const lastSent = getLastReportSentMonth();
-      if (lastSent !== currentMonthYear) {
-        const dayOfMonth = etNow.getDate();
-        if (dayOfMonth <= 5) {
-          log('Startup catch-up: monthly report not yet sent this month, sending now...', 'monthly-report');
-          const result = await generateAndSendMonthlyReports();
-          setLastReportSentMonth(currentMonthYear);
-          log(`Startup report catch-up result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
+    setTimeout(async () => {
+      try {
+        const etNow = getNowET();
+        const currentMonthYear = getMonthYearET();
+        const lastSent = getLastReportSentMonth();
+        if (lastSent !== currentMonthYear) {
+          const dayOfMonth = etNow.getDate();
+          if (dayOfMonth <= 5) {
+            log('Startup catch-up (delayed): monthly report not yet sent this month, sending now...', 'monthly-report');
+            const result = await generateAndSendMonthlyReports();
+            setLastReportSentMonth(currentMonthYear);
+            log(`Startup report catch-up result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
+          } else {
+            log(`Startup catch-up: past the 5-day window (day ${dayOfMonth}), skipping monthly report`, 'monthly-report');
+          }
         } else {
-          log(`Startup catch-up: past the 5-day window (day ${dayOfMonth}), skipping monthly report`, 'monthly-report');
+          log('Startup catch-up: monthly report already sent this month, skipping', 'monthly-report');
         }
-      } else {
-        log('Startup catch-up: monthly report already sent this month, skipping', 'monthly-report');
+      } catch (error: any) {
+        log(`Startup report catch-up failed: ${error.message}. Will retry on next hourly catch-up.`, 'monthly-report');
       }
-    } catch (error: any) {
-      log(`Startup report catch-up failed: ${error.message}`, 'monthly-report');
-    }
+    }, 30000);
 
     cron.schedule('0 9 * * *', async () => {
       log('Running onboarding reminder check', 'onboarding-reminder');
