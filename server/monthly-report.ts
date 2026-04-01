@@ -1040,13 +1040,15 @@ export async function setupMonthlyReportScheduler() {
         log(`Hourly catch-up credit reset failed: ${error.message}`, 'credit-reset');
       }
 
-      try {
-        const cadenceResult = await generateCadenceTasks();
-        if (cadenceResult.tasksCreated > 0) {
-          log(`Hourly catch-up: cadence generation created ${cadenceResult.tasksCreated} tasks for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+      if (dayOfMonth <= 3) {
+        try {
+          const cadenceResult = await generateCadenceTasks();
+          if (cadenceResult.tasksCreated > 0) {
+            log(`Hourly catch-up: cadence generation created ${cadenceResult.tasksCreated} tasks for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+          }
+        } catch (error: any) {
+          log(`Hourly catch-up cadence generation failed: ${error.message}`, 'cadence-generator');
         }
-      } catch (error: any) {
-        log(`Hourly catch-up cadence generation failed: ${error.message}`, 'cadence-generator');
       }
 
       if (dayOfMonth <= 5) {
@@ -1078,13 +1080,18 @@ export async function setupMonthlyReportScheduler() {
       log(`Startup credit reset catch-up failed: ${error.message}`, 'credit-reset');
     }
 
-    try {
-      const cadenceResult = await generateCadenceTasks();
-      if (cadenceResult.tasksCreated > 0) {
-        log(`Startup cadence catch-up: ${cadenceResult.tasksCreated} tasks created for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+    {
+      const etDay = getNowET().getDate();
+      if (etDay <= 3) {
+        try {
+          const cadenceResult = await generateCadenceTasks();
+          if (cadenceResult.tasksCreated > 0) {
+            log(`Startup cadence catch-up: ${cadenceResult.tasksCreated} tasks created for ${cadenceResult.cadencesProcessed} cadences`, 'cadence-generator');
+          }
+        } catch (error: any) {
+          log(`Startup cadence catch-up failed: ${error.message}`, 'cadence-generator');
+        }
       }
-    } catch (error: any) {
-      log(`Startup cadence catch-up failed: ${error.message}`, 'cadence-generator');
     }
 
     try {
