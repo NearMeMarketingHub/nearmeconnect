@@ -8359,7 +8359,7 @@ export async function registerRoutes(
       const { year, month } = req.body;
       const { generateAndSendMonthlyReports, markReportSent } = await import("./monthly-report");
       const result = await generateAndSendMonthlyReports(year, month);
-      if (result.success && !year && !month) {
+      if (result.companiesSent > 0 && !year && !month) {
         markReportSent();
       }
       res.json(result);
