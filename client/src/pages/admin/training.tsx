@@ -810,7 +810,7 @@ export default function AdminTraining() {
                         <span className="text-sm">
                           {assignment.assignmentType === "company"
                             ? getCompanyName(assignment.companyId)
-                            : assignment.userId || "Individual"}
+                            : (assignment as any).userName || assignment.userId || "Individual"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">

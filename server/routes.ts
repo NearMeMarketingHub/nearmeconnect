@@ -6677,7 +6677,17 @@ export async function registerRoutes(
       
       if (isAdmin) {
         const assignments = await storage.getAllTrainingAssignments();
-        res.json(assignments);
+        const enriched = await Promise.all(assignments.map(async (a) => {
+          let userName: string | null = null;
+          if (a.userId) {
+            try {
+              const user = await storage.getUser(a.userId);
+              if (user) userName = `${user.firstName} ${user.lastName}`.trim();
+            } catch {}
+          }
+          return { ...a, userName };
+        }));
+        res.json(enriched);
       } else {
         const assignments = await storage.getUserTrainingAssignments(userId);
         res.json(assignments);
