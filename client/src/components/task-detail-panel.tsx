@@ -1492,11 +1492,16 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                                 <SelectItem key={d} value={String(d)}>{d}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          {parseInt(recurrenceDay) > 28 && (
+                            <p className="text-xs text-muted-foreground">
+                              In shorter months, this task will fall on the last day of the month
+                            </p>
+                          )}
                         </div>
                       )}
                       {recurrencePattern === "day_of_week" && (

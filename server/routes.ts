@@ -1112,6 +1112,12 @@ export async function registerRoutes(
             const currentDueDate = existingTask.dueDate ? new Date(existingTask.dueDate) : new Date();
             nextDueDate = new Date(currentDueDate);
             nextDueDate.setDate(nextDueDate.getDate() + 14);
+            const targetWeekday = existingTask.recurrenceWeekday;
+            const currentWeekday = nextDueDate.getDay();
+            if (currentWeekday !== targetWeekday) {
+              const diff = targetWeekday - currentWeekday;
+              nextDueDate.setDate(nextDueDate.getDate() + diff);
+            }
             taskBillingPeriod = getBillingPeriod(company.billingStartDay, nextDueDate);
           }
           
