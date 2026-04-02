@@ -894,46 +894,86 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
   }
 }
 
-async function getLastReportSentMonth(): Promise<string | null> {
+async function getTrackerForMonth(monthYear: string): Promise<{ monthYear: string; status: string; sentAt: string } | null> {
   try {
-    const rows = await db.select().from(monthlyReportTracker);
+    const rows = await db.select().from(monthlyReportTracker)
+      .where(eq(monthlyReportTracker.monthYear, monthYear));
     if (rows.length === 0) return null;
-    rows.sort((a, b) => (b.sentAt > a.sentAt ? 1 : -1));
-    return rows[0].monthYear || null;
+    return rows[0];
   } catch (err) {
     log(`Failed to read report tracker from DB (failing closed to prevent duplicate sends): ${err}`, 'monthly-report');
     throw err;
   }
 }
 
-async function setLastReportSentMonth(monthYear: string): Promise<void> {
+async function markTrackerSending(monthYear: string): Promise<void> {
   try {
     await db.insert(monthlyReportTracker)
-      .values({ monthYear, sentAt: new Date().toISOString() })
+      .values({ monthYear, sentAt: new Date().toISOString(), status: 'sending' })
       .onConflictDoUpdate({
         target: monthlyReportTracker.monthYear,
-        set: { sentAt: new Date().toISOString() },
+        set: { sentAt: new Date().toISOString(), status: 'sending' },
       });
   } catch (err) {
-    log(`Failed to persist report tracker to DB (duplicate sends possible on next restart): ${err}`, 'monthly-report');
+    log(`Failed to mark tracker as sending: ${err}`, 'monthly-report');
     throw err;
   }
 }
 
+async function markTrackerSent(monthYear: string): Promise<void> {
+  try {
+    await db.update(monthlyReportTracker)
+      .set({ status: 'sent', sentAt: new Date().toISOString() })
+      .where(eq(monthlyReportTracker.monthYear, monthYear));
+  } catch (err) {
+    log(`Failed to mark tracker as sent (emails were already delivered): ${err}`, 'monthly-report');
+  }
+}
+
+async function clearTracker(monthYear: string): Promise<void> {
+  try {
+    await db.delete(monthlyReportTracker)
+      .where(eq(monthlyReportTracker.monthYear, monthYear));
+  } catch (err) {
+    log(`Failed to clear tracker: ${err}`, 'monthly-report');
+  }
+}
+
+async function shouldSendReport(monthYear: string): Promise<boolean> {
+  const tracker = await getTrackerForMonth(monthYear);
+  if (!tracker) return true;
+  if (tracker.status === 'sent') {
+    log('Monthly report already sent this month, skipping', 'monthly-report');
+    return false;
+  }
+  if (tracker.status === 'sending') {
+    log('Monthly report was interrupted mid-send (status: sending). Skipping to prevent duplicates. Admin can manually re-send if needed.', 'monthly-report');
+    return false;
+  }
+  return true;
+}
+
 export async function markReportSent(): Promise<void> {
   const currentMonth = getMonthYearET();
-  await setLastReportSentMonth(currentMonth);
+  await db.insert(monthlyReportTracker)
+    .values({ monthYear: currentMonth, sentAt: new Date().toISOString(), status: 'sent' })
+    .onConflictDoUpdate({
+      target: monthlyReportTracker.monthYear,
+      set: { sentAt: new Date().toISOString(), status: 'sent' },
+    });
 }
 
 export async function getMonthlyReportStatus(): Promise<{ sent: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string }> {
   const currentMonth = getMonthYearET();
-  const lastSentMonth = await getLastReportSentMonth();
+  let lastSentMonth: string | null = null;
   let lastSentAt: string | null = null;
   try {
     const rows = await db.select().from(monthlyReportTracker);
     if (rows.length > 0) {
       rows.sort((a, b) => (b.sentAt > a.sentAt ? 1 : -1));
-      lastSentAt = rows[0].sentAt || null;
+      const latest = rows[0];
+      lastSentMonth = latest.monthYear || null;
+      lastSentAt = latest.sentAt || null;
     }
   } catch {}
   return {
@@ -1034,10 +1074,13 @@ export async function setupMonthlyReportScheduler() {
     // --- Monthly reports: 1st of each month at 8 AM ET ---
     cron.schedule('0 8 1 * *', async () => {
       log('Running scheduled monthly report job', 'monthly-report');
+      const now = new Date();
+      const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       try {
+        if (!(await shouldSendReport(currentMonthYear))) return;
+        await markTrackerSending(currentMonthYear);
         const result = await generateAndSendMonthlyReports();
-        const now = new Date();
-        await setLastReportSentMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+        await markTrackerSent(currentMonthYear);
         log(`Scheduled report result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
       } catch (error: any) {
         log(`Scheduled report failed: ${error.message}`, 'monthly-report');
@@ -1077,11 +1120,11 @@ export async function setupMonthlyReportScheduler() {
       if (dayOfMonth <= 5) {
         try {
           const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-          const lastSent = await getLastReportSentMonth();
-          if (lastSent !== currentMonthYear) {
+          if (await shouldSendReport(currentMonthYear)) {
             log('Hourly catch-up: monthly report not yet sent, sending now...', 'monthly-report');
+            await markTrackerSending(currentMonthYear);
             const reportResult = await generateAndSendMonthlyReports();
-            await setLastReportSentMonth(currentMonthYear);
+            await markTrackerSent(currentMonthYear);
             log(`Hourly catch-up report result: ${reportResult.companiesSent} companies, ${reportResult.totalEmails} emails, ${reportResult.errors.length} errors`, 'monthly-report');
           }
         } catch (error: any) {
@@ -1121,19 +1164,17 @@ export async function setupMonthlyReportScheduler() {
       try {
         const etNow = getNowET();
         const currentMonthYear = getMonthYearET();
-        const lastSent = await getLastReportSentMonth();
-        if (lastSent !== currentMonthYear) {
+        if (await shouldSendReport(currentMonthYear)) {
           const dayOfMonth = etNow.getDate();
           if (dayOfMonth <= 5) {
             log('Startup catch-up (delayed): monthly report not yet sent this month, sending now...', 'monthly-report');
+            await markTrackerSending(currentMonthYear);
             const result = await generateAndSendMonthlyReports();
-            await setLastReportSentMonth(currentMonthYear);
+            await markTrackerSent(currentMonthYear);
             log(`Startup report catch-up result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
           } else {
             log(`Startup catch-up: past the 5-day window (day ${dayOfMonth}), skipping monthly report`, 'monthly-report');
           }
-        } else {
-          log('Startup catch-up: monthly report already sent this month, skipping', 'monthly-report');
         }
       } catch (error: any) {
         log(`Startup report catch-up failed: ${error.message}. Will retry on next hourly catch-up.`, 'monthly-report');

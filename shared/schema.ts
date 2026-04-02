@@ -1332,4 +1332,5 @@ export const monthlyReportTracker = pgTable("monthly_report_tracker", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   monthYear: text("month_year").notNull().unique(),
   sentAt: text("sent_at").notNull(),
+  status: text("status").notNull().default("sent"),
 });
