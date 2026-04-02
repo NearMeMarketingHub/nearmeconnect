@@ -930,15 +930,6 @@ async function markTrackerSent(monthYear: string): Promise<void> {
   }
 }
 
-async function clearTracker(monthYear: string): Promise<void> {
-  try {
-    await db.delete(monthlyReportTracker)
-      .where(eq(monthlyReportTracker.monthYear, monthYear));
-  } catch (err) {
-    log(`Failed to clear tracker: ${err}`, 'monthly-report');
-  }
-}
-
 async function shouldSendReport(monthYear: string): Promise<boolean> {
   const tracker = await getTrackerForMonth(monthYear);
   if (!tracker) return true;
@@ -963,10 +954,11 @@ export async function markReportSent(): Promise<void> {
     });
 }
 
-export async function getMonthlyReportStatus(): Promise<{ sent: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string }> {
+export async function getMonthlyReportStatus(): Promise<{ sent: boolean; sending: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string }> {
   const currentMonth = getMonthYearET();
   let lastSentMonth: string | null = null;
   let lastSentAt: string | null = null;
+  let currentTracker: { status: string } | null = null;
   try {
     const rows = await db.select().from(monthlyReportTracker);
     if (rows.length > 0) {
@@ -975,9 +967,15 @@ export async function getMonthlyReportStatus(): Promise<{ sent: boolean; lastSen
       lastSentMonth = latest.monthYear || null;
       lastSentAt = latest.sentAt || null;
     }
+    const currentRows = await db.select().from(monthlyReportTracker)
+      .where(eq(monthlyReportTracker.monthYear, currentMonth));
+    if (currentRows.length > 0) {
+      currentTracker = currentRows[0];
+    }
   } catch {}
   return {
-    sent: lastSentMonth === currentMonth,
+    sent: currentTracker?.status === 'sent',
+    sending: currentTracker?.status === 'sending',
     lastSentMonth,
     lastSentAt,
     currentMonth,
