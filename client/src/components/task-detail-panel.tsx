@@ -240,15 +240,13 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const endRecurrenceMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("PATCH", `/api/tasks/${task?.id}`, { 
-        status: "completed",
-        endRecurrence: true 
+        isRecurring: false 
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-      toast({ title: "Task completed and recurrence ended" });
+      toast({ title: "Recurrence ended" });
     },
     onError: (error: any) => {
       toast({ title: error.message || "Failed to end recurrence", variant: "destructive" });
