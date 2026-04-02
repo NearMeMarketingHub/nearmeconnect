@@ -1222,6 +1222,49 @@ export async function registerRoutes(
         }
       }
 
+      // ---- RECURRENCE SETTINGS EDIT (admin only) ----
+      if (isAdmin && req.body.isRecurring !== undefined && existingTask.status !== "completed") {
+        if (existingTask.cadenceId) {
+          return res.status(400).json({ error: "Cannot edit recurrence on cadence-generated tasks" });
+        }
+        if (req.body.isRecurring) {
+          const pattern = req.body.recurrencePattern || existingTask.recurrencePattern || 'day_of_month';
+          req.body.recurrencePattern = pattern;
+          const company = await storage.getCompany(existingTask.companyId);
+          if (company) {
+            const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBiweeklyRecurringTaskDueDate } = await import("@shared/billing");
+            const period = getBillingPeriod(company.billingStartDay);
+            req.body.billingPeriodStart = period.startStr;
+            req.body.billingPeriodEnd = period.endStr;
+
+            if (pattern === 'day_of_month') {
+              const day = req.body.recurrenceDay ?? existingTask.recurrenceDay;
+              if (day !== null && day !== undefined) {
+                req.body.dueDate = formatDateLocal(getRecurringTaskDueDate(day, period));
+              }
+            } else if (pattern === 'day_of_week') {
+              const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
+              const ordinal = req.body.recurrenceWeekOrdinal ?? existingTask.recurrenceWeekOrdinal;
+              if (weekday !== null && weekday !== undefined && ordinal !== null && ordinal !== undefined) {
+                req.body.dueDate = formatDateLocal(getWeekdayRecurringTaskDueDate(weekday, ordinal, period));
+              }
+            } else if (pattern === 'biweekly') {
+              const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
+              if (weekday !== null && weekday !== undefined) {
+                req.body.dueDate = formatDateLocal(getBiweeklyRecurringTaskDueDate(weekday, period));
+              }
+            }
+          }
+        } else {
+          req.body.recurrencePattern = null;
+          req.body.recurrenceDay = null;
+          req.body.recurrenceWeekday = null;
+          req.body.recurrenceWeekOrdinal = null;
+          req.body.billingPeriodStart = null;
+          req.body.billingPeriodEnd = null;
+        }
+      }
+
       // ---- REVISION TRACKING (T006) ----
       // When task goes from review back to in_progress (changes requested), increment revision count
       if (newStatus === "in_progress" && existingTask.status === "review") {

@@ -75,6 +75,12 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [newLinkLabel, setNewLinkLabel] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [editingRecurrence, setEditingRecurrence] = useState(false);
+  const [recurrenceIsRecurring, setRecurrenceIsRecurring] = useState(false);
+  const [recurrencePattern, setRecurrencePattern] = useState<"day_of_month" | "day_of_week" | "biweekly">("day_of_month");
+  const [recurrenceDay, setRecurrenceDay] = useState("1");
+  const [recurrenceWeekday, setRecurrenceWeekday] = useState("1");
+  const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState("1");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch fresh task data to stay in sync
@@ -246,6 +252,27 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     },
     onError: (error: any) => {
       toast({ title: error.message || "Failed to end recurrence", variant: "destructive" });
+    },
+  });
+
+  const updateRecurrenceMutation = useMutation({
+    mutationFn: async (data: {
+      isRecurring: boolean;
+      recurrencePattern?: string | null;
+      recurrenceDay?: number | null;
+      recurrenceWeekday?: number | null;
+      recurrenceWeekOrdinal?: number | null;
+    }) => {
+      return apiRequest("PATCH", `/api/tasks/${task?.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id] });
+      toast({ title: "Recurrence settings updated" });
+      setEditingRecurrence(false);
+    },
+    onError: (error: any) => {
+      toast({ title: error.message || "Failed to update recurrence", variant: "destructive" });
     },
   });
 
@@ -1364,26 +1391,198 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
             </div>
           )}
 
-          {/* End Recurrence option for recurring tasks */}
-          {isAdmin && task.isRecurring && task.status !== "completed" && (
-            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
-              <StopCircle className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 text-sm text-muted-foreground">
-                Complete this task and stop future recurrences
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => endRecurrenceMutation.mutate()}
-                disabled={endRecurrenceMutation.isPending}
-                data-testid="button-end-recurrence"
-              >
-                {endRecurrenceMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "End Recurrence"
-                )}
-              </Button>
+          {/* Recurrence settings for admin on non-completed, non-cadence tasks */}
+          {isAdmin && task.status !== "completed" && !task.cadenceId && (
+            <div className="space-y-2">
+              {!editingRecurrence ? (
+                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
+                  <Repeat className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 text-sm text-muted-foreground">
+                    {task.isRecurring ? (
+                      <>
+                        Recurring:{" "}
+                        {task.recurrencePattern === "day_of_month" && task.recurrenceDay !== null && `Day ${task.recurrenceDay} each month`}
+                        {task.recurrencePattern === "day_of_week" && task.recurrenceWeekday !== null && task.recurrenceWeekOrdinal !== null && `${task.recurrenceWeekOrdinal === -1 ? "Last" : ["1st", "2nd", "3rd", "4th"][task.recurrenceWeekOrdinal - 1]} ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][task.recurrenceWeekday]} each month`}
+                        {task.recurrencePattern === "biweekly" && task.recurrenceWeekday !== null && `Every other ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][task.recurrenceWeekday]}`}
+                      </>
+                    ) : "Not recurring"}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setRecurrenceIsRecurring(task.isRecurring);
+                        setRecurrencePattern((task.recurrencePattern as any) || "day_of_month");
+                        setRecurrenceDay(String(task.recurrenceDay ?? 1));
+                        setRecurrenceWeekday(String(task.recurrenceWeekday ?? 1));
+                        setRecurrenceWeekOrdinal(String(task.recurrenceWeekOrdinal ?? 1));
+                        setEditingRecurrence(true);
+                      }}
+                      data-testid="button-edit-recurrence"
+                    >
+                      <Edit2 className="h-3 w-3 mr-1" />
+                      Edit
+                    </Button>
+                    {task.isRecurring && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => endRecurrenceMutation.mutate()}
+                        disabled={endRecurrenceMutation.isPending}
+                        data-testid="button-end-recurrence"
+                      >
+                        {endRecurrenceMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <StopCircle className="h-3 w-3 mr-1" />
+                            End
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 border rounded-lg space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <Repeat className="h-4 w-4" />
+                      Edit Recurrence
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditingRecurrence(false)}
+                      data-testid="button-cancel-recurrence-edit"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="edit-recurring"
+                      checked={recurrenceIsRecurring}
+                      onCheckedChange={(checked) => setRecurrenceIsRecurring(!!checked)}
+                      data-testid="checkbox-edit-recurring"
+                    />
+                    <Label htmlFor="edit-recurring" className="text-sm">Recurring task</Label>
+                  </div>
+                  {recurrenceIsRecurring && (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Pattern</Label>
+                        <Select value={recurrencePattern} onValueChange={(val) => setRecurrencePattern(val as any)}>
+                          <SelectTrigger data-testid="select-edit-recurrence-pattern" className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="day_of_month">Same day each month</SelectItem>
+                            <SelectItem value="day_of_week">Same week & day each month</SelectItem>
+                            <SelectItem value="biweekly">Every other week</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {recurrencePattern === "day_of_month" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Day of Month</Label>
+                          <Select value={recurrenceDay} onValueChange={setRecurrenceDay}>
+                            <SelectTrigger data-testid="select-edit-recurrence-day" className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                                <SelectItem key={d} value={String(d)}>{d}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      {recurrencePattern === "day_of_week" && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Occurrence</Label>
+                            <Select value={recurrenceWeekOrdinal} onValueChange={setRecurrenceWeekOrdinal}>
+                              <SelectTrigger data-testid="select-edit-week-ordinal" className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1st</SelectItem>
+                                <SelectItem value="2">2nd</SelectItem>
+                                <SelectItem value="3">3rd</SelectItem>
+                                <SelectItem value="4">4th</SelectItem>
+                                <SelectItem value="-1">Last</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Day</Label>
+                            <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
+                              <SelectTrigger data-testid="select-edit-weekday" className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => (
+                                  <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                      {recurrencePattern === "biweekly" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Day of Week</Label>
+                          <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
+                            <SelectTrigger data-testid="select-edit-biweekly-day" className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => (
+                                <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      const data: any = { isRecurring: recurrenceIsRecurring };
+                      if (recurrenceIsRecurring) {
+                        data.recurrencePattern = recurrencePattern;
+                        if (recurrencePattern === "day_of_month") {
+                          data.recurrenceDay = parseInt(recurrenceDay);
+                          data.recurrenceWeekday = null;
+                          data.recurrenceWeekOrdinal = null;
+                        } else if (recurrencePattern === "day_of_week") {
+                          data.recurrenceDay = null;
+                          data.recurrenceWeekday = parseInt(recurrenceWeekday);
+                          data.recurrenceWeekOrdinal = parseInt(recurrenceWeekOrdinal);
+                        } else if (recurrencePattern === "biweekly") {
+                          data.recurrenceDay = null;
+                          data.recurrenceWeekday = parseInt(recurrenceWeekday);
+                          data.recurrenceWeekOrdinal = null;
+                        }
+                      }
+                      updateRecurrenceMutation.mutate(data);
+                    }}
+                    disabled={updateRecurrenceMutation.isPending}
+                    data-testid="button-save-recurrence"
+                  >
+                    {updateRecurrenceMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-1" />
+                    )}
+                    Save Recurrence
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
