@@ -115,7 +115,7 @@ async function gatherCompanyReportData(
   const completedTasks = allTasks.filter(t => {
     if (t.status !== 'completed') return false;
     if (t.approvalStatus === 'rejected') return false;
-    const taskDate = t.billingPeriodStart || t.dueDate || t.createdAt;
+    const taskDate = t.completedAt || t.createdAt;
     return isDateInRange(taskDate, startDate, endDate);
   });
 
@@ -139,10 +139,6 @@ async function gatherCompanyReportData(
     const amount = parseFloat(ct.amount);
     if (ct.type === 'deduction' || ct.type === 'task_deduction') {
       creditsUsed += Math.abs(amount);
-    } else if (ct.type === 'adjustment' || ct.type === 'credit_adjustment') {
-      if (amount < 0) {
-        creditsUsed += Math.abs(amount);
-      }
     } else if (ct.type === 'revision_charge') {
       creditsUsed += Math.abs(amount);
     } else if (ct.type === 'purchase' || ct.type === 'stripe_purchase') {
@@ -189,7 +185,7 @@ async function gatherCompanyReportData(
     title: t.title,
     deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
     creditCost: String(t.creditCost),
-    completedDate: formatDate(t.dueDate || t.createdAt),
+    completedDate: formatDate(t.completedAt || t.createdAt),
     completedByName: t.completedByName || null,
   }));
 
@@ -199,7 +195,7 @@ async function gatherCompanyReportData(
       title: t.title,
       deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
       creditCost: t.noCredit ? "0 (no credit)" : String(t.creditCost),
-      completedDate: formatDate(t.dueDate || t.createdAt),
+      completedDate: formatDate(t.completedAt || t.createdAt),
       completedByName: t.completedByName || null,
     }));
 
@@ -209,7 +205,7 @@ async function gatherCompanyReportData(
       title: t.title,
       deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
       creditCost: "0 (self-service)",
-      completedDate: formatDate(t.dueDate || t.createdAt),
+      completedDate: formatDate(t.completedAt || t.createdAt),
       completedByName: t.completedByName || null,
     }));
 

@@ -1,0 +1,55 @@
+We need to investigate and fix an issue with the monthly report email totals.
+
+Important context:
+This issue originated in the published app, not just in development/testing logs.
+The incorrect report was generated for the company E5 Nano Silica.
+Do not assume the issue is only in dev data or dev logs. Trace the logic used by the actual monthly report generation flow.
+
+Problem:
+The monthly report email is supposed to send on the 1st of each month and summarize the previous month’s activity.
+
+Example:
+- March activity report gets sent on April 1st
+
+The report should include:
+- all tasks completed during that month
+- who completed each task
+- the credit amount for each completed task
+- meetings that occurred during that month
+- who attended those meetings
+- any other month-specific report details already included in the system
+
+Current issue:
+The latest report sent for E5 Nano Silica said the client used 267 credits, and that total is incorrect.
+We need to find out why the report calculated that number wrong and fix it.
+
+Please investigate:
+- how the monthly report email is generated
+- how completed tasks are selected for the reporting period
+- how credit amounts are calculated and totaled
+- whether tasks outside the intended date range are being included
+- whether recurring tasks, duplicated tasks, or incorrectly completed tasks are affecting totals
+- whether credits are being summed from the wrong field or wrong source
+- whether the report is using task completion date, task creation date, recurrence date, or another date incorrectly
+- whether meetings or other entries are affecting the credit total when they should not
+
+Focus especially on:
+- the published app reporting logic
+- the monthly date-range calculation
+- the company-specific report data for E5 Nano Silica
+- any logic that could overcount credits or include the wrong records
+
+Please provide:
+1. the most likely root cause
+2. the exact logic/path causing the inflated credit total
+3. the cleanest fix
+4. the files/components/services involved
+5. edge cases to watch for
+6. a QA checklist for verifying next month’s report and any regenerated report
+
+Important constraints:
+- Keep the fix narrow and focused on the monthly report calculation/generation flow
+- Do not get distracted by unrelated dev logs
+- Use the published app behavior/report output as the source symptom
+- Verify the reporting period is “previous calendar month”
+- Verify that only valid completed tasks from that month are counted toward the monthly credit total

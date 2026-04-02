@@ -5801,7 +5801,7 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
 
   const monthTasks = tasks.filter(t => {
     if (t.status === "cadence_parent") return false;
-    const taskDate = t.billingPeriodStart || t.dueDate || t.createdAt;
+    const taskDate = t.completedAt || t.createdAt;
     if (!taskDate) return false;
     const dateStr = taskDate.slice(0, 10);
     return dateStr >= monthStart && dateStr < monthEnd;
@@ -5821,8 +5821,6 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   for (const ct of monthCreditTxns) {
     const amount = parseFloat(ct.amount);
     if (ct.type === 'deduction' || ct.type === 'task_deduction') {
-      creditsUsed += Math.abs(amount);
-    } else if ((ct.type === 'adjustment' || ct.type === 'credit_adjustment') && amount < 0) {
       creditsUsed += Math.abs(amount);
     } else if (ct.type === 'revision_charge') {
       creditsUsed += Math.abs(amount);
