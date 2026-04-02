@@ -1230,28 +1230,31 @@ export async function registerRoutes(
         if (req.body.isRecurring) {
           const pattern = req.body.recurrencePattern || existingTask.recurrencePattern || 'day_of_month';
           req.body.recurrencePattern = pattern;
-          const company = await storage.getCompany(existingTask.companyId);
-          if (company) {
-            const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBiweeklyRecurringTaskDueDate } = await import("@shared/billing");
-            const period = getBillingPeriod(company.billingStartDay);
-            req.body.billingPeriodStart = period.startStr;
-            req.body.billingPeriodEnd = period.endStr;
+          const turningOn = !existingTask.isRecurring;
+          if (turningOn) {
+            const company = await storage.getCompany(existingTask.companyId);
+            if (company) {
+              const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBiweeklyRecurringTaskDueDate } = await import("@shared/billing");
+              const period = getBillingPeriod(company.billingStartDay);
+              req.body.billingPeriodStart = period.startStr;
+              req.body.billingPeriodEnd = period.endStr;
 
-            if (pattern === 'day_of_month') {
-              const day = req.body.recurrenceDay ?? existingTask.recurrenceDay;
-              if (day !== null && day !== undefined) {
-                req.body.dueDate = formatDateLocal(getRecurringTaskDueDate(day, period));
-              }
-            } else if (pattern === 'day_of_week') {
-              const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
-              const ordinal = req.body.recurrenceWeekOrdinal ?? existingTask.recurrenceWeekOrdinal;
-              if (weekday !== null && weekday !== undefined && ordinal !== null && ordinal !== undefined) {
-                req.body.dueDate = formatDateLocal(getWeekdayRecurringTaskDueDate(weekday, ordinal, period));
-              }
-            } else if (pattern === 'biweekly') {
-              const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
-              if (weekday !== null && weekday !== undefined) {
-                req.body.dueDate = formatDateLocal(getBiweeklyRecurringTaskDueDate(weekday, period));
+              if (pattern === 'day_of_month') {
+                const day = req.body.recurrenceDay ?? existingTask.recurrenceDay;
+                if (day !== null && day !== undefined) {
+                  req.body.dueDate = formatDateLocal(getRecurringTaskDueDate(day, period));
+                }
+              } else if (pattern === 'day_of_week') {
+                const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
+                const ordinal = req.body.recurrenceWeekOrdinal ?? existingTask.recurrenceWeekOrdinal;
+                if (weekday !== null && weekday !== undefined && ordinal !== null && ordinal !== undefined) {
+                  req.body.dueDate = formatDateLocal(getWeekdayRecurringTaskDueDate(weekday, ordinal, period));
+                }
+              } else if (pattern === 'biweekly') {
+                const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
+                if (weekday !== null && weekday !== undefined) {
+                  req.body.dueDate = formatDateLocal(getBiweeklyRecurringTaskDueDate(weekday, period));
+                }
               }
             }
           }

@@ -1413,7 +1413,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       variant="outline"
                       onClick={() => {
                         setRecurrenceIsRecurring(task.isRecurring);
-                        setRecurrencePattern((task.recurrencePattern as any) || "day_of_month");
+                        setRecurrencePattern((task.recurrencePattern as "day_of_month" | "day_of_week" | "biweekly") || "day_of_month");
                         setRecurrenceDay(String(task.recurrenceDay ?? 1));
                         setRecurrenceWeekday(String(task.recurrenceWeekday ?? 1));
                         setRecurrenceWeekOrdinal(String(task.recurrenceWeekOrdinal ?? 1));
@@ -1473,7 +1473,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Pattern</Label>
-                        <Select value={recurrencePattern} onValueChange={(val) => setRecurrencePattern(val as any)}>
+                        <Select value={recurrencePattern} onValueChange={(val) => setRecurrencePattern(val as "day_of_month" | "day_of_week" | "biweekly")}>
                           <SelectTrigger data-testid="select-edit-recurrence-pattern" className="h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
@@ -1552,7 +1552,13 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                     size="sm"
                     className="w-full"
                     onClick={() => {
-                      const data: any = { isRecurring: recurrenceIsRecurring };
+                      const data: {
+                        isRecurring: boolean;
+                        recurrencePattern?: string | null;
+                        recurrenceDay?: number | null;
+                        recurrenceWeekday?: number | null;
+                        recurrenceWeekOrdinal?: number | null;
+                      } = { isRecurring: recurrenceIsRecurring };
                       if (recurrenceIsRecurring) {
                         data.recurrencePattern = recurrencePattern;
                         if (recurrencePattern === "day_of_month") {
