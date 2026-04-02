@@ -1327,3 +1327,9 @@ export const insertMonthlyReportNoteSchema = createInsertSchema(monthlyReportNot
 });
 export type InsertMonthlyReportNote = z.infer<typeof insertMonthlyReportNoteSchema>;
 export type MonthlyReportNote = typeof monthlyReportNotes.$inferSelect;
+
+export const monthlyReportTracker = pgTable("monthly_report_tracker", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  monthYear: text("month_year").notNull().unique(),
+  sentAt: text("sent_at").notNull(),
+});

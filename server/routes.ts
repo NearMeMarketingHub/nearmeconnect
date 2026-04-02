@@ -8417,7 +8417,7 @@ export async function registerRoutes(
       }
 
       const { getMonthlyReportStatus } = await import("./monthly-report");
-      res.json(getMonthlyReportStatus());
+      res.json(await getMonthlyReportStatus());
     } catch (error) {
       console.error("Monthly report status error:", error);
       res.status(500).json({ error: "Failed to get report status" });
@@ -8436,7 +8436,7 @@ export async function registerRoutes(
       const { generateAndSendMonthlyReports, markReportSent } = await import("./monthly-report");
       const result = await generateAndSendMonthlyReports(year, month);
       if (result.companiesSent > 0 && !year && !month) {
-        markReportSent();
+        await markReportSent();
       }
       res.json(result);
     } catch (error) {

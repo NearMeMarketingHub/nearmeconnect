@@ -3,7 +3,7 @@ import {
   companies, tasks, creditTransactions, campaignRequests, 
   meetingRequests, companyMembers, adminUsers, campaignTypes,
   meetingTypes, deliverableNames, notifications, deliverableTypes,
-  monthlyReportNotes
+  monthlyReportNotes, monthlyReportTracker
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { eq, and, ne, or, isNull } from "drizzle-orm";
@@ -115,8 +115,8 @@ async function gatherCompanyReportData(
   const completedTasks = allTasks.filter(t => {
     if (t.status !== 'completed') return false;
     if (t.approvalStatus === 'rejected') return false;
-    const taskDate = t.completedAt || t.createdAt;
-    return isDateInRange(taskDate, startDate, endDate);
+    if (!t.completedAt) return false;
+    return isDateInRange(t.completedAt, startDate, endDate);
   });
 
   const deliverableCounts: Record<string, number> = {};
@@ -185,7 +185,7 @@ async function gatherCompanyReportData(
     title: t.title,
     deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
     creditCost: String(t.creditCost),
-    completedDate: formatDate(t.completedAt || t.createdAt),
+    completedDate: formatDate(t.completedAt!),
     completedByName: t.completedByName || null,
   }));
 
@@ -195,7 +195,7 @@ async function gatherCompanyReportData(
       title: t.title,
       deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
       creditCost: t.noCredit ? "0 (no credit)" : String(t.creditCost),
-      completedDate: formatDate(t.completedAt || t.createdAt),
+      completedDate: formatDate(t.completedAt!),
       completedByName: t.completedByName || null,
     }));
 
@@ -205,7 +205,7 @@ async function gatherCompanyReportData(
       title: t.title,
       deliverableType: t.deliverableType ? (deliverableNames[t.deliverableType] || t.deliverableType) : null,
       creditCost: "0 (self-service)",
-      completedDate: formatDate(t.completedAt || t.createdAt),
+      completedDate: formatDate(t.completedAt!),
       completedByName: t.completedByName || null,
     }));
 
@@ -894,44 +894,45 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
   }
 }
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-
-const TRACKER_DIR = process.env.NODE_ENV === 'production' ? '/tmp' : join(process.cwd(), '.local');
-const REPORT_TRACKER_PATH = join(TRACKER_DIR, 'last_report_sent.txt');
-const REPORT_SENT_AT_PATH = join(TRACKER_DIR, 'last_report_sent_at.txt');
-
-function getLastReportSentMonth(): string | null {
+async function getLastReportSentMonth(): Promise<string | null> {
   try {
-    if (existsSync(REPORT_TRACKER_PATH)) {
-      return readFileSync(REPORT_TRACKER_PATH, 'utf-8').trim() || null;
-    }
-  } catch {}
-  return null;
-}
-
-function setLastReportSentMonth(monthYear: string): void {
-  try {
-    if (!existsSync(TRACKER_DIR)) mkdirSync(TRACKER_DIR, { recursive: true });
-    writeFileSync(REPORT_TRACKER_PATH, monthYear, 'utf-8');
-    writeFileSync(REPORT_SENT_AT_PATH, new Date().toISOString(), 'utf-8');
+    const rows = await db.select().from(monthlyReportTracker);
+    if (rows.length === 0) return null;
+    rows.sort((a, b) => (b.sentAt > a.sentAt ? 1 : -1));
+    return rows[0].monthYear || null;
   } catch (err) {
-    log(`Failed to persist report tracker: ${err}`, 'monthly-report');
+    log(`Failed to read report tracker from DB (failing closed to prevent duplicate sends): ${err}`, 'monthly-report');
+    throw err;
   }
 }
 
-export function markReportSent(): void {
-  const currentMonth = getMonthYearET();
-  setLastReportSentMonth(currentMonth);
+async function setLastReportSentMonth(monthYear: string): Promise<void> {
+  try {
+    await db.insert(monthlyReportTracker)
+      .values({ monthYear, sentAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: monthlyReportTracker.monthYear,
+        set: { sentAt: new Date().toISOString() },
+      });
+  } catch (err) {
+    log(`Failed to persist report tracker to DB: ${err}`, 'monthly-report');
+  }
 }
 
-export function getMonthlyReportStatus(): { sent: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string } {
+export async function markReportSent(): Promise<void> {
   const currentMonth = getMonthYearET();
-  const lastSentMonth = getLastReportSentMonth();
+  await setLastReportSentMonth(currentMonth);
+}
+
+export async function getMonthlyReportStatus(): Promise<{ sent: boolean; lastSentMonth: string | null; lastSentAt: string | null; currentMonth: string }> {
+  const currentMonth = getMonthYearET();
+  const lastSentMonth = await getLastReportSentMonth();
   let lastSentAt: string | null = null;
   try {
-    if (existsSync(REPORT_SENT_AT_PATH)) {
-      lastSentAt = readFileSync(REPORT_SENT_AT_PATH, 'utf-8').trim() || null;
+    const rows = await db.select().from(monthlyReportTracker);
+    if (rows.length > 0) {
+      rows.sort((a, b) => (b.sentAt > a.sentAt ? 1 : -1));
+      lastSentAt = rows[0].sentAt || null;
     }
   } catch {}
   return {
@@ -1035,7 +1036,7 @@ export async function setupMonthlyReportScheduler() {
       try {
         const result = await generateAndSendMonthlyReports();
         const now = new Date();
-        setLastReportSentMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+        await setLastReportSentMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
         log(`Scheduled report result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
       } catch (error: any) {
         log(`Scheduled report failed: ${error.message}`, 'monthly-report');
@@ -1075,11 +1076,11 @@ export async function setupMonthlyReportScheduler() {
       if (dayOfMonth <= 5) {
         try {
           const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-          const lastSent = getLastReportSentMonth();
+          const lastSent = await getLastReportSentMonth();
           if (lastSent !== currentMonthYear) {
             log('Hourly catch-up: monthly report not yet sent, sending now...', 'monthly-report');
             const reportResult = await generateAndSendMonthlyReports();
-            setLastReportSentMonth(currentMonthYear);
+            await setLastReportSentMonth(currentMonthYear);
             log(`Hourly catch-up report result: ${reportResult.companiesSent} companies, ${reportResult.totalEmails} emails, ${reportResult.errors.length} errors`, 'monthly-report');
           }
         } catch (error: any) {
@@ -1119,13 +1120,13 @@ export async function setupMonthlyReportScheduler() {
       try {
         const etNow = getNowET();
         const currentMonthYear = getMonthYearET();
-        const lastSent = getLastReportSentMonth();
+        const lastSent = await getLastReportSentMonth();
         if (lastSent !== currentMonthYear) {
           const dayOfMonth = etNow.getDate();
           if (dayOfMonth <= 5) {
             log('Startup catch-up (delayed): monthly report not yet sent this month, sending now...', 'monthly-report');
             const result = await generateAndSendMonthlyReports();
-            setLastReportSentMonth(currentMonthYear);
+            await setLastReportSentMonth(currentMonthYear);
             log(`Startup report catch-up result: ${result.companiesSent} companies, ${result.totalEmails} emails, ${result.errors.length} errors`, 'monthly-report');
           } else {
             log(`Startup catch-up: past the 5-day window (day ${dayOfMonth}), skipping monthly report`, 'monthly-report');

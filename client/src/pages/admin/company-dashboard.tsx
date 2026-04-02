@@ -5759,7 +5759,7 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   const { data: creditTxns } = useQuery<CreditTransaction[]>({
     queryKey: ["/api/credit-transactions", companyId],
     queryFn: async () => {
-      const res = await fetch(`/api/credit-transactions/${companyId}`, { credentials: "include" });
+      const res = await fetch(`/api/credit-transactions?companyId=${companyId}`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -5799,15 +5799,13 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   const nextY = month === 12 ? year + 1 : year;
   const monthEnd = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
 
-  const monthTasks = tasks.filter(t => {
-    if (t.status === "cadence_parent") return false;
-    const taskDate = t.completedAt || t.createdAt;
-    if (!taskDate) return false;
-    const dateStr = taskDate.slice(0, 10);
+  const completedTasks = tasks.filter(t => {
+    if (t.status !== "completed") return false;
+    if (t.approvalStatus === "rejected") return false;
+    if (!t.completedAt) return false;
+    const dateStr = t.completedAt.slice(0, 10);
     return dateStr >= monthStart && dateStr < monthEnd;
   });
-
-  const completedTasks = monthTasks.filter(t => t.status === "completed" && t.approvalStatus !== "rejected");
   const agencyTasks = completedTasks.filter(t => t.creditsDeducted || t.noCredit);
   const clientTasks = completedTasks.filter(t => !t.creditsDeducted && !t.noCredit);
 
