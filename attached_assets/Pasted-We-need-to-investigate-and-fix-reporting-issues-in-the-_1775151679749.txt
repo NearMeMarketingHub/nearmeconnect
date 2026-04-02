@@ -1,0 +1,81 @@
+We need to investigate and fix reporting issues in the published app.
+
+Important context:
+These issues are happening in the published app, not just development/testing.
+One of the incorrect monthly reports was generated for the company E5 Nano Silica.
+Do not focus only on dev logs. Trace the actual production reporting and report-send behavior.
+
+Issue 1: Admin company reporting page is wrong
+On the reporting page within the admin-side company view, the displayed values are not correct.
+Problems:
+- task counts are inaccurate
+- meeting counts are inaccurate
+- credits used displays as 0 when that is not correct
+
+This page needs to show the correct values for the selected reporting period based on the real company activity/data.
+
+Issue 2: Monthly report email total was wrong
+The monthly report email is supposed to send on the 1st of each month and summarize the previous calendar month.
+
+Example:
+- March report sends on April 1st
+
+The report should include:
+- all tasks completed during that month
+- who completed each task
+- the credit amount for each completed task
+- meetings that occurred during that month
+- who attended those meetings
+- any other report details already included for that month
+
+The latest report sent for E5 Nano Silica said the client used 267 credits, and that total is incorrect.
+We need to find out why that total was wrong and fix the logic causing it.
+
+Issue 3: Report resent after republishing the app
+After republishing the app following the last fix, the monthly report sent out again.
+
+We need to determine:
+- was that resend intentional because the previous report was wrong
+- or is the app currently set up to send the monthly report again whenever the app is republished/restarted
+
+This needs to be investigated carefully because the system should not resend monthly reports every time the app is republished unless that behavior is explicitly intended and controlled.
+
+Please investigate:
+- how the admin company reporting page calculates and displays task totals
+- how it calculates and displays meeting totals
+- how it calculates and displays credits used
+- how the monthly report email is generated
+- how completed tasks are selected for the monthly reporting period
+- how credit amounts are calculated and totaled in the report
+- whether tasks outside the intended date range are being included
+- whether recurring tasks, duplicated tasks, or incorrectly completed tasks are affecting totals
+- whether meetings or other entries are incorrectly affecting credit totals
+- whether the report uses the wrong date field
+- whether the report send logic is tied to app startup, republish, deploy, server restart, scheduler initialization, or a missing “already sent” guard
+- whether there is a safeguard preventing duplicate monthly reports for the same company and same reporting month
+
+Focus on:
+- the admin-side company reporting page
+- the monthly report generation flow
+- the monthly report scheduling/send trigger
+- the date-range logic for “previous calendar month”
+- the published app behavior for E5 Nano Silica
+
+Please provide:
+1. the root cause of the incorrect reporting page totals
+2. the root cause of the incorrect monthly credit total
+3. the root cause of the report being sent again after republish
+4. the cleanest fix approach for each issue
+5. the files/components/services involved
+6. any edge cases to watch for
+7. a QA checklist
+
+Important:
+Keep the fixes narrow and focused.
+Do not change unrelated admin, billing, or credit logic.
+Do not assume the resend was intentional.
+Verify whether monthly reports are protected against duplicate sends for the same reporting month.
+The goals are:
+- make the admin reporting page display the correct task count, meeting count, and credits used
+- make the monthly report calculate the correct previous-month data
+- confirm and fix whether republishing/restarting the app can incorrectly resend the monthly report
