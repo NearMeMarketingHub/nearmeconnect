@@ -915,7 +915,8 @@ async function setLastReportSentMonth(monthYear: string): Promise<void> {
         set: { sentAt: new Date().toISOString() },
       });
   } catch (err) {
-    log(`Failed to persist report tracker to DB: ${err}`, 'monthly-report');
+    log(`Failed to persist report tracker to DB (duplicate sends possible on next restart): ${err}`, 'monthly-report');
+    throw err;
   }
 }
 
