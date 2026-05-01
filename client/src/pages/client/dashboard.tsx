@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ListTodo, CheckCircle, Clock } from "lucide-react";
 import type { Company, Task, MeetingRequest, CampaignRequest } from "@shared/schema";
-import { getBillingPeriod, isDateInBillingPeriod } from "@shared/billing";
+import { getBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 import { apiRequest } from "@/lib/queryClient";
 import { useEffect, useRef, useState } from "react";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
@@ -82,13 +82,7 @@ export default function ClientDashboard({ companyId, embedded = false }: ClientD
   
   const currentPeriodTasks = tasks?.filter((task) => {
     if (!billingPeriod) return true;
-    if (task.billingPeriodStart && task.billingPeriodEnd) {
-      return task.billingPeriodStart === billingPeriod.startStr;
-    }
-    if (task.dueDate) {
-      return isDateInBillingPeriod(parseLocalDate(task.dueDate), billingPeriod);
-    }
-    return isDateInBillingPeriod(new Date(task.createdAt), billingPeriod);
+    return isTaskInBillingPeriod(task, billingPeriod);
   }) || [];
 
   const activeTasks = currentPeriodTasks.filter((t) => t.status === "in_progress").length;

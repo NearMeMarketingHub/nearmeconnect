@@ -97,7 +97,7 @@ import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
-import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod } from "@shared/billing";
+import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
 interface ChatThread {
   id: string;
@@ -1539,13 +1539,7 @@ export default function CompanyDashboard() {
 
   const currentBillingPeriodTasks = (tasks || []).filter(task => {
     if (!billingPeriod) return true;
-    if (task.billingPeriodStart && task.billingPeriodEnd) {
-      return task.billingPeriodStart === billingPeriod.startStr;
-    }
-    if (task.dueDate) {
-      return isDateInBillingPeriod(parseLocalDate(task.dueDate), billingPeriod);
-    }
-    return isDateInBillingPeriod(new Date(task.createdAt), billingPeriod);
+    return isTaskInBillingPeriod(task, billingPeriod);
   });
 
   const projectedTaskCredits = currentBillingPeriodTasks

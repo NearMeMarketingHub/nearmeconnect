@@ -42,6 +42,33 @@ export function isDateInBillingPeriod(date: Date, period: BillingPeriod): boolea
   return date >= period.start && date <= period.end;
 }
 
+export function parseLocalDateStr(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date();
+  if (dateStr.includes('T')) return new Date(dateStr);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+export interface TaskBillingFields {
+  dueDate?: string | null;
+  billingPeriodStart?: string | null;
+  billingPeriodEnd?: string | null;
+  createdAt?: string | Date | null;
+}
+
+export function isTaskInBillingPeriod(task: TaskBillingFields, period: BillingPeriod): boolean {
+  if (task.dueDate) {
+    return isDateInBillingPeriod(parseLocalDateStr(task.dueDate), period);
+  }
+  if (task.billingPeriodStart) {
+    return task.billingPeriodStart === period.startStr;
+  }
+  if (task.createdAt) {
+    return isDateInBillingPeriod(new Date(task.createdAt), period);
+  }
+  return false;
+}
+
 export function getRecurringTaskDueDate(recurrenceDay: number, period: BillingPeriod): Date {
   const year = period.start.getFullYear();
   const month = period.start.getMonth();

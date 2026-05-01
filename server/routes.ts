@@ -41,7 +41,7 @@ async function checkProjectedUsageAndNotify(companyId: string) {
     const company = await storage.getCompany(companyId);
     if (!company || company.monthlyCredits <= 0) return;
 
-    const { getBillingPeriod } = await import("@shared/billing");
+    const { getBillingPeriod, isTaskInBillingPeriod } = await import("@shared/billing");
     const period = getBillingPeriod(company.billingStartDay);
 
     if (company.lastProjectedUsageWarningSent) {
@@ -53,13 +53,9 @@ async function checkProjectedUsageAndNotify(companyId: string) {
     const allTasks = await storage.getTasks(companyId);
     const activeTasks = allTasks.filter(t => {
       if (t.status === "completed" || t.status === "rejected" || t.status === "cancelled") return false;
+      if (t.approvalStatus === "rejected") return false;
       if (t.noCredit) return false;
-      const taskStart = t.billingPeriodStart;
-      const taskEnd = t.billingPeriodEnd;
-      if (taskStart && taskEnd) {
-        return taskStart === period.startStr && taskEnd === period.endStr;
-      }
-      return true;
+      return isTaskInBillingPeriod(t, period);
     });
 
     const projectedUsage = activeTasks.reduce((sum, t) => sum + parseFloat(String(t.creditCost || "0")), 0);
