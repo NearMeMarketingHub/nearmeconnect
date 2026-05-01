@@ -51,14 +51,23 @@ async function checkProjectedUsageAndNotify(companyId: string) {
     }
 
     const allTasks = await storage.getTasks(companyId);
-    const activeTasks = allTasks.filter(t => {
-      if (t.status === "completed" || t.status === "rejected" || t.status === "cancelled") return false;
+    const { isDateInBillingPeriod } = await import("@shared/billing");
+    const includedTasks = allTasks.filter(t => {
+      if (t.status === "rejected" || t.status === "cancelled") return false;
       if (t.approvalStatus === "rejected") return false;
       if (t.noCredit) return false;
-      return isTaskInBillingPeriod(t, period);
+      if (!isTaskInBillingPeriod(t, period)) return false;
+      // Mirror dashboard completed-task handling: only count completed tasks
+      // whose credits were actually deducted AND whose completion fell inside
+      // the current billing period.
+      if (t.status === "completed") {
+        if (!t.creditsDeducted) return false;
+        if (t.completedAt && !isDateInBillingPeriod(new Date(t.completedAt), period)) return false;
+      }
+      return true;
     });
 
-    const projectedUsage = activeTasks.reduce((sum, t) => sum + parseFloat(String(t.creditCost || "0")), 0);
+    const projectedUsage = includedTasks.reduce((sum, t) => sum + parseFloat(String(t.creditCost || "0")), 0);
 
     const effectiveAllotment = company.monthlyCredits + (company.bonusCredits || 0);
 
