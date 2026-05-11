@@ -6001,8 +6001,10 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   );
 }
 
+type EnrichedTask = Task & { assignedByName?: string | null };
+
 interface PendingApprovalCardProps {
-  task: Task;
+  task: EnrichedTask;
   deliverableTypes: DeliverableType[];
   companyId: string;
 }
@@ -6105,9 +6107,9 @@ function PendingApprovalCard({ task, deliverableTypes, companyId }: PendingAppro
             </Badge>
           )}
           <span>Requested {new Date(task.createdAt).toLocaleDateString()}</span>
-          {(task as any).assignedByName && (
+          {task.assignedByName && (
             <span data-testid={`text-requester-${task.id}`}>
-              by <span className="font-medium text-foreground">{(task as any).assignedByName}</span>
+              by <span className="font-medium text-foreground">{task.assignedByName}</span>
             </span>
           )}
         </div>
