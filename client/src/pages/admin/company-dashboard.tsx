@@ -6105,6 +6105,11 @@ function PendingApprovalCard({ task, deliverableTypes, companyId }: PendingAppro
             </Badge>
           )}
           <span>Requested {new Date(task.createdAt).toLocaleDateString()}</span>
+          {(task as any).assignedByName && (
+            <span data-testid={`text-requester-${task.id}`}>
+              by <span className="font-medium text-foreground">{(task as any).assignedByName}</span>
+            </span>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
