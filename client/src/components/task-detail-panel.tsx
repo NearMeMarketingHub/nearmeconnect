@@ -1046,7 +1046,10 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 <Calendar className="w-4 h-4" />
                 {!editingDueDate ? (
                   <>
-                    <span data-testid="text-due-date">{task.dueDate || <span className="italic text-muted-foreground/60">No due date</span>}</span>
+                    {task.dueDate
+                      ? <span data-testid="text-due-date">{task.dueDate}</span>
+                      : <span className="italic text-muted-foreground/60" data-testid="text-due-date">No due date</span>
+                    }
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1079,6 +1082,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
+                      disabled={updateTaskMutation.isPending}
                       onClick={() => {
                         updateTaskMutation.mutate({ dueDate: editDueDateValue || null });
                         setEditingDueDate(false);
@@ -1091,6 +1095,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
+                      disabled={updateTaskMutation.isPending}
                       onClick={() => setEditingDueDate(false)}
                       data-testid="button-cancel-due-date"
                     >
