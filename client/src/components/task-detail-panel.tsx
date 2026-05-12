@@ -1065,7 +1065,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       onChange={(e) => setEditDueDateValue(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          updateTaskMutation.mutate({ dueDate: editDueDateValue || null } as any);
+                          updateTaskMutation.mutate({ dueDate: editDueDateValue || null });
                           setEditingDueDate(false);
                         } else if (e.key === "Escape") {
                           setEditingDueDate(false);
@@ -1080,7 +1080,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => {
-                        updateTaskMutation.mutate({ dueDate: editDueDateValue || null } as any);
+                        updateTaskMutation.mutate({ dueDate: editDueDateValue || null });
                         setEditingDueDate(false);
                       }}
                       data-testid="button-save-due-date"
