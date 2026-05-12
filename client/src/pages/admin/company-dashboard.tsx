@@ -2930,7 +2930,7 @@ export default function CompanyDashboard() {
                             <Badge variant="outline" className="gap-1">
                               <Repeat className="h-3 w-3" />
                               {task.recurrencePattern === "biweekly" && task.recurrenceWeekday !== null && task.recurrenceWeekday !== undefined
-                                ? `Every other ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][task.recurrenceWeekday]}`
+                                ? `Every other ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][task.recurrenceWeekday]}`
                                 : "Monthly"}
                             </Badge>
                           )}
