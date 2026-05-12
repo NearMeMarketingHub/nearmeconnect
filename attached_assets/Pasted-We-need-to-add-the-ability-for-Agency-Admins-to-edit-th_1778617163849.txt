@@ -1,0 +1,47 @@
+We need to add the ability for Agency Admins to edit the due date of an existing task after it has been created.
+
+Context:
+This is for the admin side of the app only.
+Only Agency Admins should be able to change a task’s due date.
+This should not apply to client-side users, Company Owners, Company Admins, Team Members, or other client-side role-based users.
+
+Current issue:
+Tasks can have a due date set when created, but the due date is currently not editable afterward from the admin-side task UI.
+
+Goal:
+Allow Agency Admins to update the due date of an existing task from the admin-side task experience.
+
+Please review the current task detail/edit flow and implement the cleanest solution.
+
+Focus on:
+- the admin-side task detail panel / task editing UI
+- the task update flow
+- ensuring only Agency Admins can change the due date
+- keeping the change narrow and consistent with the existing task editing patterns in the app
+
+Expected behavior:
+- Agency Admin can open an existing task and edit its due date
+- Agency Admin can save the new due date
+- the updated due date should persist correctly
+- the updated due date should immediately display correctly anywhere task due dates are shown
+- normal task editing behavior should remain unchanged
+- no client-side users should gain access to due date editing
+
+Important constraints:
+- Do not change task credit deduction logic
+- Do not change recurring-task behavior unless absolutely necessary for due date editing to work correctly
+- Do not redesign unrelated task UI
+- Keep the solution clean and minimal
+
+Please provide:
+1. the root cause of why due dates are not currently editable
+2. the files/components that need to be updated
+3. the cleanest implementation approach
+4. any permission/security considerations
+5. a brief QA checklist
+
+Implementation expectations:
+- use the app’s existing date input / date picker patterns if available
+- keep the UX consistent with other editable task fields
+- include save/cancel behavior
+- make sure the admin-side task UI refreshes correctly after the due date is changed
