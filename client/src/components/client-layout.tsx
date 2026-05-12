@@ -149,7 +149,7 @@ export function ClientLayout({ children, companyId: propCompanyId }: ClientLayou
             </SidebarGroup>
           </SidebarContent>
           <div className="px-4 py-2 border-t text-center">
-            <span className="text-xs text-muted-foreground" data-testid="text-version">v1.2</span>
+            <span className="text-xs text-muted-foreground" data-testid="text-version">v1.7</span>
           </div>
         </Sidebar>
 

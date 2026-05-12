@@ -172,6 +172,22 @@ async function seedDatabase() {
       }
     }
     if (meetingCount > 0) log(`Seeded ${meetingCount} meeting types`);
+
+    const tiers = [
+      { key: "essentials", name: "Essentials", monthlyPrice: 250000, monthlyCredits: 20, features: ["Basic marketing support", "Monthly reporting", "Email campaigns"], isActive: true, sortOrder: 0 },
+      { key: "growth", name: "Growth", monthlyPrice: 500000, monthlyCredits: 40, features: ["Everything in Essentials", "Social media management", "Advanced analytics", "Priority support"], isActive: true, sortOrder: 1 },
+      { key: "accelerator", name: "Accelerator", monthlyPrice: 700000, monthlyCredits: 60, features: ["Everything in Growth", "Dedicated account manager", "Custom campaigns", "Full-service marketing"], isActive: true, sortOrder: 2 },
+    ];
+    const existingTiers = await storage.getSubscriptionTierDefinitions();
+    const existingTierKeys = new Set(existingTiers.map((t: any) => t.key));
+    let tierCount = 0;
+    for (const t of tiers) {
+      if (!existingTierKeys.has(t.key)) {
+        await storage.createSubscriptionTierDefinition(t as any);
+        tierCount++;
+      }
+    }
+    if (tierCount > 0) log(`Seeded ${tierCount} subscription tiers`);
   } catch (error) {
     console.error("Database seed error:", error);
   }
