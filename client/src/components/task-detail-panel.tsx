@@ -67,6 +67,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [editingCredits, setEditingCredits] = useState(false);
   const [editCreditValue, setEditCreditValue] = useState("");
+  const [editingDueDate, setEditingDueDate] = useState(false);
+  const [editDueDateValue, setEditDueDateValue] = useState("");
   const [editingBulkQuantity, setEditingBulkQuantity] = useState<number | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectDialogMode, setRejectDialogMode] = useState<"request_changes" | "reject">("reject");
@@ -1039,12 +1041,70 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 <Badge variant="outline" className="text-xs">Adjusted</Badge>
               </div>
             )}
-            {task.dueDate && (
+            {isAdmin ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Calendar className="w-4 h-4" />
-                <span>{task.dueDate}</span>
+                {!editingDueDate ? (
+                  <>
+                    <span data-testid="text-due-date">{task.dueDate || <span className="italic text-muted-foreground/60">No due date</span>}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => { setEditingDueDate(true); setEditDueDateValue(task.dueDate || ""); }}
+                      data-testid="button-edit-due-date"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="date"
+                      value={editDueDateValue}
+                      onChange={(e) => setEditDueDateValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          updateTaskMutation.mutate({ dueDate: editDueDateValue || null } as any);
+                          setEditingDueDate(false);
+                        } else if (e.key === "Escape") {
+                          setEditingDueDate(false);
+                        }
+                      }}
+                      className="w-36 h-7 text-sm"
+                      data-testid="input-edit-due-date"
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        updateTaskMutation.mutate({ dueDate: editDueDateValue || null } as any);
+                        setEditingDueDate(false);
+                      }}
+                      data-testid="button-save-due-date"
+                    >
+                      <Check className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setEditingDueDate(false)}
+                      data-testid="button-cancel-due-date"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
+            ) : task.dueDate ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="w-4 h-4" />
+                <span data-testid="text-due-date">{task.dueDate}</span>
+              </div>
+            ) : null}
             {task.revisionCount > 0 && (
               <div className="flex items-center gap-2" data-testid="text-revision-count">
                 <RotateCcw className="w-4 h-4 text-muted-foreground" />
