@@ -675,7 +675,7 @@ export async function registerRoutes(
       let dueDate = data.dueDate;
 
       if (data.isRecurring) {
-        const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBiweeklyRecurringTaskDueDate } = await import("@shared/billing");
+        const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getNextBiweeklyDate } = await import("@shared/billing");
         const period = getBillingPeriod(company.billingStartDay);
         billingPeriodStart = period.startStr;
         billingPeriodEnd = period.endStr;
@@ -700,7 +700,8 @@ export async function registerRoutes(
           if (data.recurrenceWeekday === null || data.recurrenceWeekday === undefined) {
             return res.status(400).json({ error: "Weekday is required for biweekly recurrence pattern" });
           }
-          dueDate = formatDateLocal(getBiweeklyRecurringTaskDueDate(data.recurrenceWeekday, period));
+          // Use today as the anchor so the first due date is the next upcoming occurrence
+          dueDate = formatDateLocal(getNextBiweeklyDate(data.recurrenceWeekday, new Date()));
         }
       }
 
@@ -1120,7 +1121,8 @@ export async function registerRoutes(
             const targetWeekday = existingTask.recurrenceWeekday;
             const currentWeekday = nextDueDate.getDay();
             if (currentWeekday !== targetWeekday) {
-              const diff = targetWeekday - currentWeekday;
+              let diff = targetWeekday - currentWeekday;
+              if (diff < 0) diff += 7;
               nextDueDate.setDate(nextDueDate.getDate() + diff);
             }
             taskBillingPeriod = getBillingPeriod(company.billingStartDay, nextDueDate);
@@ -1265,7 +1267,7 @@ export async function registerRoutes(
           if (turningOn) {
             const company = await storage.getCompany(existingTask.companyId);
             if (company) {
-              const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBiweeklyRecurringTaskDueDate } = await import("@shared/billing");
+              const { getBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getNextBiweeklyDate } = await import("@shared/billing");
               const period = getBillingPeriod(company.billingStartDay);
               req.body.billingPeriodStart = period.startStr;
               req.body.billingPeriodEnd = period.endStr;
@@ -1279,7 +1281,8 @@ export async function registerRoutes(
                 req.body.dueDate = formatDateLocal(getWeekdayRecurringTaskDueDate(weekday, ordinal, period));
               } else if (pattern === 'biweekly') {
                 const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
-                req.body.dueDate = formatDateLocal(getBiweeklyRecurringTaskDueDate(weekday, period));
+                // Use today as anchor so the first due date is the next upcoming occurrence
+                req.body.dueDate = formatDateLocal(getNextBiweeklyDate(weekday, new Date()));
               }
             }
           }
