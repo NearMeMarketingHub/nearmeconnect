@@ -456,6 +456,9 @@ export default function CompanyDashboard() {
   const [showViewMembers, setShowViewMembers] = useState(false);
   const [showMergeChat, setShowMergeChat] = useState(false);
   const [mergeConfirmThread, setMergeConfirmThread] = useState<ChatThread | null>(null);
+  const [chatMemberToRemove, setChatMemberToRemove] = useState<{ threadId: string; memberId: string; name: string } | null>(null);
+  const [meetingToReject, setMeetingToReject] = useState<string | null>(null);
+  const [deleteThreadConfirmOpen, setDeleteThreadConfirmOpen] = useState(false);
   const [editingThreadName, setEditingThreadName] = useState(false);
   const [editThreadNameValue, setEditThreadNameValue] = useState("");
   const [chatListOpen, setChatListOpen] = useState(!initialThread);
@@ -3460,21 +3463,38 @@ export default function CompanyDashboard() {
                               <Unlock className="h-4 w-4 mr-1" />
                               Reopen
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive"
-                              onClick={() => {
-                                if (confirm("Are you sure you want to delete this closed chat? This cannot be undone.")) {
-                                  deleteThreadMutation.mutate(selectedThreadId!);
-                                }
-                              }}
-                              disabled={deleteThreadMutation.isPending}
-                              title="Delete chat"
-                              data-testid="button-delete-chat"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  disabled={deleteThreadMutation.isPending}
+                                  title="Delete chat"
+                                  data-testid="button-delete-chat"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Chat</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this closed chat? This cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    onClick={() => deleteThreadMutation.mutate(selectedThreadId!)}
+                                    data-testid="button-confirm-delete-chat"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </>
                         ) : (
                           <>
@@ -3803,11 +3823,7 @@ export default function CompanyDashboard() {
                               <div className="flex items-center gap-2">
                                 {meeting.status === "pending" && (
                                   <>
-                                    <Button variant="outline" size="sm" onClick={() => {
-                                      if (confirm("Are you sure you want to reject this meeting request?")) {
-                                        companyRejectMutation.mutate(meeting.id);
-                                      }
-                                    }} data-testid={`button-reject-meeting-${meeting.id}`}>
+                                    <Button variant="outline" size="sm" onClick={() => setMeetingToReject(meeting.id)} data-testid={`button-reject-meeting-${meeting.id}`}>
                                       <XCircle className="w-4 h-4 mr-1" />
                                       Reject
                                     </Button>
@@ -4882,11 +4898,7 @@ export default function CompanyDashboard() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={() => {
-                        if (confirm(`Remove ${member.user?.firstName} ${member.user?.lastName} from this chat?`)) {
-                          removeChatMemberMutation.mutate({ threadId: selectedThreadId, memberId: member.userId });
-                        }
-                      }}
+                      onClick={() => setChatMemberToRemove({ threadId: selectedThreadId, memberId: member.userId, name: `${member.user?.firstName} ${member.user?.lastName}` })}
                       disabled={removeChatMemberMutation.isPending}
                       title="Remove from chat"
                       data-testid={`button-remove-member-${member.userId}`}
@@ -4963,6 +4975,56 @@ export default function CompanyDashboard() {
               }}
             >
               Merge
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!chatMemberToRemove} onOpenChange={(open) => { if (!open) setChatMemberToRemove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {chatMemberToRemove?.name} from this chat?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (chatMemberToRemove) {
+                  removeChatMemberMutation.mutate({ threadId: chatMemberToRemove.threadId, memberId: chatMemberToRemove.memberId });
+                }
+                setChatMemberToRemove(null);
+              }}
+              data-testid="button-confirm-remove-member"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!meetingToReject} onOpenChange={(open) => { if (!open) setMeetingToReject(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Meeting Request</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to reject this meeting request?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (meetingToReject) {
+                  companyRejectMutation.mutate(meetingToReject);
+                }
+                setMeetingToReject(null);
+              }}
+              data-testid="button-confirm-reject-meeting"
+            >
+              Reject
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

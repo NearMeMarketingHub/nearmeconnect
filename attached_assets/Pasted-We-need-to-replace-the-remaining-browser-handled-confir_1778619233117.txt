@@ -1,0 +1,44 @@
+We need to replace the remaining browser-handled confirmation popups with in-app confirmation dialogs so they stay inside the app UI.
+
+Context:
+The app already uses in-app Dialog / AlertDialog patterns in other places.
+This task is specifically about removing native browser confirm popups and replacing them with app-styled confirmation dialogs.
+
+Current issue:
+Some actions are still using browser-native confirm() dialogs instead of in-app dialogs, which breaks the app experience and feels like the browser is handling the interaction instead of the app.
+
+Please review the current code and replace the remaining native confirmation dialogs with in-app confirmation dialogs that match the existing UI patterns already used elsewhere in the app.
+
+Focus especially on the current confirm() usages in:
+- admin media submissions
+- admin company dashboard
+- client chat
+and any other remaining native browser confirmation dialogs you find.
+
+Expected behavior:
+- confirmation popups should appear as in-app dialogs/modals
+- they should match the existing app styling and behavior
+- destructive actions should still require confirmation before continuing
+- cancel should close the dialog without taking action
+- confirm should perform the same action the browser confirm currently triggers
+- no browser-native confirm popups should remain for these flows
+
+Important constraints:
+- keep this focused on confirmation dialogs
+- do not redesign unrelated page UI
+- do not change the underlying action logic beyond wiring it into in-app confirmation modals
+- reuse the app’s existing Dialog / AlertDialog components and patterns where possible
+- keep behavior consistent between admin-side and client-side flows
+
+Please provide:
+1. the files/components updated
+2. the remaining native confirm usages found
+3. the cleanest implementation approach
+4. any shared/reusable dialog logic you introduced
+5. a brief QA checklist
+
+Implementation expectations:
+- use the existing in-app modal/dialog system already present in the project
+- keep the wording of each confirmation message appropriate to the action
+- preserve all current delete/remove/reject protections
+- make sure keyboard and close behavior work correctly

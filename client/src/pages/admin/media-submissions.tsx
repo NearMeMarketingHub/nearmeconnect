@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -125,6 +126,7 @@ export default function AdminMediaSubmissions() {
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [isDownloading, setIsDownloading] = useState(false);
   const [mediaTab, setMediaTab] = useState("submissions");
+  const [fileToDelete, setFileToDelete] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: submissions = [], isLoading } = useQuery<EnrichedSubmission[]>({
@@ -828,11 +830,7 @@ export default function AdminMediaSubmissions() {
                                       variant="ghost"
                                       size="icon"
                                       disabled={deleteFileMutation.isPending}
-                                      onClick={() => {
-                                        if (confirm("Are you sure you want to delete this file from the server? This cannot be undone.")) {
-                                          deleteFileMutation.mutate(file.id);
-                                        }
-                                      }}
+                                      onClick={() => setFileToDelete(file.id)}
                                       data-testid={`button-delete-file-${file.id}`}
                                       title="Delete file from server"
                                       className="text-destructive"
@@ -867,6 +865,31 @@ export default function AdminMediaSubmissions() {
           </DialogContent>
         </Dialog>
       </div>
+      <AlertDialog open={!!fileToDelete} onOpenChange={(open) => { if (!open) setFileToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete File</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this file from the server? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (fileToDelete) {
+                  deleteFileMutation.mutate(fileToDelete);
+                }
+                setFileToDelete(null);
+              }}
+              data-testid="button-confirm-delete-file"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 }

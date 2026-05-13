@@ -17,6 +17,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -143,6 +153,7 @@ export default function ClientChat({ companyId: propCompanyId, embedded = false 
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [editingThreadName, setEditingThreadName] = useState(false);
   const [editThreadNameValue, setEditThreadNameValue] = useState("");
+  const [memberToRemove, setMemberToRemove] = useState<{ threadId: string; memberId: string; name: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [, setTimeTick] = useState(0);
 
@@ -720,20 +731,37 @@ export default function ClientChat({ companyId: propCompanyId, embedded = false 
                       <Lock className="h-3 w-3" />
                       Closed
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => {
-                        if (confirm("Are you sure you want to delete this closed chat? This cannot be undone.")) {
-                          deleteThreadMutation.mutate(selectedThread.id);
-                        }
-                      }}
-                      disabled={deleteThreadMutation.isPending}
-                      data-testid="button-delete-thread"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive"
+                          disabled={deleteThreadMutation.isPending}
+                          data-testid="button-delete-thread"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Chat</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this closed chat? This cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteThreadMutation.mutate(selectedThread.id)}
+                            data-testid="button-confirm-delete-thread"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
@@ -788,11 +816,7 @@ export default function ClientChat({ companyId: propCompanyId, embedded = false 
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                                  onClick={() => {
-                                    if (confirm(`Remove ${member.user?.firstName} ${member.user?.lastName} from this chat?`)) {
-                                      removeMemberMutation.mutate({ threadId: selectedThreadId, memberId: member.userId });
-                                    }
-                                  }}
+                                  onClick={() => setMemberToRemove({ threadId: selectedThreadId, memberId: member.userId, name: `${member.user?.firstName} ${member.user?.lastName}` })}
                                   disabled={removeMemberMutation.isPending}
                                   title="Remove from chat"
                                   data-testid={`button-remove-member-${member.userId}`}
@@ -968,6 +992,31 @@ export default function ClientChat({ companyId: propCompanyId, embedded = false 
           description="Select people to add to this chat."
         />
       )}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => { if (!open) setMemberToRemove(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {memberToRemove?.name} from this chat?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (memberToRemove) {
+                  removeMemberMutation.mutate({ threadId: memberToRemove.threadId, memberId: memberToRemove.memberId });
+                }
+                setMemberToRemove(null);
+              }}
+              data-testid="button-confirm-remove-member"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 
