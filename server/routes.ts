@@ -3539,6 +3539,34 @@ export async function registerRoutes(
       }
       const onboarding = await storage.getClientOnboarding(companyId);
       if (!onboarding) return res.json(null);
+      // Sanitize socialPlatforms — only expose client-safe fields, strip any admin-added keys
+      type SocialPlatformEntry = {
+        platform?: unknown;
+        exists?: unknown;
+        handle?: unknown;
+        accountEmail?: unknown;
+        accountCreator?: unknown;
+        notes?: unknown;
+      };
+      let safeSocialPlatforms: string | null = null;
+      if (onboarding.socialPlatforms) {
+        try {
+          const parsed: unknown = JSON.parse(onboarding.socialPlatforms);
+          if (Array.isArray(parsed)) {
+            const sanitized = (parsed as SocialPlatformEntry[]).map((p) => ({
+              platform: typeof p.platform === "string" ? p.platform : "",
+              exists: typeof p.exists === "boolean" ? p.exists : false,
+              handle: typeof p.handle === "string" ? p.handle : "",
+              accountEmail: typeof p.accountEmail === "string" ? p.accountEmail : "",
+              accountCreator: typeof p.accountCreator === "string" ? p.accountCreator : "",
+              notes: typeof p.notes === "string" ? p.notes : "",
+            }));
+            safeSocialPlatforms = JSON.stringify(sanitized);
+          }
+        } catch {
+          safeSocialPlatforms = null;
+        }
+      }
       // Return only the fields needed by the client wizard — never expose admin-only data
       const {
         id, companyId: cId, currentStep, isCompleted, completedAt,
@@ -3546,7 +3574,7 @@ export async function registerRoutes(
         youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
         googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
         metaBusinessNA, googleBusinessNA, accessInvitesSent,
-        socialPlatforms, brandAssetLinks, seasonalPreferences, holidayPreferences,
+        brandAssetLinks, seasonalPreferences, holidayPreferences,
         seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
         brandAssetsProvided, seasonalPreferencesConfirmed,
         authorizationName, authorizationDate, specialNotes,
@@ -3559,7 +3587,8 @@ export async function registerRoutes(
         youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
         googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
         metaBusinessNA, googleBusinessNA, accessInvitesSent,
-        socialPlatforms, brandAssetLinks, seasonalPreferences, holidayPreferences,
+        socialPlatforms: safeSocialPlatforms,
+        brandAssetLinks, seasonalPreferences, holidayPreferences,
         seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
         brandAssetsProvided, seasonalPreferencesConfirmed,
         authorizationName, authorizationDate, specialNotes,

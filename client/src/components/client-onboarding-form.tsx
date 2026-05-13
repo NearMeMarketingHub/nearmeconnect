@@ -241,7 +241,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "onboarding"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "onboarding", "flow"] });
       toast({ title: "Progress saved" });
     },
     onError: () => {
