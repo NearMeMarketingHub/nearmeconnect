@@ -316,9 +316,16 @@ type OnboardingEditForm = {
   loginCredentialsJson: string;
   // Brand Assets
   brandAssetLinks: string;
+  brandAssetFilesJson: string;
   // Seasonal
+  seasonalPreferencesJson: string;
+  holidayPreferencesJson: string;
   seasonalNotes: string;
   otherHolidays: string;
+  // Authorization
+  authorizationName: string;
+  authorizationDate: string;
+  authorizationSignature: string;
   // Checklist flags
   socialProfilesListed: boolean;
   loginCredentialsProvided: boolean;
