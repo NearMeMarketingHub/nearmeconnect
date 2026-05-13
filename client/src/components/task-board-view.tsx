@@ -38,7 +38,7 @@ interface TaskBoardViewProps {
   categories: TaskCategory[];
   mode: "category" | "stage";
   onTaskClick: (task: Task) => void;
-  onStatusChange?: (taskId: string, newStatus: string) => void;
+  onStatusChange?: (taskId: string, newStatus: TaskStatus) => void;
   allowDrag?: boolean;
   getCompanyName?: (companyId: string) => string;
 }
@@ -133,8 +133,9 @@ export function TaskBoardView({
     setActiveTaskId(null);
     if (!over || active.id === over.id) return;
     const newStatus = String(over.id);
-    if (STAGE_ORDER.includes(newStatus as TaskStatus)) {
-      onStatusChange?.(String(active.id), newStatus);
+    const validStatus = STAGE_ORDER.find((s) => s === newStatus);
+    if (validStatus) {
+      onStatusChange?.(String(active.id), validStatus);
     }
   }
 
@@ -277,7 +278,7 @@ function StageBoard({
   tasks: Task[];
   categories: TaskCategory[];
   onTaskClick: (task: Task) => void;
-  onStatusChange?: (taskId: string, newStatus: string) => void;
+  onStatusChange?: (taskId: string, newStatus: TaskStatus) => void;
   allowDrag: boolean;
   getCompanyName?: (id: string) => string;
   sensors: ReturnType<typeof useSensors>;

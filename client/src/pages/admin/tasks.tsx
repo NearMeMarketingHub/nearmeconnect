@@ -560,7 +560,7 @@ export default function AdminTasks() {
             mode={viewMode === "category" ? "category" : "stage"}
             onTaskClick={setSelectedTask}
             onStatusChange={(taskId, newStatus) =>
-              updateTaskMutation.mutate({ taskId, updates: { status: newStatus as any } })
+              updateTaskMutation.mutate({ taskId, updates: { status: newStatus } })
             }
             allowDrag={viewMode === "stage"}
             getCompanyName={getCompanyName}

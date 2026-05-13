@@ -25,7 +25,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
-import type { Task, Company, DeliverableType, CampaignRequest } from "@shared/schema";
+import type { Task, TaskStatus, Company, DeliverableType, CampaignRequest } from "@shared/schema";
 
 interface UserInfo {
   userId: string;
@@ -144,6 +144,53 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
       });
     },
   });
+
+  const clientStatusMutation = useMutation({
+    mutationFn: async ({ taskId, status }: { taskId: string; status: TaskStatus }) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, { status });
+      return res.json() as Promise<Task>;
+    },
+    onMutate: async ({ taskId, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      const previous = queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }]);
+      if (previous) {
+        queryClient.setQueryData<Task[]>(
+          ["/api/tasks", { companyId }],
+          previous.map((t) => (t.id === taskId ? { ...t, status } : t))
+        );
+      }
+      return { previous };
+    },
+    onSuccess: (updatedTask) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
+        old ? old.map((t) => (t.id === updatedTask.id ? updatedTask : t)) : old
+      );
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/tasks", { companyId }], context.previous);
+      }
+      toast({ title: "Failed to update task status", variant: "destructive" });
+    },
+  });
+
+  const handleClientStatusChange = (taskId: string, newStatus: TaskStatus) => {
+    const task = allTasks?.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.taskOwnership === "client") {
+      clientStatusMutation.mutate({ taskId, status: newStatus });
+      return;
+    }
+    if (task.status === "review" && newStatus === "approved" && isAdminOrOwner) {
+      clientStatusMutation.mutate({ taskId, status: newStatus });
+      return;
+    }
+    toast({
+      title: "Permission denied",
+      description: "You cannot change the status of this task.",
+      variant: "destructive",
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -432,7 +479,8 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
               categories={taskCategoriesData || []}
               mode={viewMode === "category" ? "category" : "stage"}
               onTaskClick={setSelectedTask}
-              allowDrag={false}
+              onStatusChange={viewMode === "stage" ? handleClientStatusChange : undefined}
+              allowDrag={viewMode === "stage"}
             />
           </div>
         ) : (
