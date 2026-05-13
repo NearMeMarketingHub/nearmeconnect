@@ -1,0 +1,61 @@
+We need to finish the task organization feature so tasks can be organized by assignee and by category, in addition to the existing Assigned to Me view.
+
+Current state:
+- Assigned to Me already exists
+- there is already some category-related functionality in the app
+- board views also exist
+- however, the original task-organization request is not fully implemented as a consistent task-view option
+
+Goal:
+Add clear task organization views for:
+1. assignee
+2. category
+
+This should work alongside the existing Assigned to Me view and should be available anywhere the main task-management experience is supposed to support it.
+
+Apply this to:
+- the main admin task view
+- the company-specific task view
+
+Important clarification:
+This is not about replacing the existing board views.
+This is not about changing assignment logic.
+This is about giving users proper task organization/grouping/view options by assignee and by category in the normal task experience.
+
+Expected behavior:
+- users can choose to organize/view tasks by assignee
+- users can choose to organize/view tasks by category
+- existing Assigned to Me behavior remains intact
+- the implementation is consistent between the main admin task view and the company-specific task view
+- tasks remain correctly scoped in the company view
+- if a task has no category, it should fall into a clear uncategorized/unassigned category grouping as appropriate
+- if a task has no assignee, it should fall into a clear unassigned grouping as appropriate
+
+Implementation guidance:
+- reuse existing task data, category data, and assignee data where possible
+- do not create a disconnected second system if the current task filter/view structure can be extended
+- keep the UX consistent with the existing task pages
+- prefer a shared implementation between main task view and company view rather than duplicating logic
+- preserve current filters, status logic, permissions, and task-opening behavior
+
+Important constraints:
+- do not redesign the full task pages
+- do not change how task assignment works
+- do not change category assignment logic
+- do not break the current board views
+- keep this focused on adding the missing organization views cleanly
+
+Please provide:
+1. what already existed vs. what was missing
+2. the files/components updated
+3. how the assignee organization view was added
+4. how the category organization view was added
+5. how the shared logic between main task view and company task view was handled
+6. a brief QA checklist covering:
+   - main task view by assignee
+   - main task view by category
+   - company task view by assignee
+   - company task view by category
+   - tasks with no assignee
+   - tasks with no category
+   - Assigned to Me still working correctly
