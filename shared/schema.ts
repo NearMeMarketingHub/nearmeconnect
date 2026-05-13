@@ -1338,7 +1338,7 @@ export const monthlyReportTracker = pgTable("monthly_report_tracker", {
 // Admin-managed credentials per company (separate from client onboarding loginCredentials)
 export const companyCredentials = pgTable("company_credentials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
   username: text("username"),
   password: text("password"),
@@ -1357,11 +1357,14 @@ export const insertCompanyCredentialSchema = createInsertSchema(companyCredentia
 export type InsertCompanyCredential = z.infer<typeof insertCompanyCredentialSchema>;
 export type CompanyCredential = typeof companyCredentials.$inferSelect;
 
+export const knowledgeSectionEnum = ["links", "profile", "ideas", "resources"] as const;
+export type KnowledgeSection = typeof knowledgeSectionEnum[number];
+
 // Admin-managed knowledge hub items per company
 export const companyKnowledgeItems = pgTable("company_knowledge_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
-  section: text("section").notNull(), // 'links' | 'profile' | 'ideas' | 'resources'
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  section: text("section").$type<KnowledgeSection>().notNull(),
   title: text("title").notNull(),
   content: text("content"),
   url: text("url"),
@@ -1374,6 +1377,8 @@ export const insertCompanyKnowledgeItemSchema = createInsertSchema(companyKnowle
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  section: z.enum(knowledgeSectionEnum),
 });
 export type InsertCompanyKnowledgeItem = z.infer<typeof insertCompanyKnowledgeItemSchema>;
 export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;

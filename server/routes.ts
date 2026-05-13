@@ -3570,12 +3570,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       const companyId = req.params.id;
-      
+
       if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) {
-          return res.status(403).json({ error: "Access denied" });
-        }
+        return res.status(403).json({ error: "Admin access required" });
       }
       
       const body = { ...req.body };
