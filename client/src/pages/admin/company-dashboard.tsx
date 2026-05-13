@@ -3024,7 +3024,13 @@ export default function CompanyDashboard() {
               </div>
             </div>
 
-            {(companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") ? (
+            {(companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") && tasksLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : (companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") ? (
               <TaskGroupedView
                 tasks={filteredCompanyTasks}
                 groupBy={companyTaskViewMode === "by-assignee" ? "assignee" : "category"}

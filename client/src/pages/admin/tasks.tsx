@@ -605,7 +605,13 @@ export default function AdminTasks() {
           </Button>
         </div>
 
-        {viewMode === "by-assignee" || viewMode === "by-category" ? (
+        {(viewMode === "by-assignee" || viewMode === "by-category") && isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : viewMode === "by-assignee" || viewMode === "by-category" ? (
           <TaskGroupedView
             tasks={filteredTasks}
             groupBy={viewMode === "by-assignee" ? "assignee" : "category"}
