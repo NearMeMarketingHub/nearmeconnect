@@ -474,7 +474,7 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
                 : taskTab === "review" ? reviewTasks
                 : taskTab === "completed" ? completedTasks
                 : taskTab === "rejected" ? rejectedTasks
-                : normalTasks
+                : activeTasks
               }
               categories={taskCategoriesData || []}
               mode={viewMode === "category" ? "category" : "stage"}
