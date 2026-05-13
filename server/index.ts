@@ -64,9 +64,14 @@ async function migrateOnboardingCredentials() {
         }
       }
 
-      // Only clear the plaintext field once ALL credentials are safely stored
+      // Only clear the plaintext field once ALL credentials are safely stored.
+      // Also refresh loginCredentialsProvided so the checklist/PDF reflects reality
+      // even if the legacy row had the flag as false (e.g. data inserted before the flag existed).
       if (allSucceeded) {
-        await storage.updateClientOnboarding(companyId, { loginCredentials: null });
+        await storage.updateClientOnboarding(companyId, {
+          loginCredentials: null,
+          ...(migrated > 0 ? { loginCredentialsProvided: true } : {}),
+        });
         log(`[onboarding-migration] Migrated ${migrated} credential(s) for company ${companyId} — plaintext cleared`, "onboarding-migration");
       } else {
         log(`[onboarding-migration] Some credential writes failed for company ${companyId} — plaintext NOT cleared to prevent data loss`, "onboarding-migration");
