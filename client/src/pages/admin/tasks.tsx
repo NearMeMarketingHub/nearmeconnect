@@ -107,14 +107,29 @@ export default function AdminTasks() {
       }
       return { previousTasks };
     },
-    onSuccess: (updatedTask: Task) => {
+    onSuccess: (
+      updatedTask: Task,
+      { updates }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
         old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
       );
+      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId, "credits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
+      }
       toast({ title: "Task updated successfully" });
       setSelectedTask(null);
     },
-    onError: (_err: any, _vars: any, context: any) => {
+    onError: (
+      _err: Error,
+      _vars: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(["/api/tasks"], context.previousTasks);
       }

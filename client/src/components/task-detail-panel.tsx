@@ -240,7 +240,11 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       }
       return { previousTasks, previousCompanyTasks, previousTask };
     },
-    onSuccess: (updatedTask: Task, mutationData: Partial<Task>, context: any) => {
+    onSuccess: (
+      updatedTask: Task,
+      mutationData: Partial<Task>,
+      context: { previousTasks?: Task[]; previousCompanyTasks?: Task[]; previousTask?: Task } | undefined
+    ) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
         old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
       );
@@ -264,7 +268,11 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
         queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "campaign-requests"] });
       }
     },
-    onError: (error: any, _data: any, context: any) => {
+    onError: (
+      error: Error,
+      _data: Partial<Task>,
+      context: { previousTasks?: Task[]; previousCompanyTasks?: Task[]; previousTask?: Task } | undefined
+    ) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(["/api/tasks"], context.previousTasks);
       }
