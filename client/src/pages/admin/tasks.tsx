@@ -22,8 +22,12 @@ import {
   ChevronLeft,
   Tag,
   User,
-  Loader2
+  Loader2,
+  List,
+  LayoutGrid,
+  Kanban,
 } from "lucide-react";
+import { TaskBoardView } from "@/components/task-board-view";
 import { Link, useLocation } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,6 +44,7 @@ type StatusFilter = "all" | "pending" | "in_progress" | "review" | "approved" | 
 type AssignmentFilter = "all_tasks" | "assigned_to_me";
 
 export default function AdminTasks() {
+  const [viewMode, setViewMode] = useState<"list" | "category" | "stage">("list");
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all_tasks");
