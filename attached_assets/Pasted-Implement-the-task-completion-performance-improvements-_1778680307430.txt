@@ -1,0 +1,36 @@
+Implement the task-completion performance improvements based on the investigation results.
+
+Priority order:
+1. Respond to the client immediately after the task update is successfully persisted.
+2. Keep only data-critical logic synchronous, especially anything affecting correctness of the returned task state, credit behavior, and recurring-task creation.
+3. Move non-critical side effects to run after the response, including notifications, chat-thread side effects, emails, review notifications, campaign auto-complete checks, and websocket broadcast work if safe to do so.
+4. Replace the current campaign auto-complete full task scan with a targeted query for tasks belonging to that campaign.
+5. Add optimistic UI for task status updates in the highest-impact places:
+   - task-detail-panel.tsx
+   - admin/tasks.tsx quick-complete flow
+6. Narrow cache invalidation so task updates only refetch what actually changed.
+7. Prevent or reduce the double-invalidation/refetch behavior caused by local invalidation plus websocket invalidation.
+
+Important constraints:
+- Do not break credit deduction/refund behavior.
+- Do not break recurring-task creation.
+- Do not break reporting accuracy.
+- Do not introduce duplicate side effects.
+- Preserve websocket correctness for other tabs/users.
+- Keep the implementation focused on performance and responsiveness, not a broad refactor.
+
+Implementation guidance:
+- The response should be sent as soon as the updated task state is safely known.
+- Non-critical side effects should be moved behind the response in a safe fire-and-forget pattern with error handling/logging.
+- Add optimistic cache updates with rollback on error for task status changes.
+- Replace broad invalidation with more targeted invalidation based on what changed.
+- Avoid duplicate refetches for the mutating client when websocket invalidation will already occur.
+
+Please implement the changes, list the files updated, and include a QA checklist covering:
+- completing tasks
+- moving tasks into review
+- credit-affecting changes
+- recurring tasks
+- campaign task completion
+- websocket sync in a second tab
+- rollback behavior on network/server error
