@@ -93,7 +93,8 @@ export default function AdminTasks() {
     queryFn: async () => {
       const res = await fetch("/api/admin/users");
       if (!res.ok) return [];
-      return res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.admins || []);
     },
   });
 
