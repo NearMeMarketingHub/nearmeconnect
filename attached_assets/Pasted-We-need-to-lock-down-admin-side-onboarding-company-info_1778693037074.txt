@@ -1,0 +1,43 @@
+We need to lock down admin-side onboarding/company information access so clients cannot fetch or manage admin-only onboarding data after onboarding is complete.
+
+Current issue:
+The admin company onboarding/company info area is now more powerful, but the onboarding API access is still too open. Company-side users can still reach onboarding data through the API if they belong to the company, even though the intended behavior is that clients complete onboarding once and then only Agency Admins manage/view it afterward.
+
+Goal:
+Restrict admin-side onboarding/company information retrieval and editing so it is truly admin-only, while preserving the client onboarding completion flow.
+
+Important behavior to preserve:
+- company owners must still be able to complete onboarding during the onboarding flow
+- client onboarding should still work while they are actively completing it
+- once onboarding is completed, the admin-side onboarding/company info management experience should not be available to client-side users
+- Agency Admins should still be able to view and edit onboarding/company info from the admin side
+
+Please review the current onboarding routes and separate these concerns cleanly:
+1. client onboarding flow access
+2. admin-side company info/onboarding management access
+
+Implementation guidance:
+- do not simply break the existing onboarding flow for company owners
+- if needed, split the route behavior into:
+  - a client-safe onboarding flow route
+  - an admin-only management route
+- admin-only routes should require Agency Admin access
+- client-side users should not be able to fetch admin-only onboarding/company info after onboarding is complete
+- do not expose credentials or admin notes in any client-safe onboarding response
+
+Important constraints:
+- do not break onboarding completion
+- do not expose admin-only company data to company-side users
+- keep the fix narrow and focused on access control and route separation
+- preserve existing admin dashboard functionality
+
+Please provide:
+1. which routes were too open
+2. how access control was tightened
+3. whether any routes were split for client vs admin use
+4. how the onboarding completion flow was preserved
+5. a brief QA checklist covering:
+   - company owner completing onboarding
+   - company owner after onboarding is completed
+   - Agency Admin viewing/editing onboarding data
+   - non-admin client user denied access to admin-only company info

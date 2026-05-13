@@ -360,14 +360,18 @@ function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
     socialPlatformsJson: o.socialPlatforms ? JSON.stringify(parseSocialPlatforms(o.socialPlatforms), null, 2) : "[]",
     loginCredentialsJson: o.loginCredentials ? JSON.stringify(parseLoginCredentials(o.loginCredentials), null, 2) : "[]",
     brandAssetLinks: o.brandAssetLinks || "",
+    brandAssetFilesJson: (() => { try { return o.brandAssetFiles ? JSON.stringify(JSON.parse(o.brandAssetFiles), null, 2) : "[]"; } catch { return "[]"; } })(),
+    seasonalPreferencesJson: (() => { try { return o.seasonalPreferences ? JSON.stringify(JSON.parse(o.seasonalPreferences), null, 2) : "[]"; } catch { return "[]"; } })(),
+    holidayPreferencesJson: (() => { try { return o.holidayPreferences ? JSON.stringify(JSON.parse(o.holidayPreferences), null, 2) : "[]"; } catch { return "[]"; } })(),
     seasonalNotes: o.seasonalNotes || "",
     otherHolidays: o.otherHolidays || "",
+    authorizationName: o.authorizationName || "",
+    authorizationDate: o.authorizationDate || "",
+    authorizationSignature: o.authorizationSignature || "",
     socialProfilesListed: o.socialProfilesListed ?? false,
     loginCredentialsProvided: o.loginCredentialsProvided ?? false,
     brandAssetsProvided: o.brandAssetsProvided ?? false,
     seasonalPreferencesConfirmed: o.seasonalPreferencesConfirmed ?? false,
-    authorizationName: o.authorizationName || "",
-    authorizationDate: o.authorizationDate || "",
   };
 }
 
@@ -412,6 +416,9 @@ function OnboardingEditPanel({
         socialPlatforms: (() => { try { return JSON.stringify(JSON.parse(form.socialPlatformsJson)); } catch { return null; } })(),
         loginCredentials: (() => { try { return JSON.stringify(JSON.parse(form.loginCredentialsJson)); } catch { return null; } })(),
         brandAssetLinks: form.brandAssetLinks || null,
+        brandAssetFiles: (() => { try { return JSON.stringify(JSON.parse(form.brandAssetFilesJson)); } catch { return null; } })(),
+        seasonalPreferences: (() => { try { return JSON.stringify(JSON.parse(form.seasonalPreferencesJson)); } catch { return null; } })(),
+        holidayPreferences: (() => { try { return JSON.stringify(JSON.parse(form.holidayPreferencesJson)); } catch { return null; } })(),
         seasonalNotes: form.seasonalNotes || null,
         otherHolidays: form.otherHolidays || null,
         socialProfilesListed: form.socialProfilesListed,
@@ -420,6 +427,7 @@ function OnboardingEditPanel({
         seasonalPreferencesConfirmed: form.seasonalPreferencesConfirmed,
         authorizationName: form.authorizationName || null,
         authorizationDate: form.authorizationDate || null,
+        authorizationSignature: form.authorizationSignature || null,
       };
       await apiRequest("PATCH", `/api/companies/${companyId}/onboarding`, payload);
     },
@@ -539,6 +547,11 @@ function OnboardingEditPanel({
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Brand Assets</h4>
         <div><Label htmlFor="oe-brand">Brand Asset Links</Label><Textarea id="oe-brand" value={form.brandAssetLinks} onChange={set("brandAssetLinks")} rows={2} placeholder="Google Drive link, Dropbox, etc." data-testid="input-oe-brand" /></div>
+        <div>
+          <Label htmlFor="oe-brand-files">Brand Asset Files (JSON)</Label>
+          <p className="text-xs text-muted-foreground mb-1">JSON array of uploaded files. Each entry: {"{"} name, objectPath, uploadedAt {"}"}.</p>
+          <Textarea id="oe-brand-files" value={form.brandAssetFilesJson} onChange={set("brandAssetFilesJson")} rows={4} className="font-mono text-xs" data-testid="input-oe-brand-files" />
+        </div>
       </div>
 
       <Separator />
@@ -546,6 +559,16 @@ function OnboardingEditPanel({
       {/* Seasonal */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Seasonal & Holiday Preferences</h4>
+        <div>
+          <Label htmlFor="oe-seasonal-prefs">Seasonal Preferences (JSON)</Label>
+          <p className="text-xs text-muted-foreground mb-1">JSON array of selected seasons (e.g. ["spring","summer"]).</p>
+          <Textarea id="oe-seasonal-prefs" value={form.seasonalPreferencesJson} onChange={set("seasonalPreferencesJson")} rows={3} className="font-mono text-xs" data-testid="input-oe-seasonal-prefs" />
+        </div>
+        <div>
+          <Label htmlFor="oe-holiday-prefs">Holiday Preferences (JSON)</Label>
+          <p className="text-xs text-muted-foreground mb-1">JSON array of holidays (e.g. ["christmas","thanksgiving"]).</p>
+          <Textarea id="oe-holiday-prefs" value={form.holidayPreferencesJson} onChange={set("holidayPreferencesJson")} rows={3} className="font-mono text-xs" data-testid="input-oe-holiday-prefs" />
+        </div>
         <div><Label htmlFor="oe-seasonal-notes">Seasonal Notes</Label><Textarea id="oe-seasonal-notes" value={form.seasonalNotes} onChange={set("seasonalNotes")} rows={2} data-testid="input-oe-seasonal-notes" /></div>
         <div><Label htmlFor="oe-holidays">Other Holidays / Notes</Label><Textarea id="oe-holidays" value={form.otherHolidays} onChange={set("otherHolidays")} rows={2} data-testid="input-oe-holidays" /></div>
       </div>
@@ -579,6 +602,7 @@ function OnboardingEditPanel({
           <div><Label htmlFor="oe-auth-name">Authorized By</Label><Input id="oe-auth-name" value={form.authorizationName} onChange={set("authorizationName")} data-testid="input-oe-auth-name" /></div>
           <div><Label htmlFor="oe-auth-date">Authorization Date</Label><Input id="oe-auth-date" type="date" value={form.authorizationDate} onChange={set("authorizationDate")} data-testid="input-oe-auth-date" /></div>
         </div>
+        <div><Label htmlFor="oe-auth-sig">Authorization Signature</Label><Input id="oe-auth-sig" value={form.authorizationSignature} onChange={set("authorizationSignature")} placeholder="Typed/digital signature" data-testid="input-oe-auth-signature" /></div>
       </div>
 
       <div className="flex gap-2 pt-2">
@@ -642,37 +666,40 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              {!editingOnboarding && (
-                <>
-                  {[
-                    { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed },
-                    { label: "Access invitations sent", done: !!accessComplete },
-                    { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided },
-                    { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided },
-                    { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed },
-                  ].map(item => (
-                    <div key={item.label} className="flex items-center gap-2.5">
-                      {item.done ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />}
-                      <span className="text-sm">{item.label}</span>
-                    </div>
-                  ))}
-                  {onboarding.authorizationName && (
-                    <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-sm">
-                      <div><p className="text-xs text-muted-foreground">Authorized by</p><p className="font-medium">{onboarding.authorizationName}</p></div>
-                      {onboarding.authorizationDate && <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{new Date(onboarding.authorizationDate).toLocaleDateString()}</p></div>}
-                    </div>
-                  )}
-                </>
+              {[
+                { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed },
+                { label: "Access invitations sent", done: !!accessComplete },
+                { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided },
+                { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided },
+                { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2.5">
+                  {item.done ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />}
+                  <span className="text-sm">{item.label}</span>
+                </div>
+              ))}
+              {onboarding.authorizationName && (
+                <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-sm">
+                  <div><p className="text-xs text-muted-foreground">Authorized by</p><p className="font-medium">{onboarding.authorizationName}</p></div>
+                  {onboarding.authorizationDate && <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{new Date(onboarding.authorizationDate).toLocaleDateString()}</p></div>}
+                  {onboarding.authorizationSignature && <div className="col-span-2"><p className="text-xs text-muted-foreground">Signature</p><p className="font-medium">{onboarding.authorizationSignature}</p></div>}
+                </div>
               )}
-              {editingOnboarding && (
+            </CardContent>
+          </Card>
+
+          {/* ── Edit form — shown as its own card so status checklist remains visible ── */}
+          {editingOnboarding && (
+            <Card>
+              <CardContent className="pt-5">
                 <OnboardingEditPanel
                   onboarding={onboarding}
                   companyId={companyId}
                   onClose={() => setEditingOnboarding(false)}
                 />
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Client details read view ─────────────────────── */}
           {!editingOnboarding && (
