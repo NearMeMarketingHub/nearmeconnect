@@ -436,6 +436,7 @@ export interface IStorage {
   // Company Credentials (admin-managed)
   getCompanyCredentials(companyId: string): Promise<CompanyCredential[]>;
   getCompanyCredential(id: string): Promise<CompanyCredential | undefined>;
+  getCompanyCredentialDecrypted(id: string): Promise<string | null>;
   createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential>;
   updateCompanyCredential(id: string, data: Partial<CompanyCredential>): Promise<CompanyCredential | undefined>;
   deleteCompanyCredential(id: string): Promise<void>;
