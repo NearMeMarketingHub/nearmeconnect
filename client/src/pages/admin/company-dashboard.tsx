@@ -89,6 +89,9 @@ import {
   BarChart3,
   Menu,
   FolderOpen,
+  List,
+  LayoutGrid,
+  Kanban,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -97,6 +100,7 @@ import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
+import { TaskBoardView } from "@/components/task-board-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -400,6 +404,7 @@ export default function CompanyDashboard() {
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
   const [companyTaskPage, setCompanyTaskPage] = useState(1);
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
+  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "category" | "stage">("list");
   const COMPANY_TASKS_PER_PAGE = 10;
   
   // Task form state
@@ -987,6 +992,51 @@ export default function CompanyDashboard() {
     },
     onError: () => {
       toast({ title: "Failed to assign task", variant: "destructive" });
+    },
+  });
+
+  const updateCompanyTaskMutation = useMutation({
+    mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
+      return res.json() as Promise<Task>;
+    },
+    onMutate: async ({ taskId, updates }) => {
+      if (updates.status === undefined) return;
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }]);
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], previousTasks.map(t =>
+          t.id === taskId ? { ...t, ...updates } : t
+        ));
+      }
+      return { previousTasks };
+    },
+    onSuccess: (
+      updatedTask: Task,
+      { updates }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
+        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+      );
+      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
+      }
+      toast({ title: "Task updated successfully" });
+    },
+    onError: (
+      _err: Error,
+      _vars: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["/api/tasks", { companyId }], context.previousTasks);
+      }
+      toast({ title: "Failed to update task", variant: "destructive" });
     },
   });
 
@@ -2889,29 +2939,71 @@ export default function CompanyDashboard() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
-                data-testid="button-task-month-prev"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
-                {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
-                data-testid="button-task-month-next"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
+                  data-testid="button-task-month-prev"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
+                  {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
+                  data-testid="button-task-month-next"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-1" data-testid="company-view-mode-toggle">
+                <Button
+                  variant={companyTaskViewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("list")}
+                  data-testid="company-view-toggle-list"
+                >
+                  <List className="w-4 h-4 mr-1" />
+                  List
+                </Button>
+                <Button
+                  variant={companyTaskViewMode === "category" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("category")}
+                  data-testid="company-view-toggle-category"
+                >
+                  <LayoutGrid className="w-4 h-4 mr-1" />
+                  Category
+                </Button>
+                <Button
+                  variant={companyTaskViewMode === "stage" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("stage")}
+                  data-testid="company-view-toggle-stage"
+                >
+                  <Kanban className="w-4 h-4 mr-1" />
+                  Stage
+                </Button>
+              </div>
             </div>
 
-            {tasksLoading ? (
+            {companyTaskViewMode !== "list" ? (
+              <TaskBoardView
+                tasks={filteredCompanyTasks}
+                categories={taskCategoriesData || []}
+                mode={companyTaskViewMode === "category" ? "category" : "stage"}
+                onTaskClick={setSelectedTask}
+                onStatusChange={(taskId, newStatus) =>
+                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
+                }
+                allowDrag={companyTaskViewMode === "stage"}
+              />
+            ) : tasksLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} className="h-16 w-full" />
