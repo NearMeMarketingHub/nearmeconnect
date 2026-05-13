@@ -2992,7 +2992,13 @@ export default function CompanyDashboard() {
               </div>
             </div>
 
-            {companyTaskViewMode !== "list" ? (
+            {companyTaskViewMode !== "list" && tasksLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : companyTaskViewMode !== "list" ? (
               <TaskBoardView
                 tasks={filteredCompanyTasks}
                 categories={taskCategoriesData || []}
