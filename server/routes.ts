@@ -3509,21 +3509,63 @@ export async function registerRoutes(
   });
 
   // Client onboarding routes
+
+  // Admin-only: full onboarding record (used by the admin Info Hub)
   app.get("/api/companies/:id/onboarding", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const onboarding = await storage.getClientOnboarding(req.params.id);
+      res.json(onboarding || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch onboarding data" });
+    }
+  });
+
+  // Client-safe: stripped onboarding record for the onboarding wizard flow.
+  // Omits sensitive admin-only fields (loginCredentials, brandAssetFiles, etc.).
+  // Must be registered before the parameterized /:id routes.
+  app.get("/api/companies/:id/onboarding/flow", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
       const companyId = req.params.id;
-      
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) {
-          return res.status(403).json({ error: "Access denied" });
-        }
+        if (!member) return res.status(403).json({ error: "Access denied" });
       }
-      
       const onboarding = await storage.getClientOnboarding(companyId);
-      res.json(onboarding || null);
+      if (!onboarding) return res.json(null);
+      // Return only the fields needed by the client wizard — never expose admin-only data
+      const {
+        id, companyId: cId, currentStep, isCompleted, completedAt,
+        primaryContactName, primaryContactEmail, primaryContactPhone, website,
+        youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
+        googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
+        metaBusinessNA, googleBusinessNA, accessInvitesSent,
+        socialPlatforms, brandAssetLinks, seasonalPreferences, holidayPreferences,
+        seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
+        brandAssetsProvided, seasonalPreferencesConfirmed,
+        authorizationName, authorizationDate, specialNotes,
+        needsGbpRecovery, gbpBusinessName, gbpBusinessAddress,
+        gbpContactEmail, gbpContactPhone, gbpAdditionalContext,
+      } = onboarding;
+      res.json({
+        id, companyId: cId, currentStep, isCompleted, completedAt,
+        primaryContactName, primaryContactEmail, primaryContactPhone, website,
+        youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
+        googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
+        metaBusinessNA, googleBusinessNA, accessInvitesSent,
+        socialPlatforms, brandAssetLinks, seasonalPreferences, holidayPreferences,
+        seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
+        brandAssetsProvided, seasonalPreferencesConfirmed,
+        authorizationName, authorizationDate, specialNotes,
+        needsGbpRecovery, gbpBusinessName, gbpBusinessAddress,
+        gbpContactEmail, gbpContactPhone, gbpAdditionalContext,
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch onboarding data" });
     }
@@ -3539,6 +3581,11 @@ export async function registerRoutes(
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) {
           return res.status(403).json({ error: "Access denied" });
+        }
+        // Block non-admins from updating onboarding after it has been completed
+        const existing = await storage.getClientOnboarding(companyId);
+        if (existing?.isCompleted) {
+          return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
         }
       }
       

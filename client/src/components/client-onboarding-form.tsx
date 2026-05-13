@@ -136,9 +136,9 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
   const { data: existingData, isLoading } = useQuery({
-    queryKey: ["/api/companies", companyId, "onboarding"],
+    queryKey: ["/api/companies", companyId, "onboarding", "flow"],
     queryFn: async () => {
-      const response = await fetch(`/api/companies/${companyId}/onboarding`);
+      const response = await fetch(`/api/companies/${companyId}/onboarding/flow`);
       if (!response.ok) return null;
       return response.json();
     },

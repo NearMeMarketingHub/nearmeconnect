@@ -331,9 +331,6 @@ type OnboardingEditForm = {
   loginCredentialsProvided: boolean;
   brandAssetsProvided: boolean;
   seasonalPreferencesConfirmed: boolean;
-  // Authorization
-  authorizationName: string;
-  authorizationDate: string;
 };
 
 function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
