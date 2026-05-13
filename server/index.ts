@@ -32,10 +32,17 @@ async function migrateOnboardingCredentials() {
       const existing = await storage.getCompanyCredentials(companyId);
       const existingLabels = new Set(existing.filter(c => c.category === "onboarding-submitted").map(c => c.label));
 
+      // Only migrate when encryption is configured — preserve plaintext if the key is missing
+      if (!process.env.CREDENTIAL_ENCRYPTION_KEY) {
+        log(`[onboarding-migration] CREDENTIAL_ENCRYPTION_KEY not set — skipping migration for company ${companyId} to avoid data loss`, "onboarding-migration");
+        continue;
+      }
+
+      let allSucceeded = true;
       let migrated = 0;
       for (const c of creds) {
         const label = c.platform || "Unknown Platform";
-        if (existingLabels.has(label)) continue; // already migrated
+        if (existingLabels.has(label)) { migrated++; continue; } // already migrated — counts as success
         try {
           await storage.createCompanyCredential({
             companyId,
@@ -51,17 +58,21 @@ async function migrateOnboardingCredentials() {
           });
           migrated++;
         } catch (credErr) {
+          allSucceeded = false;
           log(`[onboarding-migration] Could not migrate credential "${label}" for company ${companyId}: ${credErr}`, "onboarding-migration");
         }
       }
 
-      // Clear the plaintext field regardless of how many were migrated
-      await storage.updateClientOnboarding(companyId, { loginCredentials: null });
-      log(`[onboarding-migration] Migrated ${migrated} credential(s) for company ${companyId} (${creds.length - migrated} skipped as duplicates)`, "onboarding-migration");
+      // Only clear the plaintext field once ALL credentials are safely stored
+      if (allSucceeded) {
+        await storage.updateClientOnboarding(companyId, { loginCredentials: null });
+        log(`[onboarding-migration] Migrated ${migrated} credential(s) for company ${companyId} — plaintext cleared`, "onboarding-migration");
+      } else {
+        log(`[onboarding-migration] Some credential writes failed for company ${companyId} — plaintext NOT cleared to prevent data loss`, "onboarding-migration");
+      }
     } catch (err) {
-      log(`[onboarding-migration] Failed to parse loginCredentials for company ${companyId}: ${err} — clearing plaintext regardless`, "onboarding-migration");
-      // Always clear the plaintext field, even if we couldn't parse it — corrupt/junk data must not linger
-      try { await storage.updateClientOnboarding(companyId, { loginCredentials: null }); } catch { /* best effort */ }
+      log(`[onboarding-migration] Failed to parse loginCredentials for company ${companyId}: ${err} — plaintext NOT cleared`, "onboarding-migration");
+      // Do NOT clear plaintext when we cannot safely migrate it — preserving data is paramount
     }
   }
 

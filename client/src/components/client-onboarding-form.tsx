@@ -134,6 +134,10 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
   const totalSteps = 7;
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  // Track whether the user has explicitly modified credentials this session.
+  // Prevents wiping previously-stored credentials when the form re-hydrates without them
+  // (the /flow endpoint intentionally omits credential data).
+  const [credentialsDirty, setCredentialsDirty] = useState(false);
 
   const { data: existingData, isLoading } = useQuery({
     queryKey: ["/api/companies", companyId, "onboarding", "flow"],
@@ -226,23 +230,29 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
 
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      // Submit credentials via the dedicated encrypted endpoint — never inside the onboarding payload
       const creds: LoginCredential[] = data.loginCredentials ?? [];
-      await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+      // Only push credentials to the encrypted store when the user has explicitly
+      // modified them this session — prevents wiping stored credentials on reload.
+      if (credentialsDirty) {
+        await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+      }
 
       const { loginCredentials: _omit, ...rest } = data;
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...rest,
         socialPlatforms: JSON.stringify(rest.socialPlatforms),
         seasonalPreferences: JSON.stringify(rest.seasonalPreferences),
         holidayPreferences: JSON.stringify(rest.holidayPreferences),
         brandAssetFiles: JSON.stringify(rest.brandAssetFiles),
-        loginCredentialsProvided: creds.length > 0,
       };
+      if (credentialsDirty) {
+        payload.loginCredentialsProvided = creds.length > 0;
+      }
       const response = await apiRequest("POST", `/api/companies/${companyId}/onboarding`, payload);
       return response.json();
     },
     onSuccess: () => {
+      setCredentialsDirty(false);
       queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "onboarding", "flow"] });
       toast({ title: "Progress saved" });
     },
@@ -281,6 +291,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
   };
 
   const addLoginCredential = () => {
+    setCredentialsDirty(true);
     setFormData(prev => ({
       ...prev,
       loginCredentials: [
@@ -291,6 +302,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
   };
 
   const updateLoginCredential = (index: number, field: string, value: string) => {
+    setCredentialsDirty(true);
     setFormData(prev => ({
       ...prev,
       loginCredentials: prev.loginCredentials.map((c: LoginCredential, i: number) =>
@@ -300,6 +312,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
   };
 
   const removeLoginCredential = (index: number) => {
+    setCredentialsDirty(true);
     setFormData(prev => ({
       ...prev,
       loginCredentials: prev.loginCredentials.filter((_: any, i: number) => i !== index),
@@ -501,20 +514,24 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
     }
 
     try {
-      // Submit credentials via the dedicated encrypted endpoint — never in the onboarding payload
       const creds: LoginCredential[] = formData.loginCredentials ?? [];
-      await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+      // Only update encrypted credential store if user modified credentials this session
+      if (credentialsDirty) {
+        await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+      }
 
       const { loginCredentials: _omit, ...restFormData } = formData;
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...restFormData,
         currentStep: totalSteps,
         socialPlatforms: JSON.stringify(restFormData.socialPlatforms),
         seasonalPreferences: JSON.stringify(restFormData.seasonalPreferences),
         holidayPreferences: JSON.stringify(restFormData.holidayPreferences),
         brandAssetFiles: JSON.stringify(restFormData.brandAssetFiles),
-        loginCredentialsProvided: creds.length > 0,
       };
+      if (credentialsDirty) {
+        payload.loginCredentialsProvided = creds.length > 0;
+      }
       await apiRequest("POST", `/api/companies/${companyId}/onboarding`, payload);
       await completeMutation.mutateAsync();
     } catch (error) {
