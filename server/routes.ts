@@ -3519,7 +3519,11 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       const onboarding = await storage.getClientOnboarding(req.params.id);
-      res.json(onboarding || null);
+      if (!onboarding) return res.json(null);
+      // Count credentials from the encrypted system — never return plaintext loginCredentials
+      const encryptedCreds = await storage.getCompanyCredentials(req.params.id);
+      const { loginCredentials: _stripped, ...safeOnboarding } = onboarding as any;
+      res.json({ ...safeOnboarding, credentialsProvidedCount: encryptedCreds.length });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch onboarding data" });
     }
@@ -3619,6 +3623,41 @@ export async function registerRoutes(
       }
       
       const body = { ...req.body };
+
+      // Intercept loginCredentials submitted by clients — route to encrypted storage
+      // instead of persisting plaintext in the onboarding record
+      const loginCredentialsJson = body.loginCredentials;
+      delete body.loginCredentials;
+
+      if (loginCredentialsJson) {
+        try {
+          const creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = JSON.parse(loginCredentialsJson);
+          if (Array.isArray(creds) && creds.length > 0) {
+            // Replace all existing onboarding-submitted credentials to avoid duplicates on re-saves
+            const existingCreds = await storage.getCompanyCredentials(companyId);
+            await Promise.all(
+              existingCreds.filter(c => c.category === "onboarding-submitted").map(c => storage.deleteCompanyCredential(c.id))
+            );
+            await Promise.all(creds.map(c => storage.createCompanyCredential({
+              companyId,
+              label: c.platform || "Unknown Platform",
+              username: c.username || null,
+              password: c.password || null,
+              url: null,
+              notes: [
+                c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
+                c.recoveryNotes || null,
+              ].filter(Boolean).join("\n") || null,
+              category: "onboarding-submitted",
+            })));
+            body.loginCredentialsProvided = true;
+            log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
+          }
+        } catch {
+          // Malformed JSON — skip credential migration silently
+        }
+      }
+
       const ytOk = !!(body.youtubeInviteDate || body.youtubeInviteNA);
       const ytfOk = !!(body.youtubeFeatureEligibilityDate || body.youtubeFeatureNA);
       const metaOk = !!(body.metaBusinessInviteDate || body.metaBusinessNA);
@@ -3652,6 +3691,8 @@ export async function registerRoutes(
       }
       
       const body = { ...req.body };
+      // Never allow loginCredentials to be written back — credentials live in the encrypted system
+      delete body.loginCredentials;
       const existing = await storage.getClientOnboarding(companyId);
       if (!existing) {
         return res.status(404).json({ error: "Onboarding data not found" });

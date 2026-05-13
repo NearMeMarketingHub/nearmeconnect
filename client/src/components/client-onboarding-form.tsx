@@ -204,9 +204,6 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
         socialPlatforms: existingData.socialPlatforms 
           ? JSON.parse(existingData.socialPlatforms) 
           : prev.socialPlatforms,
-        loginCredentials: existingData.loginCredentials
-          ? JSON.parse(existingData.loginCredentials)
-          : prev.loginCredentials,
         seasonalPreferences: existingData.seasonalPreferences
           ? JSON.parse(existingData.seasonalPreferences)
           : prev.seasonalPreferences,
@@ -232,7 +229,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
       const payload = {
         ...data,
         socialPlatforms: JSON.stringify(data.socialPlatforms),
-        loginCredentials: JSON.stringify(data.loginCredentials),
+        loginCredentials: JSON.stringify(data.loginCredentials), // server intercepts and stores encrypted
         seasonalPreferences: JSON.stringify(data.seasonalPreferences),
         holidayPreferences: JSON.stringify(data.holidayPreferences),
         brandAssetFiles: JSON.stringify(data.brandAssetFiles),

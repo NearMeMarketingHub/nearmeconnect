@@ -6,6 +6,66 @@ import { storage } from "./storage";
 import { setupWebSocket } from "./websocket";
 import bcrypt from "bcryptjs";
 
+// One-time migration: move plaintext loginCredentials from onboarding records
+// into the encrypted company_credentials table, then clear the plaintext field.
+async function migrateOnboardingCredentials() {
+  const { db } = await import("./db");
+  const { clientOnboarding } = await import("@shared/schema");
+  const { isNotNull } = await import("drizzle-orm");
+
+  const rows = await db.select().from(clientOnboarding).where(isNotNull(clientOnboarding.loginCredentials));
+  if (rows.length === 0) return;
+
+  log(`[onboarding-migration] Found ${rows.length} record(s) with plaintext loginCredentials — migrating…`, "onboarding-migration");
+
+  for (const row of rows) {
+    const companyId = row.companyId;
+    try {
+      const creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = JSON.parse(row.loginCredentials!);
+      if (!Array.isArray(creds) || creds.length === 0) {
+        // Nothing to migrate — just clear the field
+        await storage.updateClientOnboarding(companyId, { loginCredentials: null } as any);
+        continue;
+      }
+
+      // Check for existing onboarding-submitted credentials to avoid duplicates
+      const existing = await storage.getCompanyCredentials(companyId);
+      const existingLabels = new Set(existing.filter(c => c.category === "onboarding-submitted").map(c => c.label));
+
+      let migrated = 0;
+      for (const c of creds) {
+        const label = c.platform || "Unknown Platform";
+        if (existingLabels.has(label)) continue; // already migrated
+        try {
+          await storage.createCompanyCredential({
+            companyId,
+            label,
+            username: c.username || null,
+            password: c.password || null,
+            url: null,
+            notes: [
+              c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
+              c.recoveryNotes || null,
+            ].filter(Boolean).join("\n") || null,
+            category: "onboarding-submitted",
+          });
+          migrated++;
+        } catch (credErr) {
+          log(`[onboarding-migration] Could not migrate credential "${label}" for company ${companyId}: ${credErr}`, "onboarding-migration");
+        }
+      }
+
+      // Clear the plaintext field regardless of how many were migrated
+      await storage.updateClientOnboarding(companyId, { loginCredentials: null } as any);
+      log(`[onboarding-migration] Migrated ${migrated} credential(s) for company ${companyId} (${creds.length - migrated} skipped as duplicates)`, "onboarding-migration");
+    } catch (err) {
+      log(`[onboarding-migration] Failed to parse loginCredentials for company ${companyId}: ${err}`, "onboarding-migration");
+    }
+  }
+
+  log("[onboarding-migration] Migration complete", "onboarding-migration");
+}
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -232,11 +292,13 @@ async function seedDatabase() {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
       if (!process.env.CREDENTIAL_ENCRYPTION_KEY) {
         log("WARNING: CREDENTIAL_ENCRYPTION_KEY is not set — credential password writes will be rejected until the key is configured", "credential-encryption");
       }
+      // One-time migration: move plaintext loginCredentials from onboarding records into encrypted company_credentials
+      migrateOnboardingCredentials().catch(err => log(`[onboarding-migration] Error: ${err}`, "onboarding-migration"));
     },
   );
 

@@ -151,30 +151,11 @@ export async function generateOnboardingPdf(data: OnboardingPdfData): Promise<Bu
     doc.moveDown();
 
     addSection(doc, "4. Login Credentials");
-    if (onboarding.loginCredentials) {
-      try {
-        const credentials = JSON.parse(onboarding.loginCredentials);
-        if (Array.isArray(credentials) && credentials.length > 0) {
-          credentials.forEach((cred: any, index: number) => {
-            doc.fontSize(11).font("Helvetica-Bold").text(`${index + 1}. ${cred.platform || "Unknown Platform"}`);
-            doc.font("Helvetica").fontSize(10);
-            doc.text(`   Username: ${cred.username || "Not provided"}`);
-            doc.text(`   Password: ${cred.password || "Not provided"}`);
-            doc.text(`   2FA Method: ${cred.twoFactorMethod || "None specified"}`);
-            if (cred.recoveryNotes) {
-              doc.text(`   Recovery Notes: ${cred.recoveryNotes}`);
-            }
-            doc.moveDown(0.3);
-          });
-        } else {
-          doc.fontSize(10).text("No login credentials provided");
-        }
-      } catch {
-        doc.fontSize(10).text("No login credentials provided");
-      }
-    } else {
-      doc.fontSize(10).text("No login credentials provided");
-    }
+    doc.fontSize(10).text(
+      onboarding.loginCredentialsProvided
+        ? "Login credentials were provided and are stored securely in the client portal. Access them through the Credentials Manager in the Company Info Hub."
+        : "No login credentials were provided during onboarding."
+    );
     doc.moveDown();
 
     addSection(doc, "5. Google Business Profile Recovery");

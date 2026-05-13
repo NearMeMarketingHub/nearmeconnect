@@ -50,23 +50,11 @@ interface SocialPlatform {
   notes?: string;
 }
 
-interface LoginCredentialEntry {
-  platform: string;
-  username?: string;
-  password?: string;
-  twoFactorMethod?: string;
-  recoveryNotes?: string;
-}
-
 function parseSocialPlatforms(json: string | null | undefined): SocialPlatform[] {
   if (!json) return [];
   try { return JSON.parse(json) as SocialPlatform[]; } catch { return []; }
 }
 
-function parseLoginCredentials(json: string | null | undefined): LoginCredentialEntry[] {
-  if (!json) return [];
-  try { return JSON.parse(json) as LoginCredentialEntry[]; } catch { return []; }
-}
 
 const KNOWLEDGE_SECTIONS = [
   { key: "links" as const, label: "Links", icon: Link2, description: "Important URLs, social profiles, tools" },
@@ -367,9 +355,8 @@ type OnboardingEditForm = {
   gbpContactEmail: string;
   gbpContactPhone: string;
   gbpAdditionalContext: string;
-  // Social & Login JSON (editable as serialized JSON)
+  // Social JSON (editable as serialized JSON)
   socialPlatformsJson: string;
-  loginCredentialsJson: string;
   // Brand Assets
   brandAssetLinks: string;
   brandAssetFilesJson: string;
@@ -411,7 +398,6 @@ function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
     gbpContactPhone: o.gbpContactPhone || "",
     gbpAdditionalContext: o.gbpAdditionalContext || "",
     socialPlatformsJson: o.socialPlatforms ? JSON.stringify(parseSocialPlatforms(o.socialPlatforms), null, 2) : "[]",
-    loginCredentialsJson: o.loginCredentials ? JSON.stringify(parseLoginCredentials(o.loginCredentials), null, 2) : "[]",
     brandAssetLinks: o.brandAssetLinks || "",
     brandAssetFilesJson: (() => { try { return o.brandAssetFiles ? JSON.stringify(JSON.parse(o.brandAssetFiles), null, 2) : "[]"; } catch { return "[]"; } })(),
     seasonalPreferencesJson: (() => { try { return o.seasonalPreferences ? JSON.stringify(JSON.parse(o.seasonalPreferences), null, 2) : "[]"; } catch { return "[]"; } })(),
@@ -467,7 +453,6 @@ function OnboardingEditPanel({
         gbpContactPhone: form.gbpContactPhone || null,
         gbpAdditionalContext: form.gbpAdditionalContext || null,
         socialPlatforms: (() => { try { return JSON.stringify(JSON.parse(form.socialPlatformsJson)); } catch { return null; } })(),
-        loginCredentials: (() => { try { return JSON.stringify(JSON.parse(form.loginCredentialsJson)); } catch { return null; } })(),
         brandAssetLinks: form.brandAssetLinks || null,
         brandAssetFiles: (() => { try { return JSON.stringify(JSON.parse(form.brandAssetFilesJson)); } catch { return null; } })(),
         seasonalPreferences: (() => { try { return JSON.stringify(JSON.parse(form.seasonalPreferencesJson)); } catch { return null; } })(),
@@ -575,22 +560,6 @@ function OnboardingEditPanel({
           rows={6}
           className="font-mono text-xs"
           data-testid="input-oe-social-platforms"
-        />
-      </div>
-
-      <Separator />
-
-      {/* Login Credentials JSON */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Login Credentials (client-submitted)</h4>
-        <p className="text-xs text-muted-foreground">Edit as JSON array. Each entry: {"{"} platform, username, password, twoFactorMethod, recoveryNotes {"}"}.</p>
-        <Textarea
-          id="oe-login-creds"
-          value={form.loginCredentialsJson}
-          onChange={set("loginCredentialsJson")}
-          rows={6}
-          className="font-mono text-xs"
-          data-testid="input-oe-login-credentials"
         />
       </div>
 
@@ -793,29 +762,6 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
                       <div key={p.platform} className="flex items-center justify-between p-2.5 border rounded-lg text-sm">
                         <div><p className="font-medium capitalize">{p.platform.replace("_", " ")}</p>{p.handle && <p className="text-xs text-muted-foreground">{p.handle}</p>}</div>
                         {p.accountEmail && <p className="text-xs text-muted-foreground">{p.accountEmail}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })()}
-
-          {/* ── Onboarding login credentials (client-submitted) */}
-          {!editingOnboarding && (() => {
-            const creds = parseLoginCredentials(onboarding.loginCredentials);
-            if (!creds.length) return null;
-            return (
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base">Login Credentials (client-submitted)</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {creds.map((c, i) => (
-                      <div key={i} className="p-2.5 border rounded-lg text-sm space-y-1">
-                        <p className="font-medium">{c.platform}</p>
-                        {c.username && <p className="text-xs text-muted-foreground">User: {c.username}</p>}
-                        {c.twoFactorMethod && <p className="text-xs text-muted-foreground">2FA: {c.twoFactorMethod}</p>}
-                        {c.recoveryNotes && <p className="text-xs text-muted-foreground">{c.recoveryNotes}</p>}
                       </div>
                     ))}
                   </div>
