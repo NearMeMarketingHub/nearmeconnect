@@ -2494,7 +2494,10 @@ export class DatabaseStorage implements IStorage {
   async createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential> {
     const { encryptSecret, encryptionAvailable } = await import("./lib/credential-encryption");
     let encryptedPassword = data.password;
-    if (encryptedPassword && encryptionAvailable()) {
+    if (encryptedPassword) {
+      if (!encryptionAvailable()) {
+        throw new Error("CREDENTIAL_ENCRYPTION_KEY is not set — cannot store credential password at rest");
+      }
       encryptedPassword = encryptSecret(encryptedPassword);
     }
     const [row] = await db.insert(companyCredentials).values({
@@ -2510,7 +2513,10 @@ export class DatabaseStorage implements IStorage {
   async updateCompanyCredential(id: string, data: Partial<CompanyCredential>): Promise<CompanyCredential | undefined> {
     const { encryptSecret, encryptionAvailable } = await import("./lib/credential-encryption");
     let updateData = { ...data };
-    if (updateData.password && encryptionAvailable()) {
+    if (updateData.password) {
+      if (!encryptionAvailable()) {
+        throw new Error("CREDENTIAL_ENCRYPTION_KEY is not set — cannot store credential password at rest");
+      }
       updateData.password = encryptSecret(updateData.password);
     }
     const [row] = await db.update(companyCredentials)

@@ -235,7 +235,7 @@ async function seedDatabase() {
     () => {
       log(`serving on port ${port}`);
       if (!process.env.CREDENTIAL_ENCRYPTION_KEY) {
-        log("WARNING: CREDENTIAL_ENCRYPTION_KEY is not set — credential passwords will not be encrypted at rest", "credential-encryption");
+        log("WARNING: CREDENTIAL_ENCRYPTION_KEY is not set — credential password writes will be rejected until the key is configured", "credential-encryption");
       }
     },
   );

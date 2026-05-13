@@ -3703,7 +3703,10 @@ export async function registerRoutes(
         category: category || null,
       });
       res.status(201).json(credential);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
+      }
       res.status(500).json({ error: "Failed to create credential" });
     }
   });
@@ -3725,7 +3728,10 @@ export async function registerRoutes(
       if (category !== undefined) allowedFields.category = category || null;
       const updated = await storage.updateCompanyCredential(req.params.credId, allowedFields);
       res.json(updated);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
+      }
       res.status(500).json({ error: "Failed to update credential" });
     }
   });
