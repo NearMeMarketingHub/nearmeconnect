@@ -2459,9 +2459,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCompanyCredentials(companyId: string): Promise<CompanyCredential[]> {
-    return db.select().from(companyCredentials)
+    const rows = await db.select().from(companyCredentials)
       .where(eq(companyCredentials.companyId, companyId))
       .orderBy(companyCredentials.createdAt);
+    // Always strip password from list responses — admins use the /reveal endpoint
+    return rows.map(r => ({ ...r, password: null }));
   }
 
   async getCompanyCredential(id: string): Promise<CompanyCredential | undefined> {
@@ -2469,21 +2471,55 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
+  async getCompanyCredentialDecrypted(id: string): Promise<string | null> {
+    const { encryptSecret, decryptSecret, isEncrypted } = await import("./lib/credential-encryption");
+    const [row] = await db.select().from(companyCredentials).where(eq(companyCredentials.id, id));
+    if (!row || !row.password) return null;
+    const stored = row.password;
+    if (!isEncrypted(stored)) {
+      // Legacy plaintext — encrypt it now (transparent migration) then return plaintext
+      try {
+        const encrypted = encryptSecret(stored);
+        await db.update(companyCredentials)
+          .set({ password: encrypted, updatedAt: new Date().toISOString() })
+          .where(eq(companyCredentials.id, id));
+      } catch (err) {
+        console.error("[credential-encryption] Failed to migrate plaintext credential:", err);
+      }
+      return stored;
+    }
+    return decryptSecret(stored);
+  }
+
   async createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential> {
+    const { encryptSecret, encryptionAvailable } = await import("./lib/credential-encryption");
+    let encryptedPassword = data.password;
+    if (encryptedPassword && encryptionAvailable()) {
+      encryptedPassword = encryptSecret(encryptedPassword);
+    }
     const [row] = await db.insert(companyCredentials).values({
       ...data,
+      password: encryptedPassword,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }).returning();
-    return row;
+    // Return with password stripped (never expose encrypted blob or plaintext)
+    return { ...row, password: null };
   }
 
   async updateCompanyCredential(id: string, data: Partial<CompanyCredential>): Promise<CompanyCredential | undefined> {
+    const { encryptSecret, encryptionAvailable } = await import("./lib/credential-encryption");
+    let updateData = { ...data };
+    if (updateData.password && encryptionAvailable()) {
+      updateData.password = encryptSecret(updateData.password);
+    }
     const [row] = await db.update(companyCredentials)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+      .set({ ...updateData, updatedAt: new Date().toISOString() })
       .where(eq(companyCredentials.id, id))
       .returning();
-    return row;
+    if (!row) return undefined;
+    // Return with password stripped
+    return { ...row, password: null };
   }
 
   async deleteCompanyCredential(id: string): Promise<void> {

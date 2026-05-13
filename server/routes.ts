@@ -3744,6 +3744,22 @@ export async function registerRoutes(
     }
   });
 
+  // Admin-only: reveal decrypted password for a single credential (deliberate action, not cached)
+  app.post("/api/companies/:id/credentials/:credId/reveal", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getCompanyCredential(req.params.credId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      const password = await storage.getCompanyCredentialDecrypted(req.params.credId);
+      res.json({ password });
+    } catch (error) {
+      console.error("Failed to reveal credential:", error);
+      res.status(500).json({ error: "Failed to reveal credential" });
+    }
+  });
+
   // Admin-only: knowledge hub CRUD
   app.get("/api/companies/:id/knowledge", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {

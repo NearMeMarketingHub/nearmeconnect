@@ -77,15 +77,56 @@ const KNOWLEDGE_SECTIONS = [
 
 // ─── Credential row ───────────────────────────────────────────────────────────
 function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId: string }) {
-  const [revealed, setRevealed] = useState(false);
+  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: cred.password || "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
+  const [hasPassword, setHasPassword] = useState(true); // assume password exists until proven otherwise
+  const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
   const { toast } = useToast();
 
+  // Auto-clear revealed password after 30 seconds
+  const clearRevealed = () => {
+    setRevealedPassword(null);
+    setCopied(false);
+  };
+
+  const revealMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/credentials/${cred.id}/reveal`);
+      return res.json() as Promise<{ password: string | null }>;
+    },
+    onSuccess: (data) => {
+      if (data.password) {
+        setRevealedPassword(data.password);
+        setHasPassword(true);
+        setTimeout(clearRevealed, 30000);
+      } else {
+        setHasPassword(false);
+        toast({ title: "No password stored for this credential" });
+      }
+    },
+    onError: () => toast({ title: "Failed to reveal password", variant: "destructive" }),
+  });
+
   const updateMutation = useMutation({
-    mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/credentials/${cred.id}`, form),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] }); setEditOpen(false); toast({ title: "Credential updated" }); },
+    mutationFn: async () => {
+      const payload: Record<string, string | null> = {
+        label: form.label,
+        username: form.username || null,
+        url: form.url || null,
+        notes: form.notes || null,
+        category: form.category || null,
+      };
+      // Only send password if admin typed a new one
+      if (form.password) payload.password = form.password;
+      return apiRequest("PATCH", `/api/companies/${companyId}/credentials/${cred.id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] });
+      setEditOpen(false);
+      clearRevealed();
+      toast({ title: "Credential updated" });
+    },
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
@@ -108,16 +149,24 @@ function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId
             {cred.category && <Badge variant="secondary" className="text-xs">{cred.category}</Badge>}
           </div>
           {cred.username && <p className="text-xs text-muted-foreground"><span className="font-medium">User:</span> {cred.username}</p>}
-          {cred.password && (
+          {hasPassword && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground font-medium">Pass:</span>
-              <span className="text-xs font-mono" data-testid={`text-cred-password-${cred.id}`}>{revealed ? cred.password : "••••••••"}</span>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setRevealed(v => !v)} data-testid={`button-toggle-password-${cred.id}`}>
-                {revealed ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-              </Button>
-              {revealed && (
-                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(cred.password!)} data-testid={`button-copy-password-${cred.id}`}>
-                  {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+              <span className="text-xs font-mono" data-testid={`text-cred-password-${cred.id}`}>
+                {revealedPassword ? revealedPassword : "••••••••"}
+              </span>
+              {revealedPassword ? (
+                <>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={clearRevealed} data-testid={`button-hide-password-${cred.id}`}>
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(revealedPassword)} data-testid={`button-copy-password-${cred.id}`}>
+                    {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => revealMutation.mutate()} disabled={revealMutation.isPending} data-testid={`button-reveal-password-${cred.id}`}>
+                  {revealMutation.isPending ? <span className="h-3 w-3 animate-spin border border-current border-t-transparent rounded-full inline-block" /> : <Eye className="h-3 w-3" />}
                 </Button>
               )}
             </div>
@@ -130,7 +179,7 @@ function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId
           {cred.notes && <p className="text-xs text-muted-foreground">{cred.notes}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setForm({ label: cred.label, username: cred.username || "", password: cred.password || "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" }); setEditOpen(true); }} data-testid={`button-edit-cred-${cred.id}`}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setForm({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" }); setEditOpen(true); }} data-testid={`button-edit-cred-${cred.id}`}>
             <Pencil className="h-3.5 w-3.5" />
           </Button>
           <AlertDialog>
@@ -145,14 +194,17 @@ function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId
         </div>
       </div>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog open={editOpen} onOpenChange={open => { setEditOpen(open); if (!open) setForm(p => ({ ...p, password: "" })); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Edit Credential</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Label *</Label><Input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} data-testid="input-edit-cred-label" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Username / Email</Label><Input value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} data-testid="input-edit-cred-username" /></div>
-              <div><Label>Password</Label><Input type="text" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} data-testid="input-edit-cred-password" /></div>
+              <div>
+                <Label>New Password</Label>
+                <Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="Leave blank to keep existing" data-testid="input-edit-cred-password" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>URL</Label><Input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://" data-testid="input-edit-cred-url" /></div>
