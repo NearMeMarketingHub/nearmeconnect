@@ -217,9 +217,13 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       if (data.status === undefined) return;
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
       if (companyId) await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      if (task?.id) await queryClient.cancelQueries({ queryKey: ["/api/tasks", task.id] });
       const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
       const previousCompanyTasks = companyId
         ? queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }])
+        : undefined;
+      const previousTask = task?.id
+        ? queryClient.getQueryData<Task>(["/api/tasks", task.id])
         : undefined;
       if (previousTasks) {
         queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
@@ -231,7 +235,10 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
           t.id === task?.id ? { ...t, ...data } : t
         ));
       }
-      return { previousTasks, previousCompanyTasks };
+      if (previousTask && task?.id) {
+        queryClient.setQueryData<Task>(["/api/tasks", task.id], { ...previousTask, ...data });
+      }
+      return { previousTasks, previousCompanyTasks, previousTask };
     },
     onSuccess: (updatedTask: Task) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
@@ -260,6 +267,9 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       }
       if (context?.previousCompanyTasks && companyId) {
         queryClient.setQueryData(["/api/tasks", { companyId }], context.previousCompanyTasks);
+      }
+      if (context?.previousTask && task?.id) {
+        queryClient.setQueryData(["/api/tasks", task.id], context.previousTask);
       }
       const msg = error.message || "Failed to update task";
       if (msg.toLowerCase().includes("insufficient credits")) {

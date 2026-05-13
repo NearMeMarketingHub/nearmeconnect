@@ -1469,8 +1469,16 @@ export async function registerRoutes(
             }
           }
 
-          // WebSocket broadcast after all side-effects complete
-          broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications", "/api/admin/campaign-requests"]);
+          // WebSocket broadcast after all side-effects complete — narrowed by impact
+          const creditAffectingStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+          const broadcastKeys: string[] = ["/api/tasks", "/api/notifications"];
+          if (newStatus && creditAffectingStatuses.has(newStatus)) {
+            broadcastKeys.push("/api/companies", "/api/credit-transactions");
+          }
+          if (existingTask.campaignRequestId) {
+            broadcastKeys.push("/api/admin/campaign-requests");
+          }
+          broadcastInvalidation(broadcastKeys);
         } catch (sideEffectErr) {
           console.error("Task update side-effect error:", sideEffectErr);
         }
