@@ -3679,15 +3679,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      // Storage already computes hasPassword from real DB value before stripping password
       const credentials = await storage.getCompanyCredentials(req.params.id);
-      // Enrich with hasPassword boolean so clients can render reveal UI correctly
-      // without ever returning the actual password value in list responses
-      const enriched = credentials.map(c => ({
-        ...c,
-        password: null,
-        hasPassword: c.password !== null,
-      }));
-      res.json(enriched);
+      res.json(credentials);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch credentials" });
     }

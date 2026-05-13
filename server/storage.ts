@@ -434,7 +434,7 @@ export interface IStorage {
   upsertMonthlyReportNote(data: InsertMonthlyReportNote): Promise<MonthlyReportNote>;
 
   // Company Credentials (admin-managed)
-  getCompanyCredentials(companyId: string): Promise<CompanyCredential[]>;
+  getCompanyCredentials(companyId: string): Promise<(CompanyCredential & { hasPassword: boolean })[]>;
   getCompanyCredential(id: string): Promise<CompanyCredential | undefined>;
   getCompanyCredentialDecrypted(id: string): Promise<string | null>;
   createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential>;
@@ -2458,12 +2458,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getCompanyCredentials(companyId: string): Promise<CompanyCredential[]> {
+  async getCompanyCredentials(companyId: string): Promise<(CompanyCredential & { hasPassword: boolean })[]> {
     const rows = await db.select().from(companyCredentials)
       .where(eq(companyCredentials.companyId, companyId))
       .orderBy(companyCredentials.createdAt);
-    // Strip actual password value — admins use /reveal endpoint to access it
-    return rows.map(r => ({ ...r, password: null }));
+    // Compute hasPassword from real DB value before stripping it
+    return rows.map(r => ({ ...r, password: null, hasPassword: r.password !== null && r.password.length > 0 }));
   }
 
   async getCompanyCredential(id: string): Promise<CompanyCredential | undefined> {
