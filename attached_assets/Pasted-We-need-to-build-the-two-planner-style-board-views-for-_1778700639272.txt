@@ -1,0 +1,75 @@
+We need to build the two planner-style board views for tasks and keep them alongside the existing list view.
+
+Important context:
+This should be built as a shared board-view system with two modes, not as two completely separate disconnected implementations.
+
+We need:
+1. a board/list view toggle
+2. a category-based board view
+3. a stage-based board view
+
+Keep the existing list view intact.
+
+Board mode 1: Category-based board
+Requirements:
+- organize tasks into columns by category
+- if a task has no category, show it in an “Unassigned” column
+- each task card should include a stage/status indicator
+- that stage/status indicator should be color-coded based on the task’s stage/status
+- checklist items should be visible on the task card
+- checklist items should be able to be checked off directly from the board view
+- keep this view focused on organizing by category, not status drag-and-drop unless already easy to support cleanly
+
+Board mode 2: Stage-based board
+Requirements:
+- organize tasks into columns by stage/status
+- each task card should include a category indicator
+- that category indicator should be color-coded based on the task’s category
+- tasks must be draggable between stage/status columns
+- dragging a task to a new column must update its status in the app
+- checklist items should be visible on the task card
+- checklist items should be able to be checked off directly from the board view
+
+Shared expectations for both board modes:
+- users can switch between list view and board view
+- board UI should feel similar in spirit to a planner/Kanban style layout
+- task cards should show enough detail to be useful without becoming oversized
+- preserve current permissions and task visibility rules
+- keep filtering consistent with the current task experience where possible
+- do not break existing task completion/status logic
+- do not break task detail opening behavior
+
+Implementation guidance:
+- build a shared board-view foundation first
+- create a reusable task card component for board usage if that is the cleanest approach
+- create a clear toggle between:
+  - list view
+  - category board
+  - stage board
+- keep category-based and stage-based views visually consistent
+- preserve the existing task detail interaction pattern if possible when clicking/opening a task card
+- for stage drag-and-drop, make sure status updates persist correctly and refresh cleanly
+- for checklist interactions, update the checklist item directly from the board without forcing users to open the full task
+
+Important constraints:
+- do not redesign unrelated task pages
+- do not break existing list view functionality
+- do not break current filters/permissions
+- keep the board views clean and usable on the admin side where task management is heaviest
+- if needed, phase the implementation internally, but complete the shared foundation plus both board modes
+
+Please provide:
+1. the files/components added or updated
+2. the shared board-view architecture used
+3. how the category-based board was implemented
+4. how the stage-based board and drag-and-drop were implemented
+5. how checklist interactions work from the board
+6. a QA checklist covering:
+   - switching between list/category/stage views
+   - tasks with categories
+   - tasks without categories showing under Unassigned
+   - stage color indicators
+   - category color indicators
+   - drag-and-drop status updates
+   - checklist item updates from the board
+   - opening task details from board cards
