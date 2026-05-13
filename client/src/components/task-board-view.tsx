@@ -285,11 +285,7 @@ function StageBoard({
   onDragStart: (e: DragStartEvent) => void;
   onDragEnd: (e: DragEndEvent) => void;
 }) {
-  const columnsToShow = STAGE_ORDER.filter(
-    (s) => tasks.some((t) => t.status === s) || tasks.length === 0
-  );
-
-  const allColumns = columnsToShow.length > 0 ? columnsToShow : STAGE_ORDER.slice(0, 3);
+  const allColumns = STAGE_ORDER;
 
   const inner = (
     <div

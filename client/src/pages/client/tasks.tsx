@@ -19,7 +19,8 @@ import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, ListTodo, Circle, CheckCircle2, Users, User, ImageUp, Clock, AlertTriangle, Building2, Zap, Target, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { Plus, ListTodo, Circle, CheckCircle2, Users, User, ImageUp, Clock, AlertTriangle, Building2, Zap, Target, ChevronLeft, ChevronRight, Calendar, List, LayoutGrid, Kanban } from "lucide-react";
+import { TaskBoardView } from "@/components/task-board-view";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
@@ -53,6 +54,7 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
   const [showAllTasks, setShowAllTasks] = useState(true);
   const [taskTab, setTaskTab] = useState("all");
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
+  const [viewMode, setViewMode] = useState<"list" | "category" | "stage">("list");
 
   const { data: userInfo } = useQuery<UserInfo>({
     queryKey: ["/api/auth/user"],
@@ -359,6 +361,36 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
         </div>
       </div>
 
+      <div className="flex items-center justify-end gap-1" data-testid="view-mode-toggle">
+        <Button
+          variant={viewMode === "list" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("list")}
+          data-testid="view-toggle-list"
+        >
+          <List className="w-4 h-4 mr-1" />
+          List
+        </Button>
+        <Button
+          variant={viewMode === "category" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("category")}
+          data-testid="view-toggle-category"
+        >
+          <LayoutGrid className="w-4 h-4 mr-1" />
+          Category
+        </Button>
+        <Button
+          variant={viewMode === "stage" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("stage")}
+          data-testid="view-toggle-stage"
+        >
+          <Kanban className="w-4 h-4 mr-1" />
+          Stage
+        </Button>
+      </div>
+
       <Tabs value={taskTab} onValueChange={setTaskTab}>
         <MobileTabMenu
           tabs={[
@@ -386,34 +418,55 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
           )}
         </TabsList>
 
-        <TabsContent value="all" className="mt-4">
-          <TaskList tasks={activeTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="pending" className="mt-4">
-          <TaskList tasks={pendingTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="in_progress" className="mt-4">
-          <TaskList tasks={inProgressTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="review" className="mt-4">
-          {reviewTasks.length === 0 && !isLoading ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <ListTodo className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No tasks awaiting your review.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <TaskList tasks={reviewTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-          )}
-        </TabsContent>
-        <TabsContent value="completed" className="mt-4">
-          <TaskList tasks={completedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        {rejectedTasks.length > 0 && (
-          <TabsContent value="rejected" className="mt-4">
-            <TaskList tasks={rejectedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} showRejectedBadge campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-          </TabsContent>
+        {viewMode !== "list" ? (
+          <div className="mt-4" data-testid="client-board-view">
+            <TaskBoardView
+              tasks={
+                taskTab === "pending" ? pendingTasks
+                : taskTab === "in_progress" ? inProgressTasks
+                : taskTab === "review" ? reviewTasks
+                : taskTab === "completed" ? completedTasks
+                : taskTab === "rejected" ? rejectedTasks
+                : normalTasks
+              }
+              categories={taskCategoriesData || []}
+              mode={viewMode === "category" ? "category" : "stage"}
+              onTaskClick={setSelectedTask}
+              allowDrag={false}
+            />
+          </div>
+        ) : (
+          <>
+            <TabsContent value="all" className="mt-4">
+              <TaskList tasks={activeTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="pending" className="mt-4">
+              <TaskList tasks={pendingTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="in_progress" className="mt-4">
+              <TaskList tasks={inProgressTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="review" className="mt-4">
+              {reviewTasks.length === 0 && !isLoading ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <ListTodo className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No tasks awaiting your review.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <TaskList tasks={reviewTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+              )}
+            </TabsContent>
+            <TabsContent value="completed" className="mt-4">
+              <TaskList tasks={completedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            {rejectedTasks.length > 0 && (
+              <TabsContent value="rejected" className="mt-4">
+                <TaskList tasks={rejectedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} showRejectedBadge campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+              </TabsContent>
+            )}
+          </>
         )}
       </Tabs>
 

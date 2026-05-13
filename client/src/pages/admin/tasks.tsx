@@ -523,6 +523,50 @@ export default function AdminTasks() {
           </div>
         </div>
 
+        <div className="flex items-center justify-end gap-1" data-testid="view-mode-toggle">
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            data-testid="view-toggle-list"
+          >
+            <List className="w-4 h-4 mr-1" />
+            List
+          </Button>
+          <Button
+            variant={viewMode === "category" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("category")}
+            data-testid="view-toggle-category"
+          >
+            <LayoutGrid className="w-4 h-4 mr-1" />
+            Category
+          </Button>
+          <Button
+            variant={viewMode === "stage" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("stage")}
+            data-testid="view-toggle-stage"
+          >
+            <Kanban className="w-4 h-4 mr-1" />
+            Stage
+          </Button>
+        </div>
+
+        {viewMode !== "list" ? (
+          <TaskBoardView
+            tasks={filteredTasks}
+            categories={allCategories || []}
+            mode={viewMode === "category" ? "category" : "stage"}
+            onTaskClick={setSelectedTask}
+            onStatusChange={(taskId, newStatus) =>
+              updateTaskMutation.mutate({ taskId, updates: { status: newStatus as any } })
+            }
+            allowDrag={viewMode === "stage"}
+            getCompanyName={getCompanyName}
+          />
+        ) : (
+
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -739,6 +783,7 @@ export default function AdminTasks() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
 
       <TaskDetailPanel
