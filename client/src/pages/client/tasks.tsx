@@ -654,7 +654,11 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
     staleTime: 30000,
   });
 
-  if (!assignees || assignees.length === 0) return null;
+  if (!assignees || assignees.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid={`text-unassigned-${taskId}`}>Unassigned</span>
+    );
+  }
 
   const visible = assignees.slice(0, 3);
   const overflow = assignees.length - 3;
