@@ -21,6 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -2966,6 +2967,9 @@ export default function CompanyDashboard() {
                             );
                           })()}
                         </div>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
                           {task.dueDate && (
                             <span className={`text-sm flex items-center gap-1 ${getDueDateColor(task.dueDate, task.status)}`}>
@@ -2973,15 +2977,10 @@ export default function CompanyDashboard() {
                               {formatDueDate(task.dueDate, task.status)}
                             </span>
                           )}
-                          {(task as any).assignedByName && (
-                            <span className="text-sm text-muted-foreground flex items-center gap-1" data-testid={`text-requested-by-${task.id}`}>
-                              <User className="h-3 w-3" />
-                              {(task as any).assignedByName}
-                            </span>
-                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <TaskAssigneeAvatars taskId={task.id} />
                         {getPriorityBadge(task.priority)}
                         <Badge variant="secondary">{task.creditCost} credits</Badge>
                       </div>
@@ -6335,5 +6334,50 @@ function PendingApprovalCard({ task, deliverableTypes, companyId }: PendingAppro
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
+  const { data: assignees } = useQuery<any[]>({
+    queryKey: ["/api/tasks", taskId, "assignees"],
+    queryFn: async () => {
+      const response = await fetch(`/api/tasks/${taskId}/assignees`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  if (!assignees || assignees.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid={`text-unassigned-${taskId}`}>Unassigned</span>
+    );
+  }
+
+  const visible = assignees.slice(0, 3);
+  const overflow = assignees.length - 3;
+
+  return (
+    <div className="flex items-center -space-x-1.5" data-testid={`assignee-avatars-${taskId}`}>
+      {visible.map((a: any) => (
+        <Tooltip key={a.userId}>
+          <TooltipTrigger asChild>
+            <Avatar className="h-6 w-6 border-2 border-background">
+              <AvatarFallback className="text-[9px]">
+                {(a.userName || "?").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {a.userName || a.userEmail}
+          </TooltipContent>
+        </Tooltip>
+      ))}
+      {overflow > 0 && (
+        <Avatar className="h-6 w-6 border-2 border-background">
+          <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
+        </Avatar>
+      )}
+    </div>
   );
 }

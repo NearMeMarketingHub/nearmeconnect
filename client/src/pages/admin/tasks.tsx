@@ -617,6 +617,9 @@ export default function AdminTasks() {
                             </Badge>
                           )}
                         </div>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
                         <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
                           <Link 
                             href={`/admin/companies/${task.companyId}`}
@@ -630,15 +633,6 @@ export default function AdminTasks() {
                             <Calendar className="w-3 h-3 inline mr-1" />
                             {formatDueDate(task.dueDate, task.status)}
                           </span>
-                          {(task as any).assignedByName && (
-                            <>
-                              <span className="text-muted-foreground">•</span>
-                              <span className="text-muted-foreground" data-testid={`text-requested-by-${task.id}`}>
-                                <User className="w-3 h-3 inline mr-1" />
-                                {(task as any).assignedByName}
-                              </span>
-                            </>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -785,7 +779,11 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
     staleTime: 30000,
   });
 
-  if (!assignees || assignees.length === 0) return null;
+  if (!assignees || assignees.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid={`text-unassigned-${taskId}`}>Unassigned</span>
+    );
+  }
 
   const visible = assignees.slice(0, 3);
   const overflow = assignees.length - 3;
