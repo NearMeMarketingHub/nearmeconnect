@@ -22,12 +22,15 @@ import {
   ChevronLeft,
   Tag,
   User,
+  Users,
+  FolderOpen,
   Loader2,
   List,
   LayoutGrid,
   Kanban,
 } from "lucide-react";
 import { TaskBoardView } from "@/components/task-board-view";
+import { TaskGroupedView } from "@/components/task-grouped-view";
 import { Link, useLocation } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -44,7 +47,7 @@ type StatusFilter = "all" | "pending" | "in_progress" | "review" | "approved" | 
 type AssignmentFilter = "all_tasks" | "assigned_to_me";
 
 export default function AdminTasks() {
-  const [viewMode, setViewMode] = useState<"list" | "category" | "stage">("list");
+  const [viewMode, setViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage">("list");
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all_tasks");
@@ -84,6 +87,37 @@ export default function AdminTasks() {
     },
     enabled: !!companies && companies.length > 0,
   });
+
+  const { data: adminUsers = [] } = useQuery<{ id: string; firstName: string; lastName: string; email: string }[]>({
+    queryKey: ["/api/admin/users"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: companyUsers = [] } = useQuery<{ id: string; firstName: string; lastName: string; email: string }[]>({
+    queryKey: ["/api/admin/companies", selectedCompany, "users"],
+    queryFn: async () => {
+      if (selectedCompany === "all") return [];
+      const res = await fetch(`/api/admin/companies/${selectedCompany}/users`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: selectedCompany !== "all",
+  });
+
+  const userMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const u of adminUsers) {
+      map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
+    }
+    for (const u of companyUsers) {
+      map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
+    }
+    return map;
+  }, [adminUsers, companyUsers]);
 
   const getCampaignName = (campaignRequestId: string | null) => {
     if (!campaignRequestId || !campaignRequests) return null;
@@ -523,7 +557,7 @@ export default function AdminTasks() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-1" data-testid="view-mode-toggle">
+        <div className="flex items-center justify-end gap-1 flex-wrap" data-testid="view-mode-toggle">
           <Button
             variant={viewMode === "list" ? "default" : "ghost"}
             size="sm"
@@ -534,13 +568,31 @@ export default function AdminTasks() {
             List
           </Button>
           <Button
+            variant={viewMode === "by-assignee" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("by-assignee")}
+            data-testid="view-toggle-by-assignee"
+          >
+            <Users className="w-4 h-4 mr-1" />
+            By Assignee
+          </Button>
+          <Button
+            variant={viewMode === "by-category" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("by-category")}
+            data-testid="view-toggle-by-category"
+          >
+            <FolderOpen className="w-4 h-4 mr-1" />
+            By Category
+          </Button>
+          <Button
             variant={viewMode === "category" ? "default" : "ghost"}
             size="sm"
             onClick={() => setViewMode("category")}
             data-testid="view-toggle-category"
           >
             <LayoutGrid className="w-4 h-4 mr-1" />
-            Category
+            Category Board
           </Button>
           <Button
             variant={viewMode === "stage" ? "default" : "ghost"}
@@ -549,11 +601,20 @@ export default function AdminTasks() {
             data-testid="view-toggle-stage"
           >
             <Kanban className="w-4 h-4 mr-1" />
-            Stage
+            Stage Board
           </Button>
         </div>
 
-        {viewMode !== "list" ? (
+        {viewMode === "by-assignee" || viewMode === "by-category" ? (
+          <TaskGroupedView
+            tasks={filteredTasks}
+            groupBy={viewMode === "by-assignee" ? "assignee" : "category"}
+            categories={allCategories || []}
+            userMap={userMap}
+            onTaskClick={setSelectedTask}
+            getCompanyName={getCompanyName}
+          />
+        ) : viewMode !== "list" ? (
           <TaskBoardView
             tasks={filteredTasks}
             categories={allCategories || []}

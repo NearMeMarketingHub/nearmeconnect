@@ -101,6 +101,7 @@ import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
 import { TaskBoardView } from "@/components/task-board-view";
+import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -404,7 +405,7 @@ export default function CompanyDashboard() {
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
   const [companyTaskPage, setCompanyTaskPage] = useState(1);
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
-  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "category" | "stage">("list");
+  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage">("list");
   const COMPANY_TASKS_PER_PAGE = 10;
   
   // Task form state
@@ -543,6 +544,19 @@ export default function CompanyDashboard() {
     },
     enabled: !!companyId,
   });
+
+  const assigneeUserMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of assignees || []) {
+      map[a.id] = a.name;
+    }
+    for (const u of companyUsers) {
+      if (!map[u.id]) {
+        map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
+      }
+    }
+    return map;
+  }, [assignees, companyUsers]);
 
   const { data: transactions = [] } = useQuery<CreditTransaction[]>({
     queryKey: ["/api/credit-transactions", { companyId }],
@@ -2961,7 +2975,7 @@ export default function CompanyDashboard() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center gap-1" data-testid="company-view-mode-toggle">
+              <div className="flex items-center gap-1 flex-wrap" data-testid="company-view-mode-toggle">
                 <Button
                   variant={companyTaskViewMode === "list" ? "default" : "ghost"}
                   size="sm"
@@ -2972,13 +2986,31 @@ export default function CompanyDashboard() {
                   List
                 </Button>
                 <Button
+                  variant={companyTaskViewMode === "by-assignee" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("by-assignee")}
+                  data-testid="company-view-toggle-by-assignee"
+                >
+                  <Users className="w-4 h-4 mr-1" />
+                  By Assignee
+                </Button>
+                <Button
+                  variant={companyTaskViewMode === "by-category" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("by-category")}
+                  data-testid="company-view-toggle-by-category"
+                >
+                  <FolderOpen className="w-4 h-4 mr-1" />
+                  By Category
+                </Button>
+                <Button
                   variant={companyTaskViewMode === "category" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setCompanyTaskViewMode("category")}
                   data-testid="company-view-toggle-category"
                 >
                   <LayoutGrid className="w-4 h-4 mr-1" />
-                  Category
+                  Category Board
                 </Button>
                 <Button
                   variant={companyTaskViewMode === "stage" ? "default" : "ghost"}
@@ -2987,18 +3019,26 @@ export default function CompanyDashboard() {
                   data-testid="company-view-toggle-stage"
                 >
                   <Kanban className="w-4 h-4 mr-1" />
-                  Stage
+                  Stage Board
                 </Button>
               </div>
             </div>
 
-            {companyTaskViewMode !== "list" && tasksLoading ? (
+            {(companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") ? (
+              <TaskGroupedView
+                tasks={filteredCompanyTasks}
+                groupBy={companyTaskViewMode === "by-assignee" ? "assignee" : "category"}
+                categories={taskCategoriesData || []}
+                userMap={assigneeUserMap}
+                onTaskClick={setSelectedTask}
+              />
+            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") && tasksLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : companyTaskViewMode !== "list" ? (
+            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") ? (
               <TaskBoardView
                 tasks={filteredCompanyTasks}
                 categories={taskCategoriesData || []}
