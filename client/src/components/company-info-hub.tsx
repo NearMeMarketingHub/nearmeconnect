@@ -75,12 +75,15 @@ const KNOWLEDGE_SECTIONS = [
   { key: "resources" as const, label: "Resources", icon: BookOpen, description: "Reference materials, templates, guides" },
 ] as const;
 
+type CredentialWithMeta = CompanyCredential & { hasPassword?: boolean };
+
 // ─── Credential row ───────────────────────────────────────────────────────────
-function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId: string }) {
+function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyId: string }) {
   const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [hasPassword, setHasPassword] = useState(true); // assume password exists until proven otherwise
+  // Use server-provided hasPassword when available; fall back to false (safe default)
+  const [hasPassword, setHasPassword] = useState(cred.hasPassword ?? false);
   const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
   const { toast } = useToast();
 

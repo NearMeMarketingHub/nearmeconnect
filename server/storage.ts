@@ -2462,7 +2462,7 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select().from(companyCredentials)
       .where(eq(companyCredentials.companyId, companyId))
       .orderBy(companyCredentials.createdAt);
-    // Always strip password from list responses — admins use the /reveal endpoint
+    // Strip actual password value — admins use /reveal endpoint to access it
     return rows.map(r => ({ ...r, password: null }));
   }
 

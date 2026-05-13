@@ -3680,7 +3680,14 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       const credentials = await storage.getCompanyCredentials(req.params.id);
-      res.json(credentials);
+      // Enrich with hasPassword boolean so clients can render reveal UI correctly
+      // without ever returning the actual password value in list responses
+      const enriched = credentials.map(c => ({
+        ...c,
+        password: null,
+        hasPassword: c.password !== null,
+      }));
+      res.json(enriched);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch credentials" });
     }
@@ -3703,8 +3710,8 @@ export async function registerRoutes(
         category: category || null,
       });
       res.status(201).json(credential);
-    } catch (error: any) {
-      if (error?.message?.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
         return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
       }
       res.status(500).json({ error: "Failed to create credential" });
@@ -3728,8 +3735,8 @@ export async function registerRoutes(
       if (category !== undefined) allowedFields.category = category || null;
       const updated = await storage.updateCompanyCredential(req.params.credId, allowedFields);
       res.json(updated);
-    } catch (error: any) {
-      if (error?.message?.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
         return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
       }
       res.status(500).json({ error: "Failed to update credential" });
@@ -3762,6 +3769,9 @@ export async function registerRoutes(
       res.json({ password });
     } catch (error) {
       console.error("Failed to reveal credential:", error);
+      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
+      }
       res.status(500).json({ error: "Failed to reveal credential" });
     }
   });
