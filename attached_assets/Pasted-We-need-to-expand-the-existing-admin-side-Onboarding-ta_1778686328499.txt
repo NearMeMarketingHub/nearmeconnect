@@ -1,0 +1,86 @@
+We need to expand the existing admin-side Onboarding tab in the company dashboard into a full Company Information Hub.
+
+Important context:
+Do not build this as a separate disconnected feature from scratch if the current onboarding tab and onboarding API can be extended.
+The company dashboard already has an Onboarding tab and onboarding data flow. Use that as the foundation.
+
+Goal:
+Create an admin-side Company Information Hub for each company where Agency Admins can:
+1. view onboarding details
+2. edit/update onboarding details after submission
+3. securely manage credentials and login information
+4. store ongoing company knowledge such as:
+   - links
+   - profile information
+   - ideas/strategies
+   - resources/reference info
+
+Scope:
+This is for the admin side only, inside each company dashboard.
+Clients should not gain access to this admin-side editing/management experience.
+
+Current state:
+- the admin company dashboard already has an Onboarding tab
+- onboarding data can already be fetched
+- onboarding data is currently mostly displayed as a read-only summary
+- login credentials are already part of onboarding data, but the admin experience needs to be expanded significantly
+- there is not currently a true centralized company information hub inside the app
+
+What needs to be built:
+Phase 1:
+- allow Agency Admins to view the full submitted onboarding information in a more useful admin-friendly way
+- allow Agency Admins to edit/update onboarding information from within the existing company dashboard onboarding area
+- preserve the existing onboarding completion flow for clients
+
+Phase 2:
+- add an admin-only credentials/login management section within this hub
+- credentials/login entries should be handled more carefully than normal text fields
+- support viewing, editing, and adding credential/access details received during onboarding or afterward
+- credentials should be masked/protected by default where appropriate, while still being usable by admins
+
+Phase 3:
+- expand the same area into a broader Company Information Hub for ongoing company knowledge
+- include sections for:
+  - company links
+  - profile information
+  - ideas/strategies
+  - resources/reference info
+- this should become the main admin-side place to keep important company reference information in one space
+
+Expected behavior:
+- Agency Admins can open a company dashboard and go to the onboarding/company info area
+- they can clearly view submitted onboarding information
+- they can edit and save onboarding information
+- they can manage credentials/login information from the same overall hub
+- they can add and update broader company reference information over time
+- the hub stays admin-side only
+- the client onboarding experience and client restrictions remain intact
+
+Important constraints:
+- do not break the existing client onboarding flow
+- do not expose admin-only company information to client-side users
+- do not remove existing onboarding data
+- do not redesign unrelated parts of the company dashboard
+- keep this centered in the existing company dashboard onboarding/company info area if possible
+- keep the implementation organized so onboarding details, credentials, and ongoing company knowledge are clearly separated within the hub
+
+Implementation guidance:
+- reuse the existing onboarding tab and API/data structures where possible
+- add whatever schema/storage changes are necessary for the broader company info sections if they do not already exist
+- keep credentials/login info separate from ordinary notes/reference content
+- make the UI structured and easy to scan, not one giant form
+- prefer sections/cards/tabs inside the company dashboard experience
+- keep Agency Admin permissions enforced throughout
+
+Please provide:
+1. the cleanest implementation plan
+2. what existing onboarding pieces can be reused
+3. what new schema/storage is needed for the broader company info hub
+4. what UI sections should exist inside the hub
+5. the files/components/routes involved
+6. a QA checklist
+
+If this is too large for one safe pass, implement it in a clean phased way starting with:
+1. editable admin onboarding details
+2. admin credential management
+3. broader company knowledge sections
