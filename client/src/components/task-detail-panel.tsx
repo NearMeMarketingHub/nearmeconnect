@@ -240,7 +240,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       }
       return { previousTasks, previousCompanyTasks, previousTask };
     },
-    onSuccess: (updatedTask: Task) => {
+    onSuccess: (updatedTask: Task, mutationData: Partial<Task>, context: any) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
         old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
       );
@@ -250,8 +250,11 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
         );
       }
       queryClient.setQueryData(["/api/tasks", updatedTask.id], updatedTask);
+      // Only invalidate credit-related queries when a credit-affecting status
+      // was explicitly included in this mutation AND it differs from the prior status
       const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
-      if (updatedTask.status && creditStatuses.has(updatedTask.status)) {
+      const previousStatus = context?.previousTask?.status;
+      if (mutationData.status && creditStatuses.has(mutationData.status) && mutationData.status !== previousStatus) {
         queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
         queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
         queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
