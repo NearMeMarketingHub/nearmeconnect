@@ -97,6 +97,7 @@ import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
+import { CompanyInfoHub } from "@/components/company-info-hub";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -4368,145 +4369,9 @@ export default function CompanyDashboard() {
             )}
           </TabsContent>
 
-          {/* Onboarding Tab */}
+          {/* Company Info / Onboarding Tab */}
           <TabsContent value="onboarding" className="space-y-4">
-            {onboardingData ? (
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Onboarding Checklist</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      {onboardingData.socialProfilesListed ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span>Social media profiles listed</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {(
-                        (onboardingData.youtubeInviteDate || onboardingData.youtubeInviteNA) &&
-                        (onboardingData.youtubeFeatureEligibilityDate || onboardingData.youtubeFeatureNA) &&
-                        (onboardingData.metaBusinessInviteDate || onboardingData.metaBusinessNA) &&
-                        (onboardingData.googleBusinessInviteDate || onboardingData.googleBusinessNA)
-                      ) ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span>Access invitations sent</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {onboardingData.loginCredentialsProvided ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span>Login credentials provided</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {onboardingData.brandAssetsProvided ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span>Brand assets shared</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {onboardingData.seasonalPreferencesConfirmed ? (
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-muted-foreground" />
-                      )}
-                      <span>Seasonal preferences confirmed</span>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                {onboardingData.authorizationName && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Authorization</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Authorized by</p>
-                          <p className="font-medium">{onboardingData.authorizationName}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">Date</p>
-                          <p className="font-medium">
-                            {onboardingData.authorizationDate 
-                              ? new Date(onboardingData.authorizationDate).toLocaleDateString() 
-                              : "-"}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-                
-                {onboardingData.socialPlatforms && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Social Platforms</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {(() => {
-                          try {
-                            const platforms = JSON.parse(onboardingData.socialPlatforms);
-                            const activePlatforms = platforms.filter((p: any) => p.exists);
-                            if (activePlatforms.length === 0) {
-                              return <p className="text-muted-foreground">No platforms listed</p>;
-                            }
-                            return activePlatforms.map((p: any) => (
-                              <div key={p.platform} className="flex items-center justify-between p-3 border rounded-lg">
-                                <div>
-                                  <p className="font-medium capitalize">{p.platform.replace("_", " ")}</p>
-                                  {p.handle && <p className="text-sm text-muted-foreground">{p.handle}</p>}
-                                </div>
-                                {p.accountEmail && (
-                                  <p className="text-sm text-muted-foreground">{p.accountEmail}</p>
-                                )}
-                              </div>
-                            ));
-                          } catch {
-                            return <p className="text-muted-foreground">Unable to parse platform data</p>;
-                          }
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-                
-                {onboardingData.brandAssetLinks && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Brand Assets</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="whitespace-pre-wrap text-sm">{onboardingData.brandAssetLinks}</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="py-8 text-center">
-                  <FileEdit className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">
-                    Client has not started onboarding yet.
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    The client can complete their onboarding form from their portal.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {companyId && <CompanyInfoHub companyId={companyId} />}
           </TabsContent>
 
           {/* Cadences Tab */}

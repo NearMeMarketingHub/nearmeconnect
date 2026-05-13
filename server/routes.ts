@@ -3600,6 +3600,131 @@ export async function registerRoutes(
     }
   });
 
+  // Admin-only: credentials CRUD
+  app.get("/api/companies/:id/credentials", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const credentials = await storage.getCompanyCredentials(req.params.id);
+      res.json(credentials);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch credentials" });
+    }
+  });
+
+  app.post("/api/companies/:id/credentials", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { label, username, password, url, notes, category } = req.body;
+      if (!label?.trim()) return res.status(400).json({ error: "Label is required" });
+      const credential = await storage.createCompanyCredential({
+        companyId: req.params.id,
+        label: label.trim(),
+        username: username || null,
+        password: password || null,
+        url: url || null,
+        notes: notes || null,
+        category: category || null,
+      });
+      res.status(201).json(credential);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create credential" });
+    }
+  });
+
+  app.patch("/api/companies/:id/credentials/:credId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getCompanyCredential(req.params.credId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      const updated = await storage.updateCompanyCredential(req.params.credId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update credential" });
+    }
+  });
+
+  app.delete("/api/companies/:id/credentials/:credId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getCompanyCredential(req.params.credId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      await storage.deleteCompanyCredential(req.params.credId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete credential" });
+    }
+  });
+
+  // Admin-only: knowledge hub CRUD
+  app.get("/api/companies/:id/knowledge", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const items = await storage.getCompanyKnowledgeItems(req.params.id);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch knowledge items" });
+    }
+  });
+
+  app.post("/api/companies/:id/knowledge", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { section, title, content, url, sortOrder } = req.body;
+      if (!section || !title?.trim()) return res.status(400).json({ error: "Section and title are required" });
+      const item = await storage.createCompanyKnowledgeItem({
+        companyId: req.params.id,
+        section,
+        title: title.trim(),
+        content: content || null,
+        url: url || null,
+        sortOrder: sortOrder ?? 0,
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create knowledge item" });
+    }
+  });
+
+  app.patch("/api/companies/:id/knowledge/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
+      const updated = await storage.updateCompanyKnowledgeItem(req.params.itemId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update knowledge item" });
+    }
+  });
+
+  app.delete("/api/companies/:id/knowledge/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
+      await storage.deleteCompanyKnowledgeItem(req.params.itemId);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete knowledge item" });
+    }
+  });
+
   app.post("/api/companies/:id/onboarding/complete", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;

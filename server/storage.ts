@@ -100,6 +100,10 @@ import {
   type InsertSubscriptionTierDefinition,
   type MonthlyReportNote,
   type InsertMonthlyReportNote,
+  type CompanyCredential,
+  type InsertCompanyCredential,
+  type CompanyKnowledgeItem,
+  type InsertCompanyKnowledgeItem,
   tierCredits,
   type SubscriptionTier,
   companies,
@@ -153,6 +157,8 @@ import {
   cadences,
   subscriptionTierDefinitions,
   monthlyReportNotes,
+  companyCredentials,
+  companyKnowledgeItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql } from "drizzle-orm";
@@ -426,6 +432,20 @@ export interface IStorage {
   getMonthlyReportNote(companyId: string, month: number, year: number): Promise<MonthlyReportNote | undefined>;
   getMonthlyReportNotesByMonth(month: number, year: number): Promise<MonthlyReportNote[]>;
   upsertMonthlyReportNote(data: InsertMonthlyReportNote): Promise<MonthlyReportNote>;
+
+  // Company Credentials (admin-managed)
+  getCompanyCredentials(companyId: string): Promise<CompanyCredential[]>;
+  getCompanyCredential(id: string): Promise<CompanyCredential | undefined>;
+  createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential>;
+  updateCompanyCredential(id: string, data: Partial<CompanyCredential>): Promise<CompanyCredential | undefined>;
+  deleteCompanyCredential(id: string): Promise<void>;
+
+  // Company Knowledge Items (admin-managed)
+  getCompanyKnowledgeItems(companyId: string): Promise<CompanyKnowledgeItem[]>;
+  getCompanyKnowledgeItem(id: string): Promise<CompanyKnowledgeItem | undefined>;
+  createCompanyKnowledgeItem(data: InsertCompanyKnowledgeItem): Promise<CompanyKnowledgeItem>;
+  updateCompanyKnowledgeItem(id: string, data: Partial<CompanyKnowledgeItem>): Promise<CompanyKnowledgeItem | undefined>;
+  deleteCompanyKnowledgeItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2435,6 +2455,70 @@ export class DatabaseStorage implements IStorage {
       .values({ ...data, createdAt: now, updatedAt: now })
       .returning();
     return created;
+  }
+
+  async getCompanyCredentials(companyId: string): Promise<CompanyCredential[]> {
+    return db.select().from(companyCredentials)
+      .where(eq(companyCredentials.companyId, companyId))
+      .orderBy(companyCredentials.createdAt);
+  }
+
+  async getCompanyCredential(id: string): Promise<CompanyCredential | undefined> {
+    const [row] = await db.select().from(companyCredentials).where(eq(companyCredentials.id, id));
+    return row;
+  }
+
+  async createCompanyCredential(data: InsertCompanyCredential): Promise<CompanyCredential> {
+    const [row] = await db.insert(companyCredentials).values({
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async updateCompanyCredential(id: string, data: Partial<CompanyCredential>): Promise<CompanyCredential | undefined> {
+    const [row] = await db.update(companyCredentials)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(companyCredentials.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteCompanyCredential(id: string): Promise<void> {
+    await db.delete(companyCredentials).where(eq(companyCredentials.id, id));
+  }
+
+  async getCompanyKnowledgeItems(companyId: string): Promise<CompanyKnowledgeItem[]> {
+    return db.select().from(companyKnowledgeItems)
+      .where(eq(companyKnowledgeItems.companyId, companyId))
+      .orderBy(companyKnowledgeItems.section, companyKnowledgeItems.sortOrder, companyKnowledgeItems.createdAt);
+  }
+
+  async getCompanyKnowledgeItem(id: string): Promise<CompanyKnowledgeItem | undefined> {
+    const [row] = await db.select().from(companyKnowledgeItems).where(eq(companyKnowledgeItems.id, id));
+    return row;
+  }
+
+  async createCompanyKnowledgeItem(data: InsertCompanyKnowledgeItem): Promise<CompanyKnowledgeItem> {
+    const [row] = await db.insert(companyKnowledgeItems).values({
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async updateCompanyKnowledgeItem(id: string, data: Partial<CompanyKnowledgeItem>): Promise<CompanyKnowledgeItem | undefined> {
+    const [row] = await db.update(companyKnowledgeItems)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(companyKnowledgeItems.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteCompanyKnowledgeItem(id: string): Promise<void> {
+    await db.delete(companyKnowledgeItems).where(eq(companyKnowledgeItems.id, id));
   }
 }
 

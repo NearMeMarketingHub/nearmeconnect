@@ -1334,3 +1334,46 @@ export const monthlyReportTracker = pgTable("monthly_report_tracker", {
   sentAt: text("sent_at").notNull(),
   status: text("status").notNull().default("sent"),
 });
+
+// Admin-managed credentials per company (separate from client onboarding loginCredentials)
+export const companyCredentials = pgTable("company_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  label: text("label").notNull(),
+  username: text("username"),
+  password: text("password"),
+  url: text("url"),
+  notes: text("notes"),
+  category: text("category"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCompanyCredentialSchema = createInsertSchema(companyCredentials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCompanyCredential = z.infer<typeof insertCompanyCredentialSchema>;
+export type CompanyCredential = typeof companyCredentials.$inferSelect;
+
+// Admin-managed knowledge hub items per company
+export const companyKnowledgeItems = pgTable("company_knowledge_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  section: text("section").notNull(), // 'links' | 'profile' | 'ideas' | 'resources'
+  title: text("title").notNull(),
+  content: text("content"),
+  url: text("url"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCompanyKnowledgeItemSchema = createInsertSchema(companyKnowledgeItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCompanyKnowledgeItem = z.infer<typeof insertCompanyKnowledgeItemSchema>;
+export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;
