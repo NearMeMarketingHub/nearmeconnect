@@ -210,20 +210,57 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
 
   const updateTaskMutation = useMutation({
     mutationFn: async (data: Partial<Task>) => {
-      return apiRequest("PATCH", `/api/tasks/${task?.id}`, data);
+      const res = await apiRequest("PATCH", `/api/tasks/${task?.id}`, data);
+      return res.json() as Promise<Task>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
-      if (task?.campaignRequestId) {
+    onMutate: async (data) => {
+      if (data.status === undefined) return;
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
+      if (companyId) await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
+      const previousCompanyTasks = companyId
+        ? queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }])
+        : undefined;
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
+          t.id === task?.id ? { ...t, ...data } : t
+        ));
+      }
+      if (previousCompanyTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], previousCompanyTasks.map(t =>
+          t.id === task?.id ? { ...t, ...data } : t
+        ));
+      }
+      return { previousTasks, previousCompanyTasks };
+    },
+    onSuccess: (updatedTask: Task) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
+        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+      );
+      if (companyId) {
+        queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
+          old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+        );
+      }
+      queryClient.setQueryData(["/api/tasks", updatedTask.id], updatedTask);
+      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+      if (updatedTask.status && creditStatuses.has(updatedTask.status)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
+      }
+      if (updatedTask.campaignRequestId) {
         queryClient.invalidateQueries({ queryKey: ["/api/admin/campaign-requests"] });
         queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "campaign-requests"] });
       }
     },
-    onError: (error: any) => {
+    onError: (error: any, _data: any, context: any) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["/api/tasks"], context.previousTasks);
+      }
+      if (context?.previousCompanyTasks && companyId) {
+        queryClient.setQueryData(["/api/tasks", { companyId }], context.previousCompanyTasks);
+      }
       const msg = error.message || "Failed to update task";
       if (msg.toLowerCase().includes("insufficient credits")) {
         toast({

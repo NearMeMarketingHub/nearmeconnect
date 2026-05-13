@@ -93,14 +93,31 @@ export default function AdminTasks() {
 
   const updateTaskMutation = useMutation({
     mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
-      return apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
+      return res.json() as Promise<Task>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    onMutate: async ({ taskId, updates }) => {
+      if (updates.status === undefined) return;
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
+          t.id === taskId ? { ...t, ...updates } : t
+        ));
+      }
+      return { previousTasks };
+    },
+    onSuccess: (updatedTask: Task) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
+        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+      );
       toast({ title: "Task updated successfully" });
       setSelectedTask(null);
     },
-    onError: () => {
+    onError: (_err: any, _vars: any, context: any) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["/api/tasks"], context.previousTasks);
+      }
       toast({ title: "Failed to update task", variant: "destructive" });
     },
   });

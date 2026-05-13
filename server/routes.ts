@@ -1098,65 +1098,6 @@ export async function registerRoutes(
         }
       }
 
-      // ---- RECURRING TASK CREATION ON COMPLETION ----
-      if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.isRecurring && existingTask.billingPeriodStart && !req.body.endRecurrence) {
-        const company = await storage.getCompany(existingTask.companyId);
-        if (company) {
-          const { getNextBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBillingPeriod } = await import("@shared/billing");
-          const currentPeriodStart = new Date(existingTask.billingPeriodStart);
-          const nextPeriod = getNextBillingPeriod(company.billingStartDay, currentPeriodStart);
-          
-          let nextDueDate: Date | null = null;
-          let taskBillingPeriod = nextPeriod;
-          const pattern = existingTask.recurrencePattern || 'day_of_month';
-          
-          if (pattern === 'day_of_month' && existingTask.recurrenceDay) {
-            nextDueDate = getRecurringTaskDueDate(existingTask.recurrenceDay, nextPeriod);
-          } else if (pattern === 'day_of_week' && existingTask.recurrenceWeekday !== null && existingTask.recurrenceWeekOrdinal !== null) {
-            nextDueDate = getWeekdayRecurringTaskDueDate(existingTask.recurrenceWeekday, existingTask.recurrenceWeekOrdinal, nextPeriod);
-          } else if (pattern === 'biweekly' && existingTask.recurrenceWeekday !== null) {
-            const currentDueDate = existingTask.dueDate ? new Date(existingTask.dueDate) : new Date();
-            nextDueDate = new Date(currentDueDate);
-            nextDueDate.setDate(nextDueDate.getDate() + 14);
-            const targetWeekday = existingTask.recurrenceWeekday;
-            const currentWeekday = nextDueDate.getDay();
-            if (currentWeekday !== targetWeekday) {
-              let diff = targetWeekday - currentWeekday;
-              if (diff < 0) diff += 7;
-              nextDueDate.setDate(nextDueDate.getDate() + diff);
-            }
-            taskBillingPeriod = getBillingPeriod(company.billingStartDay, nextDueDate);
-          }
-          
-          if (nextDueDate) {
-            await storage.createTask({
-              companyId: existingTask.companyId,
-              title: existingTask.title,
-              description: existingTask.description,
-              notes: existingTask.notes,
-              priority: existingTask.priority,
-              creditCost: existingTask.creditCost,
-              type: existingTask.type,
-              deliverableType: existingTask.deliverableType,
-              dueDate: formatDateLocal(nextDueDate),
-              startDate: existingTask.startDate,
-              assignedBy: existingTask.assignedBy,
-              assignedTo: existingTask.assignedTo,
-              isRecurring: true,
-              recurrencePattern: existingTask.recurrencePattern,
-              recurrenceDay: existingTask.recurrenceDay,
-              recurrenceWeekday: existingTask.recurrenceWeekday,
-              recurrenceWeekOrdinal: existingTask.recurrenceWeekOrdinal,
-              billingPeriodStart: taskBillingPeriod.startStr,
-              billingPeriodEnd: taskBillingPeriod.endStr,
-              parentTaskId: existingTask.parentTaskId || existingTask.id,
-              noCredit: existingTask.noCredit,
-              approvalStatus: "approved",
-            });
-          }
-        }
-      }
-
       // ---- ADMIN OWNERSHIP CHANGE CREDIT ADJUSTMENTS ----
       if (isAdmin && req.body.taskOwnership && req.body.taskOwnership !== existingTask.taskOwnership) {
         const activeStatuses = ["in_progress", "review", "approved"];
@@ -1325,150 +1266,215 @@ export async function registerRoutes(
       }
 
       const task = await storage.updateTask(req.params.id, req.body);
-      
-      if (assigneeChanged && newAssignee) {
-        try {
-          await storage.addTaskAssignee({ taskId: existingTask.id, userId: newAssignee });
-        } catch (err) {
-          console.error("Failed to sync assignee to task_assignees:", err);
-        }
-      }
 
-      if (assigneeChanged && newAssignee) {
-        try {
-          await createAndBroadcastNotification({
-            userId: newAssignee,
-            type: "task_assigned",
-            title: "New Task Assigned",
-            message: `You have been assigned to: ${existingTask.title}`,
-            link: `/client/tasks?taskId=${existingTask.id}`,
-            createdBy: userId,
-            relatedTaskId: existingTask.id,
-          });
-          
-          const assigneeUser = await storage.getUser(newAssignee);
-          const company = await storage.getCompany(existingTask.companyId);
-          if (assigneeUser?.email && company) {
-            sendTaskAssignmentEmail({
-              recipientEmail: assigneeUser.email,
-              recipientName: [assigneeUser.firstName, assigneeUser.lastName].filter(Boolean).join(' ') || 'Team Member',
-              taskTitle: existingTask.title,
-              taskDescription: existingTask.description || undefined,
-              dueDate: existingTask.dueDate || undefined,
-              priority: existingTask.priority,
-              companyName: company.name,
-              portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
-            }).catch(err => console.error("Failed to send task assignment email:", err));
-          }
-        } catch (notifError) {
-          console.error("Failed to create task assignment notification:", notifError);
-        }
-      }
-      
-      // Auto-message and schedule close for task chats when task is completed
-      if (newStatus === "completed" && existingTask.status !== "completed") {
-        try {
-          const taskThread = await storage.getChatThreadByTask(existingTask.id);
-          if (taskThread && !taskThread.closedAt) {
-            const fiveDaysFromNow = new Date();
-            fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
-            
-            await storage.createChatMessage({
-              threadId: taskThread.id,
-              senderId: userId,
-              content: `This task has been marked as completed. This chat will automatically close in 5 days.`,
-            });
-            
-            await storage.updateChatThread(taskThread.id, {
-              autoCloseAt: fiveDaysFromNow.toISOString(),
-            });
-            
-            console.log(`Task ${existingTask.id} completed - chat ${taskThread.id} scheduled to close on ${fiveDaysFromNow.toISOString()}`);
-          }
-        } catch (chatError) {
-          console.error("Failed to send task completion message to chat:", chatError);
-        }
-      }
-      
-      // Send email notification for status changes
-      if (newStatus && newStatus !== existingTask.status && existingTask.assignedTo) {
-        try {
-          const assigneeUser = await storage.getUser(existingTask.assignedTo);
-          const company = await storage.getCompany(existingTask.companyId);
-          if (assigneeUser?.email && company) {
-            sendTaskStatusChangeEmail({
-              recipientEmail: assigneeUser.email,
-              recipientName: [assigneeUser.firstName, assigneeUser.lastName].filter(Boolean).join(' ') || 'Team Member',
-              taskTitle: existingTask.title,
-              oldStatus: existingTask.status,
-              newStatus: newStatus,
-              companyName: company.name,
-              portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
-            }).catch(err => console.error("Failed to send task status change email:", err));
-          }
-        } catch (emailError) {
-          console.error("Failed to send task status change email:", emailError);
-        }
-      }
+      // Respond immediately — the task is persisted; all side-effects run after
+      res.json(task);
 
-      // Send notification + email to company admins when agency task moves to review
-      if (newStatus === "review" && existingTask.status !== "review" && effectiveTaskOwnership === "agency") {
+      // Fire-and-forget: notifications, emails, chat, recurring tasks, campaign check, WS broadcast
+      (async () => {
         try {
-          const company = await storage.getCompany(existingTask.companyId);
-          if (company) {
-            const companyMembers = await storage.getCompanyMembers(existingTask.companyId);
-            const adminsAndOwners = companyMembers.filter(m => m.role === "company_owner" || m.role === "company_admin");
+          // Sync assignee to task_assignees join table
+          if (assigneeChanged && newAssignee) {
+            try {
+              await storage.addTaskAssignee({ taskId: existingTask.id, userId: newAssignee });
+            } catch (err) {
+              console.error("Failed to sync assignee to task_assignees:", err);
+            }
+          }
 
-            for (const admin of adminsAndOwners) {
+          // Assignee notification + email
+          if (assigneeChanged && newAssignee) {
+            try {
               await createAndBroadcastNotification({
-                userId: admin.userId,
-                type: "task_review_request",
-                title: "Task Ready for Review",
-                message: `"${existingTask.title}" is ready for your review and approval.`,
+                userId: newAssignee,
+                type: "task_assigned",
+                title: "New Task Assigned",
+                message: `You have been assigned to: ${existingTask.title}`,
                 link: `/client/tasks?taskId=${existingTask.id}`,
                 createdBy: userId,
                 relatedTaskId: existingTask.id,
               });
-
-              const adminUser = await storage.getUser(admin.userId);
-              if (adminUser?.email) {
-                sendTaskInReviewEmail({
-                  recipientEmail: adminUser.email,
-                  recipientName: [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || 'Team Member',
+              const assigneeUser = await storage.getUser(newAssignee);
+              const assigneeCompany = await storage.getCompany(existingTask.companyId);
+              if (assigneeUser?.email && assigneeCompany) {
+                sendTaskAssignmentEmail({
+                  recipientEmail: assigneeUser.email,
+                  recipientName: [assigneeUser.firstName, assigneeUser.lastName].filter(Boolean).join(' ') || 'Team Member',
                   taskTitle: existingTask.title,
-                  companyName: company.name,
+                  taskDescription: existingTask.description || undefined,
+                  dueDate: existingTask.dueDate || undefined,
+                  priority: existingTask.priority,
+                  companyName: assigneeCompany.name,
                   portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
-                }).catch(err => console.error("Failed to send task in-review email:", err));
+                }).catch(err => console.error("Failed to send task assignment email:", err));
               }
+            } catch (notifError) {
+              console.error("Failed to create task assignment notification:", notifError);
             }
           }
-        } catch (reviewNotifError) {
-          console.error("Failed to send task review notifications:", reviewNotifError);
-        }
-      }
 
-      if (newStatus && newStatus !== existingTask.status) {
-        checkProjectedUsageAndNotify(existingTask.companyId).catch(err => console.error("Projected usage check failed:", err));
-      }
-
-      // Auto-complete campaign when all associated tasks are done
-      if (newStatus === "completed" && existingTask.campaignRequestId) {
-        try {
-          const allTasks = await storage.getAllTasks();
-          const campaignTasks = allTasks.filter(t => t.campaignRequestId === existingTask.campaignRequestId);
-          const allTasksComplete = campaignTasks.every(t => t.status === "completed");
-          
-          if (allTasksComplete) {
-            await storage.updateCampaignRequest(existingTask.campaignRequestId, { status: "completed" });
-            console.log(`Campaign ${existingTask.campaignRequestId} auto-completed - all tasks done`);
+          // Recurring task creation on completion
+          if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.isRecurring && existingTask.billingPeriodStart && !req.body.endRecurrence) {
+            try {
+              const recurringCompany = await storage.getCompany(existingTask.companyId);
+              if (recurringCompany) {
+                const { getNextBillingPeriod, getRecurringTaskDueDate, getWeekdayRecurringTaskDueDate, getBillingPeriod } = await import("@shared/billing");
+                const currentPeriodStart = new Date(existingTask.billingPeriodStart);
+                const nextPeriod = getNextBillingPeriod(recurringCompany.billingStartDay, currentPeriodStart);
+                let nextDueDate: Date | null = null;
+                let taskBillingPeriod = nextPeriod;
+                const pattern = existingTask.recurrencePattern || 'day_of_month';
+                if (pattern === 'day_of_month' && existingTask.recurrenceDay) {
+                  nextDueDate = getRecurringTaskDueDate(existingTask.recurrenceDay, nextPeriod);
+                } else if (pattern === 'day_of_week' && existingTask.recurrenceWeekday !== null && existingTask.recurrenceWeekOrdinal !== null) {
+                  nextDueDate = getWeekdayRecurringTaskDueDate(existingTask.recurrenceWeekday, existingTask.recurrenceWeekOrdinal, nextPeriod);
+                } else if (pattern === 'biweekly' && existingTask.recurrenceWeekday !== null) {
+                  const currentDueDate = existingTask.dueDate ? new Date(existingTask.dueDate) : new Date();
+                  nextDueDate = new Date(currentDueDate);
+                  nextDueDate.setDate(nextDueDate.getDate() + 14);
+                  const targetWeekday = existingTask.recurrenceWeekday;
+                  const currentWeekday = nextDueDate.getDay();
+                  if (currentWeekday !== targetWeekday) {
+                    let diff = targetWeekday - currentWeekday;
+                    if (diff < 0) diff += 7;
+                    nextDueDate.setDate(nextDueDate.getDate() + diff);
+                  }
+                  taskBillingPeriod = getBillingPeriod(recurringCompany.billingStartDay, nextDueDate);
+                }
+                if (nextDueDate) {
+                  await storage.createTask({
+                    companyId: existingTask.companyId,
+                    title: existingTask.title,
+                    description: existingTask.description,
+                    notes: existingTask.notes,
+                    priority: existingTask.priority,
+                    creditCost: existingTask.creditCost,
+                    type: existingTask.type,
+                    deliverableType: existingTask.deliverableType,
+                    dueDate: formatDateLocal(nextDueDate),
+                    startDate: existingTask.startDate,
+                    assignedBy: existingTask.assignedBy,
+                    assignedTo: existingTask.assignedTo,
+                    isRecurring: true,
+                    recurrencePattern: existingTask.recurrencePattern,
+                    recurrenceDay: existingTask.recurrenceDay,
+                    recurrenceWeekday: existingTask.recurrenceWeekday,
+                    recurrenceWeekOrdinal: existingTask.recurrenceWeekOrdinal,
+                    billingPeriodStart: taskBillingPeriod.startStr,
+                    billingPeriodEnd: taskBillingPeriod.endStr,
+                    parentTaskId: existingTask.parentTaskId || existingTask.id,
+                    noCredit: existingTask.noCredit,
+                    approvalStatus: "approved",
+                  });
+                }
+              }
+            } catch (recurringErr) {
+              console.error("Failed to create recurring task instance:", recurringErr);
+            }
           }
-        } catch (campaignErr) {
-          console.error("Failed to auto-complete campaign:", campaignErr);
+
+          // Auto-message and schedule close for task chats when task is completed
+          if (newStatus === "completed" && existingTask.status !== "completed") {
+            try {
+              const taskThread = await storage.getChatThreadByTask(existingTask.id);
+              if (taskThread && !taskThread.closedAt) {
+                const fiveDaysFromNow = new Date();
+                fiveDaysFromNow.setDate(fiveDaysFromNow.getDate() + 5);
+                await storage.createChatMessage({
+                  threadId: taskThread.id,
+                  senderId: userId,
+                  content: `This task has been marked as completed. This chat will automatically close in 5 days.`,
+                });
+                await storage.updateChatThread(taskThread.id, {
+                  autoCloseAt: fiveDaysFromNow.toISOString(),
+                });
+                console.log(`Task ${existingTask.id} completed - chat ${taskThread.id} scheduled to close on ${fiveDaysFromNow.toISOString()}`);
+              }
+            } catch (chatError) {
+              console.error("Failed to send task completion message to chat:", chatError);
+            }
+          }
+
+          // Status change email to assignee
+          if (newStatus && newStatus !== existingTask.status && existingTask.assignedTo) {
+            try {
+              const statusEmailUser = await storage.getUser(existingTask.assignedTo);
+              const statusEmailCompany = await storage.getCompany(existingTask.companyId);
+              if (statusEmailUser?.email && statusEmailCompany) {
+                sendTaskStatusChangeEmail({
+                  recipientEmail: statusEmailUser.email,
+                  recipientName: [statusEmailUser.firstName, statusEmailUser.lastName].filter(Boolean).join(' ') || 'Team Member',
+                  taskTitle: existingTask.title,
+                  oldStatus: existingTask.status,
+                  newStatus: newStatus,
+                  companyName: statusEmailCompany.name,
+                  portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
+                }).catch(err => console.error("Failed to send task status change email:", err));
+              }
+            } catch (emailError) {
+              console.error("Failed to send task status change email:", emailError);
+            }
+          }
+
+          // Review notification: notify company admins when agency task moves to review
+          if (newStatus === "review" && existingTask.status !== "review" && effectiveTaskOwnership === "agency") {
+            try {
+              const reviewCompany = await storage.getCompany(existingTask.companyId);
+              if (reviewCompany) {
+                const companyMembers = await storage.getCompanyMembers(existingTask.companyId);
+                const adminsAndOwners = companyMembers.filter(m => m.role === "company_owner" || m.role === "company_admin");
+                for (const admin of adminsAndOwners) {
+                  await createAndBroadcastNotification({
+                    userId: admin.userId,
+                    type: "task_review_request",
+                    title: "Task Ready for Review",
+                    message: `"${existingTask.title}" is ready for your review and approval.`,
+                    link: `/client/tasks?taskId=${existingTask.id}`,
+                    createdBy: userId,
+                    relatedTaskId: existingTask.id,
+                  });
+                  const adminUser = await storage.getUser(admin.userId);
+                  if (adminUser?.email) {
+                    sendTaskInReviewEmail({
+                      recipientEmail: adminUser.email,
+                      recipientName: [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || 'Team Member',
+                      taskTitle: existingTask.title,
+                      companyName: reviewCompany.name,
+                      portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
+                    }).catch(err => console.error("Failed to send task in-review email:", err));
+                  }
+                }
+              }
+            } catch (reviewNotifError) {
+              console.error("Failed to send task review notifications:", reviewNotifError);
+            }
+          }
+
+          // Projected usage check
+          if (newStatus && newStatus !== existingTask.status) {
+            checkProjectedUsageAndNotify(existingTask.companyId).catch(err => console.error("Projected usage check failed:", err));
+          }
+
+          // Campaign auto-complete: targeted query replaces full table scan
+          if (newStatus === "completed" && existingTask.campaignRequestId) {
+            try {
+              const campaignTasks = await storage.getTasksByCampaignRequest(existingTask.campaignRequestId);
+              const allTasksComplete = campaignTasks.every(t => t.status === "completed");
+              if (allTasksComplete) {
+                await storage.updateCampaignRequest(existingTask.campaignRequestId, { status: "completed" });
+                console.log(`Campaign ${existingTask.campaignRequestId} auto-completed - all tasks done`);
+              }
+            } catch (campaignErr) {
+              console.error("Failed to auto-complete campaign:", campaignErr);
+            }
+          }
+
+          // WebSocket broadcast after all side-effects complete
+          broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications", "/api/admin/campaign-requests"]);
+        } catch (sideEffectErr) {
+          console.error("Task update side-effect error:", sideEffectErr);
         }
-      }
-      
-      broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications", "/api/admin/campaign-requests"]);
-      res.json(task);
+      })();
     } catch (error: any) {
       console.error("Failed to update task:", error?.message || error, error?.stack);
       res.status(500).json({ error: "Failed to update task" });
