@@ -1,0 +1,52 @@
+We need to improve the task listings so they show more useful task context at a glance.
+
+This must apply to:
+- the main task listing
+- the company-specific task listings
+
+Current problem:
+The task listings do not show enough detail, and the person displayed on the task is not the correct one for this use case.
+
+What needs to change:
+1. Show a truncated task description/summary on the task listing so users can understand the task without opening it.
+2. Show the correct assignee on the task listing.
+3. Do not show the requester/creator in place of the assignee.
+
+Important clarification:
+The listing should show the person actually assigned to the task, not the person who created/requested it.
+
+Expected behavior:
+- each task listing shows a short description/summary preview
+- the preview is truncated so task rows/cards do not become oversized
+- each task listing shows the actual assignee
+- if no assignee exists, show a clear fallback like “Unassigned”
+- do not replace the assignee with the requester/creator name
+- keep the layout clean and readable
+- keep the display consistent between the main task listing and company-specific task listings
+
+Please review the current task list rendering and make the cleanest fix.
+
+Focus on:
+- where the task listings currently render requester/creator information
+- where the task description should be displayed in the list
+- keeping the preview length visually reasonable
+- keeping both listing types consistent
+
+Important constraints:
+- do not redesign the full task pages
+- do not change task assignment logic itself
+- do not change task creation/request logic
+- keep the fix focused on what the task listings display
+
+Implementation guidance:
+- use the actual assignee field/data source for the display name
+- if multiple assignees exist, use the clearest existing assignment pattern already used in the app
+- show a truncated description preview with a sensible visual limit
+- keep both the main task listing and company-specific task listings consistent
+
+Please provide:
+1. the files/components updated
+2. how the assignee display was corrected
+3. how the description preview was added/truncated
+4. any fallback behavior for unassigned tasks
+5. a brief QA checklist
