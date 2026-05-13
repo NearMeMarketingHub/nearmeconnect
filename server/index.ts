@@ -28,9 +28,10 @@ async function migrateOnboardingCredentials() {
         continue;
       }
 
-      // Check for existing onboarding-submitted credentials to avoid duplicates
+      // Check ALL existing company credentials (any category) to avoid duplicates — a label
+      // already present in any category is treated as already migrated.
       const existing = await storage.getCompanyCredentials(companyId);
-      const existingLabels = new Set(existing.filter(c => c.category === "onboarding-submitted").map(c => c.label));
+      const existingLabels = new Set(existing.map(c => c.label));
 
       // Only migrate when encryption is configured — preserve plaintext if the key is missing
       if (!process.env.CREDENTIAL_ENCRYPTION_KEY) {

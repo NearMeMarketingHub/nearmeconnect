@@ -3630,31 +3630,35 @@ export async function registerRoutes(
       delete body.loginCredentials;
 
       if (loginCredentialsJson) {
+        let creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }>;
         try {
-          const creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = JSON.parse(loginCredentialsJson);
-          if (Array.isArray(creds) && creds.length > 0) {
-            // Replace all existing onboarding-submitted credentials to avoid duplicates on re-saves
-            const existingCreds = await storage.getCompanyCredentials(companyId);
-            await Promise.all(
-              existingCreds.filter(c => c.category === "onboarding-submitted").map(c => storage.deleteCompanyCredential(c.id))
-            );
-            await Promise.all(creds.map(c => storage.createCompanyCredential({
-              companyId,
-              label: c.platform || "Unknown Platform",
-              username: c.username || null,
-              password: c.password || null,
-              url: null,
-              notes: [
-                c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
-                c.recoveryNotes || null,
-              ].filter(Boolean).join("\n") || null,
-              category: "onboarding-submitted",
-            })));
-            body.loginCredentialsProvided = true;
-            log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
-          }
+          creds = JSON.parse(loginCredentialsJson);
         } catch {
-          // Malformed JSON — skip credential migration silently
+          // Malformed JSON — skip credential handling; do not surface to caller
+          creds = [];
+        }
+        if (Array.isArray(creds) && creds.length > 0) {
+          // Write-first-then-prune: create new credentials before deleting old ones so
+          // a write failure never causes data loss. Encryption errors bubble up and abort
+          // the entire request rather than being silently swallowed.
+          const existingCreds = await storage.getCompanyCredentials(companyId);
+          const toDelete = existingCreds.filter(c => c.category === "onboarding-submitted");
+          await Promise.all(creds.map(c => storage.createCompanyCredential({
+            companyId,
+            label: c.platform || "Unknown Platform",
+            username: c.username || null,
+            password: c.password || null,
+            url: null,
+            notes: [
+              c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
+              c.recoveryNotes || null,
+            ].filter(Boolean).join("\n") || null,
+            category: "onboarding-submitted",
+          })));
+          // All writes succeeded — safe to prune old set now
+          await Promise.all(toDelete.map(c => storage.deleteCompanyCredential(c.id)));
+          body.loginCredentialsProvided = true;
+          log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
         }
       }
 
@@ -3745,9 +3749,10 @@ export async function registerRoutes(
       const credentials: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = req.body.credentials ?? [];
       if (!Array.isArray(credentials)) return res.status(400).json({ error: "credentials must be an array" });
 
-      // Atomic replace: clear all existing onboarding-submitted credentials then recreate
+      // Write-first-then-prune: write new credentials before deleting old ones so a
+      // failed write never causes data loss. Only delete the old set after new set is committed.
       const existing = await storage.getCompanyCredentials(companyId);
-      await Promise.all(existing.filter(c => c.category === "onboarding-submitted").map(c => storage.deleteCompanyCredential(c.id)));
+      const toDelete = existing.filter(c => c.category === "onboarding-submitted");
       const created = await Promise.all(credentials.map(c => storage.createCompanyCredential({
         companyId,
         label: c.platform?.trim() || "Unknown Platform",
@@ -3760,6 +3765,8 @@ export async function registerRoutes(
         ].filter(Boolean).join("\n") || null,
         category: "onboarding-submitted",
       })));
+      // All writes succeeded — now safe to remove the old set
+      await Promise.all(toDelete.map(c => storage.deleteCompanyCredential(c.id)));
       res.json({ count: created.length });
     } catch (error) {
       if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
