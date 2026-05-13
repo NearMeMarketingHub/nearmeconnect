@@ -1595,7 +1595,11 @@ export default function CompanyDashboard() {
     {
       const year = taskMonthDate.getFullYear();
       const month = taskMonthDate.getMonth() + 1;
+      const todayStr = new Date().toISOString().slice(0, 10);
       filtered = filtered.filter(t => {
+        // Overdue + incomplete tasks are always visible regardless of selected month
+        const isIncomplete = t.status !== "completed" && t.approvalStatus !== "rejected";
+        if (isIncomplete && t.dueDate && t.dueDate.slice(0, 10) < todayStr) return true;
         if (!t.dueDate) {
           if (t.status === "completed" && t.completedAt) {
             const cd = new Date(t.completedAt);
@@ -1630,8 +1634,12 @@ export default function CompanyDashboard() {
     const nextMonthYear = taskMonthDate.getMonth() === 11 ? taskMonthDate.getFullYear() + 1 : taskMonthDate.getFullYear();
     const selectedMonthEnd = `${nextMonthYear}-${String(nextMonth + 1).padStart(2, '0')}-01`;
 
+    const todayStr = new Date().toISOString().slice(0, 10);
     let normalTasks = tasks.filter(t => {
       if (t.status === "cadence_parent") return false;
+      // Overdue + incomplete tasks always count regardless of selected month
+      const isIncomplete = t.status !== "completed" && t.approvalStatus !== "rejected";
+      if (isIncomplete && t.dueDate && t.dueDate.slice(0, 10) < todayStr) return true;
       const taskDate = t.billingPeriodStart || t.dueDate || t.createdAt;
       if (!taskDate) return true;
       const dateStr = taskDate.slice(0, 10);

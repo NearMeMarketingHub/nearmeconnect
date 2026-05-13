@@ -171,8 +171,12 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     if (!tasks) return [];
     const year = taskMonthDate.getFullYear();
     const month = taskMonthDate.getMonth() + 1;
+    const todayStr = new Date().toISOString().slice(0, 10);
     return tasks.filter(t => {
       if (t.status === "cadence_parent") return false;
+      // Overdue + incomplete tasks are always visible regardless of selected month
+      const isIncomplete = t.status !== "completed" && t.approvalStatus !== "rejected";
+      if (isIncomplete && t.dueDate && t.dueDate.slice(0, 10) < todayStr) return true;
       if (!t.dueDate) {
         if (t.status === "completed" && t.completedAt) {
           const cd = new Date(t.completedAt);
