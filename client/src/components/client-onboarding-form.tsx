@@ -226,13 +226,18 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
 
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
+      // Submit credentials via the dedicated encrypted endpoint — never inside the onboarding payload
+      const creds: LoginCredential[] = data.loginCredentials ?? [];
+      await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+
+      const { loginCredentials: _omit, ...rest } = data;
       const payload = {
-        ...data,
-        socialPlatforms: JSON.stringify(data.socialPlatforms),
-        loginCredentials: JSON.stringify(data.loginCredentials), // server intercepts and stores encrypted
-        seasonalPreferences: JSON.stringify(data.seasonalPreferences),
-        holidayPreferences: JSON.stringify(data.holidayPreferences),
-        brandAssetFiles: JSON.stringify(data.brandAssetFiles),
+        ...rest,
+        socialPlatforms: JSON.stringify(rest.socialPlatforms),
+        seasonalPreferences: JSON.stringify(rest.seasonalPreferences),
+        holidayPreferences: JSON.stringify(rest.holidayPreferences),
+        brandAssetFiles: JSON.stringify(rest.brandAssetFiles),
+        loginCredentialsProvided: creds.length > 0,
       };
       const response = await apiRequest("POST", `/api/companies/${companyId}/onboarding`, payload);
       return response.json();
@@ -495,16 +500,21 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
       return;
     }
 
-    const payload = {
-      ...formData,
-      currentStep: totalSteps,
-      socialPlatforms: JSON.stringify(formData.socialPlatforms),
-      loginCredentials: JSON.stringify(formData.loginCredentials),
-      seasonalPreferences: JSON.stringify(formData.seasonalPreferences),
-      holidayPreferences: JSON.stringify(formData.holidayPreferences),
-      brandAssetFiles: JSON.stringify(formData.brandAssetFiles),
-    };
     try {
+      // Submit credentials via the dedicated encrypted endpoint — never in the onboarding payload
+      const creds: LoginCredential[] = formData.loginCredentials ?? [];
+      await apiRequest("PUT", `/api/companies/${companyId}/credentials/onboarding-batch`, { credentials: creds });
+
+      const { loginCredentials: _omit, ...restFormData } = formData;
+      const payload = {
+        ...restFormData,
+        currentStep: totalSteps,
+        socialPlatforms: JSON.stringify(restFormData.socialPlatforms),
+        seasonalPreferences: JSON.stringify(restFormData.seasonalPreferences),
+        holidayPreferences: JSON.stringify(restFormData.holidayPreferences),
+        brandAssetFiles: JSON.stringify(restFormData.brandAssetFiles),
+        loginCredentialsProvided: creds.length > 0,
+      };
       await apiRequest("POST", `/api/companies/${companyId}/onboarding`, payload);
       await completeMutation.mutateAsync();
     } catch (error) {

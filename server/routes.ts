@@ -3522,7 +3522,7 @@ export async function registerRoutes(
       if (!onboarding) return res.json(null);
       // Count credentials from the encrypted system — never return plaintext loginCredentials
       const encryptedCreds = await storage.getCompanyCredentials(req.params.id);
-      const { loginCredentials: _stripped, ...safeOnboarding } = onboarding as any;
+      const { loginCredentials: _stripped, ...safeOnboarding } = onboarding;
       res.json({ ...safeOnboarding, credentialsProvidedCount: encryptedCreds.length });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch onboarding data" });
@@ -3725,6 +3725,47 @@ export async function registerRoutes(
       res.json(credentials);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch credentials" });
+    }
+  });
+
+  // Company members (clients) submit credentials during onboarding — atomically replaces all onboarding-submitted entries
+  app.put("/api/companies/:id/credentials/onboarding-batch", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      const companyId = req.params.id;
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+        const existingOnboarding = await storage.getClientOnboarding(companyId);
+        if (existingOnboarding?.isCompleted) {
+          return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
+        }
+      }
+      const credentials: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = req.body.credentials ?? [];
+      if (!Array.isArray(credentials)) return res.status(400).json({ error: "credentials must be an array" });
+
+      // Atomic replace: clear all existing onboarding-submitted credentials then recreate
+      const existing = await storage.getCompanyCredentials(companyId);
+      await Promise.all(existing.filter(c => c.category === "onboarding-submitted").map(c => storage.deleteCompanyCredential(c.id)));
+      const created = await Promise.all(credentials.map(c => storage.createCompanyCredential({
+        companyId,
+        label: c.platform?.trim() || "Unknown Platform",
+        username: c.username || null,
+        password: c.password || null,
+        url: null,
+        notes: [
+          c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
+          c.recoveryNotes || null,
+        ].filter(Boolean).join("\n") || null,
+        category: "onboarding-submitted",
+      })));
+      res.json({ count: created.length });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
+        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
+      }
+      res.status(500).json({ error: "Failed to save onboarding credentials" });
     }
   });
 

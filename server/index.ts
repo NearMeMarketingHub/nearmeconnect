@@ -24,7 +24,7 @@ async function migrateOnboardingCredentials() {
       const creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = JSON.parse(row.loginCredentials!);
       if (!Array.isArray(creds) || creds.length === 0) {
         // Nothing to migrate — just clear the field
-        await storage.updateClientOnboarding(companyId, { loginCredentials: null } as any);
+        await storage.updateClientOnboarding(companyId, { loginCredentials: null });
         continue;
       }
 
@@ -56,10 +56,12 @@ async function migrateOnboardingCredentials() {
       }
 
       // Clear the plaintext field regardless of how many were migrated
-      await storage.updateClientOnboarding(companyId, { loginCredentials: null } as any);
+      await storage.updateClientOnboarding(companyId, { loginCredentials: null });
       log(`[onboarding-migration] Migrated ${migrated} credential(s) for company ${companyId} (${creds.length - migrated} skipped as duplicates)`, "onboarding-migration");
     } catch (err) {
-      log(`[onboarding-migration] Failed to parse loginCredentials for company ${companyId}: ${err}`, "onboarding-migration");
+      log(`[onboarding-migration] Failed to parse loginCredentials for company ${companyId}: ${err} — clearing plaintext regardless`, "onboarding-migration");
+      // Always clear the plaintext field, even if we couldn't parse it — corrupt/junk data must not linger
+      try { await storage.updateClientOnboarding(companyId, { loginCredentials: null }); } catch { /* best effort */ }
     }
   }
 

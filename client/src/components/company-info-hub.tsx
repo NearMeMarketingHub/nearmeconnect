@@ -376,7 +376,7 @@ type OnboardingEditForm = {
   seasonalPreferencesConfirmed: boolean;
 };
 
-function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
+function buildFormFromOnboarding(o: AdminOnboarding): OnboardingEditForm {
   return {
     primaryContactName: o.primaryContactName || "",
     primaryContactEmail: o.primaryContactEmail || "",
@@ -414,12 +414,16 @@ function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
   };
 }
 
+// The admin GET /api/companies/:id/onboarding endpoint strips loginCredentials
+// and adds credentialsProvidedCount. Use this type instead of ClientOnboarding directly.
+type AdminOnboarding = Omit<ClientOnboarding, "loginCredentials"> & { credentialsProvidedCount?: number };
+
 function OnboardingEditPanel({
   onboarding,
   companyId,
   onClose,
 }: {
-  onboarding: ClientOnboarding;
+  onboarding: AdminOnboarding;
   companyId: string;
   onClose: () => void;
 }) {
@@ -645,7 +649,7 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
   const [addingKnowledgeSection, setAddingKnowledgeSection] = useState<"links" | "profile" | "ideas" | "resources" | null>(null);
   const [openKnowledgeSections, setOpenKnowledgeSections] = useState<Record<string, boolean>>({ links: true, profile: false, ideas: false, resources: false });
 
-  const { data: onboarding } = useQuery<ClientOnboarding | null>({
+  const { data: onboarding } = useQuery<AdminOnboarding | null>({
     queryKey: ["/api/companies", companyId, "onboarding"],
     queryFn: async () => { const r = await fetch(`/api/companies/${companyId}/onboarding`); if (!r.ok) return null; return r.json(); },
     enabled: !!companyId,
@@ -689,15 +693,18 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
             </CardHeader>
             <CardContent className="space-y-2">
               {[
-                { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed },
-                { label: "Access invitations sent", done: !!accessComplete },
-                { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided },
-                { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided },
-                { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed },
+                { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed, count: undefined as number | undefined },
+                { label: "Access invitations sent", done: !!accessComplete, count: undefined as number | undefined },
+                { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided, count: onboarding.credentialsProvidedCount },
+                { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided, count: undefined as number | undefined },
+                { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed, count: undefined as number | undefined },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2.5">
                   {item.done ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />}
                   <span className="text-sm">{item.label}</span>
+                  {item.count != null && item.count > 0 && (
+                    <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{item.count} stored</span>
+                  )}
                 </div>
               ))}
               {onboarding.authorizationName && (
