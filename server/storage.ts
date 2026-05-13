@@ -2483,8 +2483,12 @@ export class DatabaseStorage implements IStorage {
         await db.update(companyCredentials)
           .set({ password: encrypted, updatedAt: new Date().toISOString() })
           .where(eq(companyCredentials.id, id));
+        console.info(`[credential-encryption] Migrated plaintext credential ${id} to encrypted form`);
       } catch (err) {
-        console.error("[credential-encryption] Failed to migrate plaintext credential:", err);
+        // Migration failed — the plaintext is still returned to the caller so the
+        // admin can see the value, but we surface the failure clearly so it isn't
+        // silently left as plaintext forever.
+        console.error(`[credential-encryption] Migration failed for credential ${id} — plaintext remains in DB until next reveal:`, err);
       }
       return stored;
     }

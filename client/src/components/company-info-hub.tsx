@@ -82,8 +82,9 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
   const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  // Use server-provided hasPassword when available; fall back to false (safe default)
+  // Sync hasPassword from props so it reflects the latest server state after edits
   const [hasPassword, setHasPassword] = useState(cred.hasPassword ?? false);
+  useEffect(() => { setHasPassword(cred.hasPassword ?? false); }, [cred.hasPassword]);
   const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
   const { toast } = useToast();
 
