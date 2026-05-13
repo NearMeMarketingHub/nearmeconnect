@@ -2158,7 +2158,7 @@ export default function CompanyDashboard() {
               { value: "chat", label: "Chat", count: threads.reduce((total, t) => total + getUnreadCount(t.id), 0) || undefined },
               { value: "meetings", label: "Meetings", count: companyPendingMeetings || undefined },
               { value: "credit-history", label: "Credit History" },
-              { value: "onboarding", label: "Onboarding" },
+              { value: "onboarding", label: "Info Hub" },
               { value: "users", label: "Users", count: companyUsers.length },
               { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
@@ -2210,7 +2210,7 @@ export default function CompanyDashboard() {
             </TabsTrigger>
             <TabsTrigger value="onboarding" data-testid="tab-onboarding">
               <FileEdit className="w-4 h-4 mr-1" />
-              Onboarding
+              Info Hub
             </TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users">
               <Users className="h-4 w-4 mr-2" />
