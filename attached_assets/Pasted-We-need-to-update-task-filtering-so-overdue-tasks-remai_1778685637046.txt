@@ -1,0 +1,65 @@
+We need to update task filtering so overdue tasks remain visible regardless of the currently selected month.
+
+This applies to:
+- the main task view
+- the company dashboard task view
+
+Current problem:
+The current month-based task filtering only shows:
+- tasks due in the selected month
+- tasks with no due date
+- certain completed tasks based on completedAt
+
+Because of that, incomplete overdue tasks disappear once their due date falls in a previous month and the user moves to a new month. That is causing overdue tasks to get lost.
+
+Desired behavior:
+- tasks due in the selected month should still show
+- tasks with no due date should still show
+- overdue incomplete tasks should always remain visible, even if their due date is in a past month
+- completed tasks should continue following the intended month logic and should not all remain visible forever just because they were once overdue
+- rejected/completed/status filtering should continue to work correctly
+- the task counts and visible task lists should stay consistent with the updated filtering rules
+
+Important clarification:
+Only overdue tasks that are still active/incomplete should remain visible across months.
+Completed or otherwise finished tasks should not be permanently pulled forward into future months unless the current logic already intends that.
+
+Please review the existing month filter logic and make the cleanest fix.
+
+Focus on:
+- the main task view filtering
+- the company dashboard task filtering
+- any related task counts shown in the company dashboard filters
+- keeping sorting and existing status filters working correctly
+
+Expected behavior:
+- if a task is overdue and not completed/rejected, it stays visible even when viewing later months
+- if a task is due in the selected month, it shows normally
+- if a task has no due date, it still shows normally
+- completed tasks continue to follow the intended completed-month behavior
+- filter buttons/counts match what users actually see
+- overdue tasks do not get hidden just because the viewed month changed
+
+Important constraints:
+- do not redesign the task pages
+- do not change overdue styling itself unless necessary
+- do not change task completion logic
+- keep the fix focused on filtering and related counts only
+
+Implementation guidance:
+- treat overdue as a visibility rule layered on top of the month filter for active tasks
+- use a clear shared rule if possible so the main task view and company dashboard stay consistent
+- update any related count logic so counts reflect the new overdue-inclusive behavior
+
+Please provide:
+1. the files/components updated
+2. how the overdue visibility rule was added
+3. how completed/rejected tasks were handled
+4. whether any counts/filter summaries were updated
+5. a brief QA checklist covering:
+   - selected current month
+   - selected future month with past-due tasks still open
+   - selected past month
+   - tasks with no due date
+   - completed overdue tasks
+   - rejected tasks
