@@ -3639,7 +3639,15 @@ export async function registerRoutes(
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       const existing = await storage.getCompanyCredential(req.params.credId);
       if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
-      const updated = await storage.updateCompanyCredential(req.params.credId, req.body);
+      const { label, username, password, url, notes, category } = req.body;
+      const allowedFields: Partial<typeof existing> = {};
+      if (label !== undefined) allowedFields.label = label;
+      if (username !== undefined) allowedFields.username = username || null;
+      if (password !== undefined) allowedFields.password = password || null;
+      if (url !== undefined) allowedFields.url = url || null;
+      if (notes !== undefined) allowedFields.notes = notes || null;
+      if (category !== undefined) allowedFields.category = category || null;
+      const updated = await storage.updateCompanyCredential(req.params.credId, allowedFields);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update credential" });
@@ -3701,7 +3709,14 @@ export async function registerRoutes(
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
       if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
-      const updated = await storage.updateCompanyKnowledgeItem(req.params.itemId, req.body);
+      const { section, title, content, url, sortOrder } = req.body;
+      const allowedFields: Partial<typeof existing> = {};
+      if (section !== undefined) allowedFields.section = section;
+      if (title !== undefined) allowedFields.title = title;
+      if (content !== undefined) allowedFields.content = content || null;
+      if (url !== undefined) allowedFields.url = url || null;
+      if (sortOrder !== undefined) allowedFields.sortOrder = sortOrder;
+      const updated = await storage.updateCompanyKnowledgeItem(req.params.itemId, allowedFields);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update knowledge item" });
