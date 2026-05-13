@@ -1390,9 +1390,14 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
             ) : (
               <div className="flex items-center gap-2 h-9 px-3 border rounded-md text-sm">
                 {task.assignedTo ? (
-                  <span>{assignableUsers.find(u => u.id === task.assignedTo)?.name || "Assigned"}</span>
+                  <span data-testid="text-task-assignee">
+                    {(() => {
+                      const a = taskAssignees?.find((a: any) => a.userId === task.assignedTo);
+                      return a ? (a.userName || a.userEmail || "Assignee unavailable") : "Loading...";
+                    })()}
+                  </span>
                 ) : (
-                  <span className="text-muted-foreground">Unassigned</span>
+                  <span className="text-muted-foreground" data-testid="text-task-assignee-unassigned">Unassigned</span>
                 )}
               </div>
             )}
