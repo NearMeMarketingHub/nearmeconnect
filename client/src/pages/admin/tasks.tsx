@@ -88,7 +88,9 @@ export default function AdminTasks() {
     enabled: !!companies && companies.length > 0,
   });
 
-  const { data: adminUsers = [] } = useQuery<{ id: string; firstName: string; lastName: string; email: string }[]>({
+  const [assigneeTypeFilter, setAssigneeTypeFilter] = useState<"all" | "agency" | "company">("all");
+
+  const { data: adminUsers = [] } = useQuery<{ id: string; userId: string; firstName: string; lastName: string; email: string }[]>({
     queryKey: ["/api/admin/users"],
     queryFn: async () => {
       const res = await fetch("/api/admin/users");
@@ -109,10 +111,13 @@ export default function AdminTasks() {
     enabled: selectedCompany !== "all",
   });
 
+  const agencyUserIds = useMemo(() => new Set(adminUsers.map(u => u.userId)), [adminUsers]);
+  const companyUserIds = useMemo(() => new Set(companyUsers.map(u => u.id)), [companyUsers]);
+
   const userMap = useMemo(() => {
     const map: Record<string, string> = {};
     for (const u of adminUsers) {
-      map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
+      map[u.userId] = `${u.firstName} ${u.lastName}`.trim() || u.email;
     }
     for (const u of companyUsers) {
       map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
@@ -606,6 +611,22 @@ export default function AdminTasks() {
           </Button>
         </div>
 
+        {viewMode === "by-assignee" && (
+          <div className="flex items-center gap-2" data-testid="assignee-type-filter">
+            <span className="text-sm text-muted-foreground">Show:</span>
+            <Select value={assigneeTypeFilter} onValueChange={(v) => setAssigneeTypeFilter(v as typeof assigneeTypeFilter)}>
+              <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-assignee-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Assignees</SelectItem>
+                <SelectItem value="agency">Agency Staff</SelectItem>
+                <SelectItem value="company">Company Members</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {(viewMode === "by-assignee" || viewMode === "by-category") && isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3, 4].map((i) => (
@@ -614,7 +635,15 @@ export default function AdminTasks() {
           </div>
         ) : viewMode === "by-assignee" || viewMode === "by-category" ? (
           <TaskGroupedView
-            tasks={filteredTasks}
+            tasks={
+              viewMode === "by-assignee" && assigneeTypeFilter !== "all"
+                ? filteredTasks.filter(t =>
+                    assigneeTypeFilter === "agency"
+                      ? (t.assignedTo ? agencyUserIds.has(t.assignedTo) : false)
+                      : (t.assignedTo ? companyUserIds.has(t.assignedTo) : false)
+                  )
+                : filteredTasks
+            }
             groupBy={viewMode === "by-assignee" ? "assignee" : "category"}
             categories={allCategories || []}
             userMap={userMap}

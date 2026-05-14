@@ -4282,7 +4282,8 @@ export async function registerRoutes(
           await storage.addChatThreadMember({
             threadId,
             userId: member.userId,
-            role: "member",
+            isAdmin: false,
+            joinedAt: new Date().toISOString(),
           });
         }
       }
@@ -4293,7 +4294,8 @@ export async function registerRoutes(
           await storage.addChatThreadMember({
             threadId,
             userId: admin.userId,
-            role: "admin",
+            isAdmin: true,
+            joinedAt: new Date().toISOString(),
           });
         }
       }
