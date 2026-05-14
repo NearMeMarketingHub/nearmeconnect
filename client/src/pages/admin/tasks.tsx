@@ -112,7 +112,6 @@ export default function AdminTasks() {
   });
 
   const agencyUserIds = useMemo(() => new Set(adminUsers.map(u => u.userId)), [adminUsers]);
-  const companyUserIds = useMemo(() => new Set(companyUsers.map(u => u.id)), [companyUsers]);
 
   const userMap = useMemo(() => {
     const map: Record<string, string> = {};
