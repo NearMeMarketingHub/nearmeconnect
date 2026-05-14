@@ -1494,8 +1494,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const allTasks = await storage.getAllTasks();
-      const campaignTasks = allTasks.filter(t => t.campaignRequestId === req.params.campaignRequestId);
+      const campaignTasks = await storage.getTasksByCampaignRequest(req.params.campaignRequestId);
       res.json(campaignTasks);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch campaign tasks" });
