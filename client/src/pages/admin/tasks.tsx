@@ -640,7 +640,7 @@ export default function AdminTasks() {
                 ? filteredTasks.filter(t =>
                     assigneeTypeFilter === "agency"
                       ? (t.assignedTo ? agencyUserIds.has(t.assignedTo) : false)
-                      : (t.assignedTo ? companyUserIds.has(t.assignedTo) : false)
+                      : (t.assignedTo ? !agencyUserIds.has(t.assignedTo) : false)
                   )
                 : filteredTasks
             }
