@@ -545,6 +545,29 @@ export default function CompanyDashboard() {
     enabled: !!companyId,
   });
 
+  // Company users for Users tab
+  interface CompanyUserWithTags {
+    id: string;
+    memberId: string;
+    role: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    createdAt: string;
+    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
+  }
+
+  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
+    queryKey: ["/api/admin/companies", companyId, "users"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const response = await fetch(`/api/admin/companies/${companyId}/users`);
+      if (!response.ok) throw new Error("Failed to fetch users");
+      return response.json();
+    },
+    enabled: !!companyId,
+  });
+
   const assigneeUserMap = useMemo(() => {
     const map: Record<string, string> = {};
     for (const a of assignees || []) {
@@ -658,29 +681,6 @@ export default function CompanyDashboard() {
       const res = await fetch(`/api/companies/${companyId}/chat-users`);
       if (!res.ok) throw new Error("Failed to fetch users");
       return res.json();
-    },
-    enabled: !!companyId,
-  });
-
-  // Company users for Users tab
-  interface CompanyUserWithTags {
-    id: string;
-    memberId: string;
-    role: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    createdAt: string;
-    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
-  }
-
-  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
-    queryKey: ["/api/admin/companies", companyId, "users"],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const response = await fetch(`/api/admin/companies/${companyId}/users`);
-      if (!response.ok) throw new Error("Failed to fetch users");
-      return response.json();
     },
     enabled: !!companyId,
   });
