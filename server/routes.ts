@@ -523,7 +523,8 @@ export async function registerRoutes(
             await storage.addChatThreadMember({
               threadId: companyWideThread.id,
               userId: req.body.userId,
-              role: "member",
+              isAdmin: false,
+              joinedAt: new Date().toISOString(),
             });
           }
         }
