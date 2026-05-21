@@ -1833,6 +1833,87 @@ export interface OnboardingReminderEmailData {
   daysSinceCreation: number;
 }
 
+export interface AdminOnboardingAlertEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  companyName: string;
+  companyDashboardUrl: string;
+  daysSinceCreation: number;
+}
+
+export async function sendAdminOnboardingAlertEmail(data: AdminOnboardingAlertEmailData): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #1e293b; padding: 24px 30px; border-radius: 10px 10px 0 0; display: flex; align-items: center;">
+          <h1 style="color: #f1f5f9; margin: 0; font-size: 18px; font-weight: 600;">⚠️ Onboarding Incomplete — Action Needed</h1>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
+          <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); border-left: 4px solid #f59e0b;">
+            <p style="margin-top: 0;">Hi ${data.recipientName},</p>
+            <p>This is an internal alert — <strong>${data.companyName}</strong> has not completed their onboarding checklist.</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr style="background: #f1f5f9;">
+                <td style="padding: 10px 14px; font-weight: 600; width: 50%; border-radius: 4px 0 0 4px;">Company</td>
+                <td style="padding: 10px 14px; border-radius: 0 4px 4px 0;">${data.companyName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 14px; font-weight: 600; background: #f8fafc;">Days since creation</td>
+                <td style="padding: 10px 14px; background: #f8fafc;">${data.daysSinceCreation} day${data.daysSinceCreation !== 1 ? 's' : ''}</td>
+              </tr>
+              <tr style="background: #f1f5f9;">
+                <td style="padding: 10px 14px; font-weight: 600; border-radius: 4px 0 0 4px;">Status</td>
+                <td style="padding: 10px 14px; border-radius: 0 4px 4px 0;"><span style="color: #b45309; font-weight: 600;">Onboarding incomplete</span></td>
+              </tr>
+            </table>
+
+            <p>You may want to follow up with this client to help them get started.</p>
+
+            <div style="text-align: center; margin: 25px 0;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                <tr>
+                  <td style="border-radius: 5px; background-color: #1e293b;" align="center">
+                    <a href="${data.companyDashboardUrl}" target="_blank" style="background-color: #1e293b; border: 10px solid #1e293b; border-radius: 5px; color: #ffffff; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; text-align: center; text-decoration: none; -webkit-text-size-adjust: none;">View Company Dashboard →</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <p style="color: #666; font-size: 13px; margin-bottom: 0;">You will receive this alert weekly until the company completes onboarding.</p>
+          </div>
+
+          <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+            <p>Near Me Marketing Hub — Internal Alert</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await client.emails.send({
+      from: fromEmail,
+      to: data.recipientEmail,
+      subject: `Action needed: ${data.companyName} hasn't completed onboarding (${data.daysSinceCreation} days)`,
+      html,
+    });
+
+    console.log(`Admin onboarding alert sent to ${data.recipientEmail} for company ${data.companyName}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send admin onboarding alert email:', error);
+    return false;
+  }
+}
+
 export async function sendOnboardingReminderEmail(data: OnboardingReminderEmailData): Promise<boolean> {
   try {
     const { client, fromEmail } = await getUncachableResendClient();

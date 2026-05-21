@@ -7,7 +7,7 @@ import {
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { eq, and, ne, or, isNull } from "drizzle-orm";
-import { getUncachableResendClient, sendOnboardingReminderEmail } from "./email";
+import { getUncachableResendClient, sendOnboardingReminderEmail, sendAdminOnboardingAlertEmail } from "./email";
 import { formatDateShortET } from "./timezone";
 import { log } from "./index";
 
@@ -454,7 +454,7 @@ export async function generateAndSendMonthlyReports(targetYear?: number, targetM
 
   log(`Starting monthly report generation for ${monthName} ${actualYear}${isDevelopment ? ' [DEV MODE - emails suppressed]' : ''}`, 'monthly-report');
 
-  const allCompanies = await db.select().from(companies);
+  const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
   const errors: string[] = [];
   let companiesSent = 0;
   let totalEmails = 0;
@@ -787,13 +787,23 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
   }
 
   try {
-    const allCompanies = await db.select().from(companies).where(eq(companies.onboardingComplete, false));
+    const allCompanies = await db.select().from(companies).where(
+      and(eq(companies.onboardingComplete, false), ne(companies.id, "sandbox-company-001"))
+    );
 
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     for (const company of allCompanies) {
       try {
+        // Skip companies created less than 7 days ago — give them time before the first reminder
+        const createdDate = new Date(company.createdAt);
+        const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceCreation < 7) {
+          skipped++;
+          continue;
+        }
+
         if (company.lastOnboardingReminderSent) {
           const lastSent = new Date(company.lastOnboardingReminderSent);
           if (lastSent > sevenDaysAgo) {
@@ -809,9 +819,6 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
           skipped++;
           continue;
         }
-
-        const createdDate = new Date(company.createdAt);
-        const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
         const portalUrl = `${process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://nearmemarketinghub.com'}/onboarding`;
         let companySentCount = 0;
@@ -845,6 +852,7 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
           }
         }
 
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://portal.nearmemarketinghub.com';
         const allAdmins = await db.select().from(adminUsers);
         for (const admin of allAdmins) {
           const [adminUser] = await db.select().from(users).where(eq(users.id, admin.userId));
@@ -852,17 +860,17 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
 
           const adminName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || adminUser.email;
           try {
-            await sendOnboardingReminderEmail({
+            await sendAdminOnboardingAlertEmail({
               recipientEmail: adminUser.email,
               recipientName: adminName,
               companyName: company.name,
-              portalUrl: `${process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://nearmemarketinghub.com'}/admin/companies/${company.id}`,
+              companyDashboardUrl: `${baseUrl}/admin/companies/${company.id}`,
               daysSinceCreation,
             });
             await db.insert(notifications).values({
               userId: adminUser.id,
               type: 'system',
-              title: 'Onboarding Reminder',
+              title: 'Onboarding Incomplete',
               message: `${company.name} has not completed onboarding yet (${daysSinceCreation} days since creation).`,
               isRead: false,
               createdAt: now.toISOString(),
@@ -870,7 +878,7 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
             sent++;
             companySentCount++;
           } catch (e: any) {
-            log(`Failed to send onboarding reminder to admin ${adminUser.email}: ${e.message}`, 'onboarding-reminder');
+            log(`Failed to send onboarding alert to admin ${adminUser.email}: ${e.message}`, 'onboarding-reminder');
             errors++;
           }
         }
@@ -992,7 +1000,7 @@ async function runCreditReset(): Promise<{ resetCount: number }> {
     const currentMonthYear = getMonthYearET();
     const now = new Date();
     
-    const allCompanies = await db.select().from(companies);
+    const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
     let resetCount = 0;
 
     for (const company of allCompanies) {
@@ -1201,7 +1209,7 @@ export async function setupMonthlyReportScheduler() {
 
         if (daysUntilEnd === 7 || daysUntilEnd === 2) {
           log(`Running report notes reminder (${daysUntilEnd} days until month end)`, 'report-reminder');
-          const allCompanies = await db.select().from(companies);
+          const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
           const admins = await db.select().from(adminUsers);
           const reportMonth = now.getMonth() + 1;
           const reportYear = now.getFullYear();
