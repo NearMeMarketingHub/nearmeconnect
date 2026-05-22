@@ -105,6 +105,9 @@ export default function UserManagement() {
   const [editNameTarget, setEditNameTarget] = useState<AdminUserWithDetails | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
+  const [editMemberNameTarget, setEditMemberNameTarget] = useState<MemberWithDetails | null>(null);
+  const [editMemberFirstName, setEditMemberFirstName] = useState("");
+  const [editMemberLastName, setEditMemberLastName] = useState("");
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<UsersData>({
@@ -211,6 +214,7 @@ export default function UserManagement() {
     onSuccess: () => {
       toast({ title: "Name updated" });
       setEditNameTarget(null);
+      setEditMemberNameTarget(null);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
     },
     onError: (err: Error) => {
@@ -233,6 +237,12 @@ export default function UserManagement() {
     setEditNameTarget(admin);
     setEditFirstName(admin.firstName || "");
     setEditLastName(admin.lastName || "");
+  };
+
+  const openEditMemberName = (member: MemberWithDetails) => {
+    setEditMemberNameTarget(member);
+    setEditMemberFirstName(member.firstName || "");
+    setEditMemberLastName(member.lastName || "");
   };
 
   const filteredCompanies = companyFilter === "all"
@@ -555,6 +565,15 @@ export default function UserManagement() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              title="Edit name"
+                              onClick={() => openEditMemberName(member)}
+                              data-testid={`button-edit-name-member-${member.userId}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               title="Send password reset email"
                               onClick={() => member.email && passwordResetMutation.mutate(member.email)}
                               disabled={passwordResetMutation.isPending || !member.email}
@@ -628,6 +647,57 @@ export default function UserManagement() {
                 }}
                 disabled={!editFirstName.trim() || !editLastName.trim() || editNameMutation.isPending}
                 data-testid="button-save-edit-name"
+              >
+                {editNameMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Member Name Dialog */}
+      <Dialog open={!!editMemberNameTarget} onOpenChange={(open) => !open && setEditMemberNameTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Member Name</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-member-first-name">First Name</Label>
+              <Input
+                id="edit-member-first-name"
+                value={editMemberFirstName}
+                onChange={(e) => setEditMemberFirstName(e.target.value)}
+                placeholder="First name"
+                data-testid="input-edit-member-first-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-member-last-name">Last Name</Label>
+              <Input
+                id="edit-member-last-name"
+                value={editMemberLastName}
+                onChange={(e) => setEditMemberLastName(e.target.value)}
+                placeholder="Last name"
+                data-testid="input-edit-member-last-name"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setEditMemberNameTarget(null)} data-testid="button-cancel-edit-member-name">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (editMemberNameTarget) {
+                    editNameMutation.mutate({
+                      userId: editMemberNameTarget.userId,
+                      firstName: editMemberFirstName.trim(),
+                      lastName: editMemberLastName.trim(),
+                    });
+                  }
+                }}
+                disabled={!editMemberFirstName.trim() || !editMemberLastName.trim() || editNameMutation.isPending}
+                data-testid="button-save-edit-member-name"
               >
                 {editNameMutation.isPending ? "Saving..." : "Save"}
               </Button>
