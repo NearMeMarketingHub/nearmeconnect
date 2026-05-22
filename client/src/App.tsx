@@ -159,27 +159,27 @@ function AppContent() {
   if (userInfo?.isAdmin) {
     return (
       <Switch>
-        <Route path="/admin/dashboard" component={AdminDashboard} />
-        <Route path="/admin/tasks" component={AdminTasks} />
-        <Route path="/admin/companies" component={AdminCompanies} />
-        <Route path="/admin/companies/new" component={AdminAddCompany} />
-        <Route path="/admin/companies/:id" component={CompanyDashboard} />
-        <Route path="/admin/deliverables" component={AdminDeliverableTypes} />
-        <Route path="/admin/campaigns" component={AdminCampaigns} />
-        <Route path="/admin/meetings" component={AdminMeetings} />
-        <Route path="/admin/training" component={AdminTraining} />
-        <Route path="/admin/media-profiles" component={AdminMediaProfiles} />
-        <Route path="/admin/media-submissions" component={AdminMediaSubmissions} />
-        <Route path="/admin/calendar" component={AdminCalendar} />
-        <Route path="/admin/chat" component={AdminChat} />
-        <Route path="/admin/credit-store" component={AdminCreditStore} />
-        <Route path="/admin/settings" component={AdminSettings} />
-        <Route path="/admin/sandbox" component={AdminSandbox} />
-        <Route path="/admin/government" component={AdminGovernment} />
-        <Route path="/admin/reporting" component={AdminReporting} />
-        <Route path="/admin/user-management" component={AdminUserManagement} />
-        <Route path="/admin/custom-roles" component={AdminCustomRoles} />
-        <Route path="/admin/subscription-tiers" component={AdminSubscriptionTiers} />
+        <Route path="/admin/dashboard">{() => <ErrorBoundary showNav><AdminDashboard /></ErrorBoundary>}</Route>
+        <Route path="/admin/tasks">{() => <ErrorBoundary showNav><AdminTasks /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/new">{() => <ErrorBoundary showNav><AdminAddCompany /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/:id">{() => <ErrorBoundary showNav><CompanyDashboard /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies">{() => <ErrorBoundary showNav><AdminCompanies /></ErrorBoundary>}</Route>
+        <Route path="/admin/deliverables">{() => <ErrorBoundary showNav><AdminDeliverableTypes /></ErrorBoundary>}</Route>
+        <Route path="/admin/campaigns">{() => <ErrorBoundary showNav><AdminCampaigns /></ErrorBoundary>}</Route>
+        <Route path="/admin/meetings">{() => <ErrorBoundary showNav><AdminMeetings /></ErrorBoundary>}</Route>
+        <Route path="/admin/training">{() => <ErrorBoundary showNav><AdminTraining /></ErrorBoundary>}</Route>
+        <Route path="/admin/media-profiles">{() => <ErrorBoundary showNav><AdminMediaProfiles /></ErrorBoundary>}</Route>
+        <Route path="/admin/media-submissions">{() => <ErrorBoundary showNav><AdminMediaSubmissions /></ErrorBoundary>}</Route>
+        <Route path="/admin/calendar">{() => <ErrorBoundary showNav><AdminCalendar /></ErrorBoundary>}</Route>
+        <Route path="/admin/chat">{() => <ErrorBoundary showNav><AdminChat /></ErrorBoundary>}</Route>
+        <Route path="/admin/credit-store">{() => <ErrorBoundary showNav><AdminCreditStore /></ErrorBoundary>}</Route>
+        <Route path="/admin/settings">{() => <ErrorBoundary showNav><AdminSettings /></ErrorBoundary>}</Route>
+        <Route path="/admin/sandbox">{() => <ErrorBoundary showNav><AdminSandbox /></ErrorBoundary>}</Route>
+        <Route path="/admin/government">{() => <ErrorBoundary showNav><AdminGovernment /></ErrorBoundary>}</Route>
+        <Route path="/admin/reporting">{() => <ErrorBoundary showNav><AdminReporting /></ErrorBoundary>}</Route>
+        <Route path="/admin/user-management">{() => <ErrorBoundary showNav><AdminUserManagement /></ErrorBoundary>}</Route>
+        <Route path="/admin/custom-roles">{() => <ErrorBoundary showNav><AdminCustomRoles /></ErrorBoundary>}</Route>
+        <Route path="/admin/subscription-tiers">{() => <ErrorBoundary showNav><AdminSubscriptionTiers /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
@@ -190,38 +190,38 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/client/dashboard">
-          {() => <ClientDashboard companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientDashboard companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/tasks">
-          {() => <ClientTasks companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientTasks companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/credits">
-          {() => <ClientCredits companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCredits companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/settings">
-          {() => <ClientSettings companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientSettings companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/onboarding">
-          {() => <ClientOnboarding companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientOnboarding companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/media-uploads">
-          {() => <ClientMediaUploads companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientMediaUploads companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/calendar">
-          {() => <ClientCalendar companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCalendar companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/chat">{() => <ClientChat />}</Route>
+        <Route path="/client/chat">{() => <ErrorBoundary showNav><ClientChat /></ErrorBoundary>}</Route>
         <Route path="/client/campaigns">
-          {() => <ClientCampaigns companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCampaigns companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/meetings">
-          {() => <ClientMeetings companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientMeetings companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/training">{() => <ClientTraining />}</Route>
+        <Route path="/client/training">{() => <ErrorBoundary showNav><ClientTraining /></ErrorBoundary>}</Route>
         <Route path="/client/team">
-          {() => <ClientTeam companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientTeam companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/government">{() => <ClientGovernment />}</Route>
+        <Route path="/client/government">{() => <ErrorBoundary showNav><ClientGovernment /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
