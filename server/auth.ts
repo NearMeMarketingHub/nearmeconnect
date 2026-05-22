@@ -16,14 +16,19 @@ declare module "express-session" {
   }
 }
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-  };
+declare global {
+  namespace Express {
+    interface User {
+      id: string;
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      profileImageUrl?: string;
+    }
+  }
 }
+
+export type AuthenticatedRequest = Request;
 
 export function setupAuth(app: Express) {
   app.set("trust proxy", 1);
@@ -345,7 +350,8 @@ export function registerAuthRoutes(app: Express) {
             await db.insert(chatThreadMembers).values({
               threadId: companyWideThread.id,
               userId: newUser.id,
-              role: "member",
+              isAdmin: false,
+              joinedAt: new Date().toISOString(),
             });
           }
         }

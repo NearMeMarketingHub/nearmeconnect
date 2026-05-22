@@ -1976,3 +1976,19 @@ export async function sendOnboardingReminderEmail(data: OnboardingReminderEmailD
     return false;
   }
 }
+
+export async function sendEmail(data: { to: string; subject: string; html: string }): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    await client.emails.send({
+      from: fromEmail,
+      to: data.to,
+      subject: data.subject,
+      html: data.html,
+    });
+    return true;
+  } catch (error) {
+    console.error('Failed to send email:', error);
+    return false;
+  }
+}

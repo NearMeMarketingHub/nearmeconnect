@@ -163,7 +163,7 @@ export default function CreditsPage({ client }: CreditsPageProps) {
                             }`}
                           >
                             {transaction.type === "debit" ? "-" : "+"}
-                            {Math.abs(transaction.amount)}
+                            {Math.abs(Number(transaction.amount))}
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-mono">
@@ -193,7 +193,7 @@ export default function CreditsPage({ client }: CreditsPageProps) {
             </div>
             <div>
               <p className="text-2xl font-bold font-mono">
-                {transactions?.filter((t) => t.type === "credit").reduce((sum, t) => sum + t.amount, 0) || 0}
+                {transactions?.filter((t) => t.type === "credit").reduce((sum, t) => sum + Number(t.amount), 0) || 0}
               </p>
               <p className="text-sm text-muted-foreground">Credits added this month</p>
             </div>
@@ -207,7 +207,7 @@ export default function CreditsPage({ client }: CreditsPageProps) {
             </div>
             <div>
               <p className="text-2xl font-bold font-mono">
-                {transactions?.filter((t) => t.type === "debit").reduce((sum, t) => sum + Math.abs(t.amount), 0) || 0}
+                {transactions?.filter((t) => t.type === "debit").reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0) || 0}
               </p>
               <p className="text-sm text-muted-foreground">Credits used this month</p>
             </div>

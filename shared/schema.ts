@@ -42,6 +42,8 @@ export const insertCompanySchema = createInsertSchema(companies).omit({
 
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
+export type Client = Company;
+export type InsertClient = InsertCompany & { onboardingComplete?: boolean };
 
 export const companyMembers = pgTable("company_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

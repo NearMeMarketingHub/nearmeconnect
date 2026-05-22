@@ -644,7 +644,7 @@ export default function AdminCampaigns() {
                                         <Video className="w-3 h-3 mr-1" />
                                         {qty > 1 ? `${qty}x ` : ""}{mt.name}
                                       </Badge>
-                                      <span className="text-xs text-muted-foreground">{mt.duration} min</span>
+                                      <span className="text-xs text-muted-foreground">{mt.defaultDuration} min</span>
                                     </div>
                                     <span className="text-xs text-muted-foreground font-mono">
                                       {lineCredits.toFixed(1)} credits

@@ -12,7 +12,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { uploadToSharePoint, uploadToSharePointWithIds, downloadFromSharePoint, deleteFromSharePoint } from "./sharepoint";
 import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificationToUsers } from "./websocket";
 import multer from "multer";
-import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail } from "./email";
+import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail } from "./email";
 import { generateOnboardingPdf } from "./pdf-generator";
 import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
@@ -247,7 +247,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const company = await storage.getCompany(req.params.id);
+      const company = await storage.getCompany((req.params.id as string));
       
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -305,7 +305,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       
       if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, req.params.id);
+        const member = await storage.getCompanyMember(userId, (req.params.id as string));
         if (!member || (member.role !== "company_owner" && member.role !== "company_admin")) {
           return res.status(403).json({ error: "Only admins or company owners can update companies" });
         }
@@ -314,18 +314,18 @@ export async function registerRoutes(
         for (const key of allowedFields) {
           if (key in req.body) filtered[key] = req.body[key];
         }
-        const company = await storage.updateCompany(req.params.id, filtered);
+        const company = await storage.updateCompany((req.params.id as string), filtered);
         if (!company) return res.status(404).json({ error: "Failed to update company" });
         return res.json(company);
       }
       
       // Check if clientType is changing
-      const existingCompany = await storage.getCompany(req.params.id);
+      const existingCompany = await storage.getCompany((req.params.id as string));
       if (!existingCompany) {
         return res.status(404).json({ error: "Company not found" });
       }
       
-      const company = await storage.updateCompany(req.params.id, req.body);
+      const company = await storage.updateCompany((req.params.id as string), req.body);
       if (!company) {
         return res.status(404).json({ error: "Failed to update company" });
       }
@@ -378,12 +378,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can pause companies" });
       }
       
-      const company = await storage.getCompany(req.params.id);
+      const company = await storage.getCompany((req.params.id as string));
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
       
-      const updatedCompany = await storage.updateCompany(req.params.id, {
+      const updatedCompany = await storage.updateCompany((req.params.id as string), {
         isPaused: true,
         pausedAt: new Date().toISOString(),
       });
@@ -405,7 +405,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can resume companies" });
       }
       
-      const company = await storage.getCompany(req.params.id);
+      const company = await storage.getCompany((req.params.id as string));
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -414,7 +414,7 @@ export async function registerRoutes(
       const now = new Date();
       const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       
-      const updatedCompany = await storage.updateCompany(req.params.id, {
+      const updatedCompany = await storage.updateCompany((req.params.id as string), {
         isPaused: false,
         pausedAt: null,
         credits: company.monthlyCredits,
@@ -434,7 +434,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -474,7 +474,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -509,14 +509,14 @@ export async function registerRoutes(
       }
       
       const member = await storage.createCompanyMember({
-        companyId: req.params.id,
+        companyId: (req.params.id as string),
         userId: req.body.userId,
         role: req.body.role || "team_member",
       });
 
       // Auto-add new member to company-wide chat thread if it exists
       try {
-        const companyWideThread = await storage.getCompanyWideThread(req.params.id);
+        const companyWideThread = await storage.getCompanyWideThread((req.params.id as string));
         if (companyWideThread) {
           const existingMember = await storage.getChatThreadMember(companyWideThread.id, req.body.userId);
           if (!existingMember) {
@@ -542,12 +542,12 @@ export async function registerRoutes(
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) {
-        const membership = await storage.getCompanyMembership(req.params.companyId, req.user!.id);
+        const membership = await storage.getCompanyMembership((req.params.companyId as string), req.user!.id);
         if (!membership) {
           return res.status(403).json({ message: "Access denied" });
         }
       }
-      const categories = await storage.getTaskCategories(req.params.companyId);
+      const categories = await storage.getTaskCategories((req.params.companyId as string));
       res.json(categories);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -560,11 +560,11 @@ export async function registerRoutes(
       if (!isAdmin) return res.status(403).json({ message: "Admin only" });
       const parsed = insertTaskCategorySchema.safeParse({
         ...req.body,
-        companyId: req.params.companyId,
+        companyId: (req.params.companyId as string),
       });
       if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
       const category = await storage.createTaskCategory(parsed.data);
-      broadcastInvalidation(`companies/${req.params.companyId}/task-categories`);
+      broadcastInvalidation([`companies/${(req.params.companyId as string)}/task-categories`]);
       res.json(category);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -578,9 +578,9 @@ export async function registerRoutes(
       const updateSchema = insertTaskCategorySchema.partial().omit({ companyId: true });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
-      const category = await storage.updateTaskCategory(req.params.id, parsed.data);
+      const category = await storage.updateTaskCategory((req.params.id as string), parsed.data);
       if (!category) return res.status(404).json({ message: "Category not found" });
-      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      broadcastInvalidation([`companies/${category.companyId}/task-categories`]);
       res.json(category);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -591,11 +591,11 @@ export async function registerRoutes(
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      const category = await storage.getTaskCategory(req.params.id);
+      const category = await storage.getTaskCategory((req.params.id as string));
       if (!category) return res.status(404).json({ message: "Category not found" });
-      await storage.deleteTaskCategory(req.params.id);
-      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
-      broadcastInvalidation("tasks");
+      await storage.deleteTaskCategory((req.params.id as string));
+      broadcastInvalidation([`companies/${category.companyId}/task-categories`]);
+      broadcastInvalidation(["tasks"]);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -866,7 +866,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const existingTask = await storage.getTask(req.params.id);
+      const existingTask = await storage.getTask((req.params.id as string));
       if (!existingTask) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -1266,7 +1266,7 @@ export async function registerRoutes(
         }
       }
 
-      const task = await storage.updateTask(req.params.id, req.body);
+      const task = await storage.updateTask((req.params.id as string), req.body);
 
       // Respond immediately — the task is persisted; all side-effects run after
       res.json(task);
@@ -1494,7 +1494,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const campaignTasks = await storage.getTasksByCampaignRequest(req.params.campaignRequestId);
+      const campaignTasks = await storage.getTasksByCampaignRequest((req.params.campaignRequestId as string));
       res.json(campaignTasks);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch campaign tasks" });
@@ -1509,7 +1509,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -1568,7 +1568,7 @@ export async function registerRoutes(
         updateData.creditsDeducted = false;
       }
 
-      const updatedTask = await storage.updateTask(req.params.id, updateData);
+      const updatedTask = await storage.updateTask((req.params.id as string), updateData);
 
       broadcastInvalidation(["/api/tasks", "/api/companies"]);
       res.json(updatedTask);
@@ -1583,7 +1583,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -1677,7 +1677,7 @@ export async function registerRoutes(
         updateData.status = "approved";
       }
 
-      const updatedTask = await storage.updateTask(req.params.id, updateData);
+      const updatedTask = await storage.updateTask((req.params.id as string), updateData);
       
       const company = await storage.getCompany(task.companyId);
       
@@ -1921,7 +1921,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -1943,7 +1943,7 @@ export async function registerRoutes(
       }
 
       if (action === "approve") {
-        const updatedTask = await storage.updateTask(req.params.id, {
+        const updatedTask = await storage.updateTask((req.params.id as string), {
           approvalStatus: "pending_approval",
         });
 
@@ -1968,7 +1968,7 @@ export async function registerRoutes(
         broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications"]);
         res.json(updatedTask);
       } else {
-        const updatedTask = await storage.updateTask(req.params.id, {
+        const updatedTask = await storage.updateTask((req.params.id as string), {
           approvalStatus: "rejected",
           status: "rejected",
         });
@@ -2008,7 +2008,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2017,7 +2017,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Timer is already running" });
       }
 
-      const updatedTask = await storage.updateTask(req.params.id, {
+      const updatedTask = await storage.updateTask((req.params.id as string), {
         timerStartedAt: new Date().toISOString(),
       });
       res.json(updatedTask);
@@ -2035,7 +2035,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2049,7 +2049,7 @@ export async function registerRoutes(
       const elapsedSeconds = Math.floor((now - startTime) / 1000);
       const newTotalTime = (task.totalTimeTracked || 0) + elapsedSeconds;
 
-      const updatedTask = await storage.updateTask(req.params.id, {
+      const updatedTask = await storage.updateTask((req.params.id as string), {
         timerStartedAt: null,
         totalTimeTracked: newTotalTime,
       });
@@ -2068,12 +2068,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
 
-      const updatedTask = await storage.updateTask(req.params.id, {
+      const updatedTask = await storage.updateTask((req.params.id as string), {
         timerStartedAt: null,
         totalTimeTracked: 0,
       });
@@ -2155,7 +2155,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -2388,7 +2388,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can update deliverable types" });
       }
       
-      const deliverable = await storage.updateDeliverableType(req.params.id, req.body);
+      const deliverable = await storage.updateDeliverableType((req.params.id as string), req.body);
       if (!deliverable) {
         return res.status(404).json({ error: "Deliverable type not found" });
       }
@@ -2407,7 +2407,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can delete deliverable types" });
       }
       
-      await storage.deleteDeliverableType(req.params.id);
+      await storage.deleteDeliverableType((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete deliverable type" });
@@ -2454,7 +2454,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Only admins can update subscription tiers" });
       }
-      const tier = await storage.updateSubscriptionTierDefinition(req.params.id, req.body);
+      const tier = await storage.updateSubscriptionTierDefinition((req.params.id as string), req.body);
       if (!tier) {
         return res.status(404).json({ error: "Subscription tier not found" });
       }
@@ -2489,7 +2489,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can view assignees" });
       }
       
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const companyMembersList = await storage.getCompanyMembers(companyId);
       const admins = await storage.getAllAdminUsers();
       
@@ -2549,7 +2549,6 @@ export async function registerRoutes(
       if (allCompanies.length === 0 && !existingAdmins) {
         await storage.createAdminUser({
           userId,
-          createdAt: new Date().toISOString(),
         });
         return res.json({ success: true, message: "You are now an admin" });
       }
@@ -2565,7 +2564,6 @@ export async function registerRoutes(
       
       await storage.createAdminUser({
         userId: targetUserId,
-        createdAt: new Date().toISOString(),
       });
       
       res.json({ success: true });
@@ -2694,7 +2692,6 @@ export async function registerRoutes(
       if (existingUser) {
         await storage.createAdminUser({
           userId: existingUser.id,
-          createdAt: new Date().toISOString(),
         });
         await storage.markAdminInvitationUsed(token, existingUser.id);
       }
@@ -2728,7 +2725,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteAdminInvitation(req.params.id);
+      await storage.deleteAdminInvitation((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to delete admin invitation:", error);
@@ -2744,7 +2741,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const targetUserId = req.params.targetUserId;
+      const targetUserId = (req.params.targetUserId as string);
 
       if (targetUserId === userId) {
         return res.status(400).json({ error: "You cannot revoke your own admin access" });
@@ -2776,7 +2773,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { memberId } = req.params;
+      const { memberId } = req.params as Record<string, string>;
       const { role, customRoleId } = req.body;
 
       const validRoles = ["company_owner", "company_admin", "team_member", "custom"];
@@ -2804,7 +2801,7 @@ export async function registerRoutes(
   // Task checklist item routes
   app.get("/api/tasks/:id/checklist", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2819,7 +2816,7 @@ export async function registerRoutes(
         }
       }
 
-      const items = await storage.getTaskChecklistItems(req.params.id);
+      const items = await storage.getTaskChecklistItems((req.params.id as string));
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch checklist items" });
@@ -2828,7 +2825,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/checklist", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2845,7 +2842,7 @@ export async function registerRoutes(
 
       const data = insertTaskChecklistItemSchema.parse({
         ...req.body,
-        taskId: req.params.id,
+        taskId: (req.params.id as string),
       });
       const item = await storage.createTaskChecklistItem(data);
       broadcastInvalidation(["/api/tasks"]);
@@ -2860,7 +2857,7 @@ export async function registerRoutes(
 
   app.patch("/api/checklist-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const checklistItem = await storage.getTaskChecklistItem(req.params.id);
+      const checklistItem = await storage.getTaskChecklistItem((req.params.id as string));
       if (!checklistItem) {
         return res.status(404).json({ error: "Checklist item not found" });
       }
@@ -2880,7 +2877,7 @@ export async function registerRoutes(
         }
       }
 
-      const item = await storage.updateTaskChecklistItem(req.params.id, req.body);
+      const item = await storage.updateTaskChecklistItem((req.params.id as string), req.body);
       broadcastInvalidation(["/api/tasks"]);
       res.json(item);
     } catch (error) {
@@ -2890,7 +2887,7 @@ export async function registerRoutes(
 
   app.delete("/api/checklist-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const checklistItem = await storage.getTaskChecklistItem(req.params.id);
+      const checklistItem = await storage.getTaskChecklistItem((req.params.id as string));
       if (!checklistItem) {
         return res.status(404).json({ error: "Checklist item not found" });
       }
@@ -2910,7 +2907,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteTaskChecklistItem(req.params.id);
+      await storage.deleteTaskChecklistItem((req.params.id as string));
       broadcastInvalidation(["/api/tasks"]);
       res.json({ success: true });
     } catch (error) {
@@ -2921,7 +2918,7 @@ export async function registerRoutes(
   // Task comments endpoints
   app.get("/api/tasks/:id/comments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2936,7 +2933,7 @@ export async function registerRoutes(
         }
       }
 
-      const comments = await storage.getTaskComments(req.params.id);
+      const comments = await storage.getTaskComments((req.params.id as string));
       res.json(comments);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch comments" });
@@ -2945,7 +2942,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/comments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2970,17 +2967,17 @@ export async function registerRoutes(
       let userType: "admin" | "client" = "client";
       
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId);
+        const admin = await storage.getAdminUser(userId) as any;
         userName = admin?.name || admin?.email || "Admin";
         userType = "admin";
       } else {
-        const member = await storage.getCompanyMemberById(userId);
+        const member = await storage.getCompanyMemberById(userId) as any;
         userName = member?.name || member?.email || "Client";
         userType = "client";
       }
 
       const comment = await storage.createTaskComment({
-        taskId: req.params.id,
+        taskId: (req.params.id as string),
         userId,
         userName,
         userType,
@@ -2998,7 +2995,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const comment = await storage.getTaskComment(req.params.id);
+      const comment = await storage.getTaskComment((req.params.id as string));
       
       if (!comment) {
         return res.status(404).json({ error: "Comment not found" });
@@ -3013,7 +3010,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Comment content is required" });
       }
 
-      const updated = await storage.updateTaskComment(req.params.id, content.trim());
+      const updated = await storage.updateTaskComment((req.params.id as string), content.trim());
       broadcastInvalidation(["/api/tasks"]);
       res.json(updated);
     } catch (error) {
@@ -3025,7 +3022,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const comment = await storage.getTaskComment(req.params.id);
+      const comment = await storage.getTaskComment((req.params.id as string));
 
       if (!comment) {
         return res.status(404).json({ error: "Comment not found" });
@@ -3035,7 +3032,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "You can only delete your own comments" });
       }
 
-      await storage.deleteTaskComment(req.params.id);
+      await storage.deleteTaskComment((req.params.id as string));
       broadcastInvalidation(["/api/tasks"]);
       res.json({ success: true });
     } catch (error) {
@@ -3046,7 +3043,7 @@ export async function registerRoutes(
   // Task attachments endpoints
   app.get("/api/tasks/:id/attachments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3061,7 +3058,7 @@ export async function registerRoutes(
         }
       }
 
-      const attachments = await storage.getTaskAttachments(req.params.id);
+      const attachments = await storage.getTaskAttachments((req.params.id as string));
       res.json(attachments);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch attachments" });
@@ -3076,7 +3073,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/attachments", isAuthenticated, taskAttachmentUpload.single("file"), async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3104,7 +3101,7 @@ export async function registerRoutes(
       // Get uploader name
       let uploaderName = "Unknown";
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId);
+        const admin = await storage.getAdminUser(userId) as any;
         uploaderName = admin?.name || admin?.email || "Admin";
       } else {
         const user = await storage.getUser(userId);
@@ -3113,11 +3110,11 @@ export async function registerRoutes(
 
       const { uploadBuffer } = await import("./object-storage-helpers");
       const { randomUUID } = await import("crypto");
-      const objectRelPath = `attachments/${req.params.id}/${randomUUID()}_${req.file.originalname}`;
+      const objectRelPath = `attachments/${(req.params.id as string)}/${randomUUID()}_${req.file.originalname}`;
       const storedPath = await uploadBuffer(objectRelPath, req.file.buffer, req.file.mimetype);
 
       const attachment = await storage.createTaskAttachment({
-        taskId: req.params.id,
+        taskId: (req.params.id as string),
         fileName: req.file.originalname,
         fileSize: req.file.size,
         contentType: req.file.mimetype,
@@ -3138,7 +3135,7 @@ export async function registerRoutes(
 
   app.get("/api/attachments/:id/download", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const attachment = await storage.getTaskAttachment(req.params.id);
+      const attachment = await storage.getTaskAttachment((req.params.id as string));
       if (!attachment) {
         return res.status(404).json({ error: "Attachment not found" });
       }
@@ -3190,7 +3187,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const attachment = await storage.getTaskAttachment(req.params.id);
+      const attachment = await storage.getTaskAttachment((req.params.id as string));
       if (!attachment) {
         return res.status(404).json({ error: "Attachment not found" });
       }
@@ -3202,7 +3199,7 @@ export async function registerRoutes(
         await deleteFromSharePoint(attachment.driveId, attachment.itemId);
       }
 
-      await storage.deleteTaskAttachment(req.params.id);
+      await storage.deleteTaskAttachment((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Attachment delete error:", error);
@@ -3212,7 +3209,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id/links", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) return res.status(404).json({ error: "Task not found" });
 
       const userId = req.user!.id;
@@ -3222,7 +3219,7 @@ export async function registerRoutes(
         if (!member) return res.status(403).json({ error: "Access denied" });
       }
 
-      const links = await storage.getTaskLinks(req.params.id);
+      const links = await storage.getTaskLinks((req.params.id as string));
       res.json(links);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch links" });
@@ -3231,7 +3228,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/links", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) return res.status(404).json({ error: "Task not found" });
 
       const userId = req.user!.id;
@@ -3246,7 +3243,7 @@ export async function registerRoutes(
 
       let createdByName = "Unknown";
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId);
+        const admin = await storage.getAdminUser(userId) as any;
         createdByName = admin?.name || admin?.email || "Admin";
       } else {
         const user = await storage.getUser(userId);
@@ -3254,7 +3251,7 @@ export async function registerRoutes(
       }
 
       const link = await storage.createTaskLink({
-        taskId: req.params.id,
+        taskId: (req.params.id as string),
         url,
         label: label || null,
         createdBy: userId,
@@ -3272,14 +3269,14 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
 
-      const link = await storage.getTaskLink(req.params.id);
+      const link = await storage.getTaskLink((req.params.id as string));
       if (!link) return res.status(404).json({ error: "Link not found" });
 
       if (!isAdmin && link.createdBy !== userId) {
         return res.status(403).json({ error: "You can only delete your own links" });
       }
 
-      await storage.deleteTaskLink(req.params.id);
+      await storage.deleteTaskLink((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete link" });
@@ -3288,7 +3285,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id/assignees", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const assignees = await storage.getTaskAssignees(req.params.id);
+      const assignees = await storage.getTaskAssignees((req.params.id as string));
       const enriched = await Promise.all(
         assignees.map(async (a) => {
           const user = await storage.getUser(a.userId);
@@ -3309,9 +3306,9 @@ export async function registerRoutes(
     try {
       const { userId } = req.body;
       if (!userId) return res.status(400).json({ error: "userId is required" });
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) return res.status(404).json({ error: "Task not found" });
-      const assignee = await storage.addTaskAssignee({ taskId: req.params.id, userId });
+      const assignee = await storage.addTaskAssignee({ taskId: (req.params.id as string), userId });
       const user = await storage.getUser(userId);
       res.json({
         ...assignee,
@@ -3325,7 +3322,7 @@ export async function registerRoutes(
 
   app.delete("/api/tasks/:id/assignees/:userId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      await storage.removeTaskAssignee(req.params.id, req.params.userId);
+      await storage.removeTaskAssignee((req.params.id as string), (req.params.userId as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove task assignee" });
@@ -3335,7 +3332,7 @@ export async function registerRoutes(
   // Get single task with details
   app.get("/api/tasks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3429,7 +3426,7 @@ export async function registerRoutes(
 
   app.get("/api/invitations/:token", async (req, res) => {
     try {
-      const invitation = await storage.getCompanyInvitation(req.params.token);
+      const invitation = await storage.getCompanyInvitation((req.params.token as string));
       
       if (!invitation) {
         return res.status(404).json({ error: "Invitation not found" });
@@ -3461,7 +3458,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/invitations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const isAdmin = await storage.isAdmin(userId);
       
       // Check if user is admin OR company owner/admin
@@ -3490,7 +3487,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       
       if (!isAdmin) {
-        const invitation = await storage.getCompanyInvitationById(req.params.id);
+        const invitation = await storage.getCompanyInvitationById((req.params.id as string));
         if (!invitation) {
           return res.status(404).json({ error: "Invitation not found" });
         }
@@ -3500,7 +3497,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteCompanyInvitation(req.params.id);
+      await storage.deleteCompanyInvitation((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to delete company invitation:", error);
@@ -3518,10 +3515,10 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const onboarding = await storage.getClientOnboarding(req.params.id);
+      const onboarding = await storage.getClientOnboarding((req.params.id as string));
       if (!onboarding) return res.json(null);
       // Count credentials from the encrypted system — never return plaintext loginCredentials
-      const encryptedCreds = await storage.getCompanyCredentials(req.params.id);
+      const encryptedCreds = await storage.getCompanyCredentials((req.params.id as string));
       const { loginCredentials: _stripped, ...safeOnboarding } = onboarding;
       res.json({ ...safeOnboarding, credentialsProvidedCount: encryptedCreds.length });
     } catch (error) {
@@ -3536,12 +3533,12 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) return res.status(403).json({ error: "Access denied" });
       }
-      const onboarding = await storage.getClientOnboarding(companyId);
+      const onboarding = await storage.getClientOnboarding(companyId) as any;
       if (!onboarding) return res.json(null);
       // Sanitize socialPlatforms — only expose client-safe fields, strip any admin-added keys
       type SocialPlatformEntry = {
@@ -3608,7 +3605,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -3616,7 +3613,7 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Access denied" });
         }
         // Block non-admins from updating onboarding after it has been completed
-        const existing = await storage.getClientOnboarding(companyId);
+        const existing = await storage.getClientOnboarding(companyId) as any;
         if (existing?.isCompleted) {
           return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
         }
@@ -3658,7 +3655,7 @@ export async function registerRoutes(
           // All writes succeeded — safe to prune old set now
           await Promise.all(toDelete.map(c => storage.deleteCompanyCredential(c.id)));
           body.loginCredentialsProvided = true;
-          log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
+          console.log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
         }
       }
 
@@ -3688,7 +3685,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
 
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
@@ -3725,7 +3722,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       // Storage already computes hasPassword from real DB value before stripping password
-      const credentials = await storage.getCompanyCredentials(req.params.id);
+      const credentials = await storage.getCompanyCredentials((req.params.id as string));
       res.json(credentials);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch credentials" });
@@ -3737,11 +3734,11 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) return res.status(403).json({ error: "Access denied" });
-        const existingOnboarding = await storage.getClientOnboarding(companyId);
+        const existingOnboarding = await storage.getClientOnboarding(companyId) as any;
         if (existingOnboarding?.isCompleted) {
           return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
         }
@@ -3784,7 +3781,7 @@ export async function registerRoutes(
       const { label, username, password, url, notes, category } = req.body;
       if (!label?.trim()) return res.status(400).json({ error: "Label is required" });
       const credential = await storage.createCompanyCredential({
-        companyId: req.params.id,
+        companyId: (req.params.id as string),
         label: label.trim(),
         username: username || null,
         password: password || null,
@@ -3806,8 +3803,8 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential(req.params.credId);
-      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      const existing = await storage.getCompanyCredential((req.params.credId as string));
+      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
       const { label, username, password, url, notes, category } = req.body;
       const allowedFields: Partial<typeof existing> = {};
       if (label !== undefined) allowedFields.label = label;
@@ -3816,7 +3813,7 @@ export async function registerRoutes(
       if (url !== undefined) allowedFields.url = url || null;
       if (notes !== undefined) allowedFields.notes = notes || null;
       if (category !== undefined) allowedFields.category = category || null;
-      const updated = await storage.updateCompanyCredential(req.params.credId, allowedFields);
+      const updated = await storage.updateCompanyCredential((req.params.credId as string), allowedFields);
       res.json(updated);
     } catch (error) {
       if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
@@ -3831,9 +3828,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential(req.params.credId);
-      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
-      await storage.deleteCompanyCredential(req.params.credId);
+      const existing = await storage.getCompanyCredential((req.params.credId as string));
+      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
+      await storage.deleteCompanyCredential((req.params.credId as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credential" });
@@ -3846,9 +3843,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential(req.params.credId);
-      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
-      const password = await storage.getCompanyCredentialDecrypted(req.params.credId);
+      const existing = await storage.getCompanyCredential((req.params.credId as string));
+      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
+      const password = await storage.getCompanyCredentialDecrypted((req.params.credId as string));
       res.json({ password });
     } catch (error) {
       console.error("Failed to reveal credential:", error);
@@ -3865,7 +3862,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const items = await storage.getCompanyKnowledgeItems(req.params.id);
+      const items = await storage.getCompanyKnowledgeItems((req.params.id as string));
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch knowledge items" });
@@ -3880,7 +3877,7 @@ export async function registerRoutes(
       const { section, title, content, url, sortOrder } = req.body;
       if (!section || !title?.trim()) return res.status(400).json({ error: "Section and title are required" });
       const item = await storage.createCompanyKnowledgeItem({
-        companyId: req.params.id,
+        companyId: (req.params.id as string),
         section,
         title: title.trim(),
         content: content || null,
@@ -3898,8 +3895,8 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
-      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
+      const existing = await storage.getCompanyKnowledgeItem((req.params.itemId as string));
+      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Item not found" });
       const { section, title, content, url, sortOrder } = req.body;
       const allowedFields: Partial<typeof existing> = {};
       if (section !== undefined) allowedFields.section = section;
@@ -3907,7 +3904,7 @@ export async function registerRoutes(
       if (content !== undefined) allowedFields.content = content || null;
       if (url !== undefined) allowedFields.url = url || null;
       if (sortOrder !== undefined) allowedFields.sortOrder = sortOrder;
-      const updated = await storage.updateCompanyKnowledgeItem(req.params.itemId, allowedFields);
+      const updated = await storage.updateCompanyKnowledgeItem((req.params.itemId as string), allowedFields);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update knowledge item" });
@@ -3919,9 +3916,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
-      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
-      await storage.deleteCompanyKnowledgeItem(req.params.itemId);
+      const existing = await storage.getCompanyKnowledgeItem((req.params.itemId as string));
+      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Item not found" });
+      await storage.deleteCompanyKnowledgeItem((req.params.itemId as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete knowledge item" });
@@ -3932,7 +3929,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -3983,7 +3980,7 @@ export async function registerRoutes(
                 status: "pending",
                 priority: "medium",
                 dueDate,
-                creditCost: 0,
+                creditCost: "0",
                 type: "assigned",
               });
             }
@@ -4097,7 +4094,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -4117,7 +4114,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -4173,7 +4170,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/brand-assets/upload", isAuthenticated, upload.single('file'), async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const isAdmin = await storage.isAdmin(userId);
 
       if (!isAdmin) {
@@ -4225,7 +4222,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/chat-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const isAdmin = await storage.isAdmin(userId);
 
       // Check access
@@ -4360,7 +4357,7 @@ export async function registerRoutes(
           
           let taskInfo: { isRush?: boolean; rushDisabled?: boolean; taskTitle?: string } | null = null;
           if (thread.type === "task" && thread.taskId) {
-            const task = await storage.getTask(thread.taskId);
+            const task = await storage.getTask(thread.taskId) as any;
             if (task) {
               taskInfo = { isRush: task.isRush, rushDisabled: task.rushDisabled, taskTitle: task.title };
             }
@@ -4397,7 +4394,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4538,7 +4535,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4591,7 +4588,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
       const { memberUserId } = req.body;
 
       if (!thread) {
@@ -4629,7 +4626,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4637,12 +4634,12 @@ export async function registerRoutes(
 
       if (!isAdmin) {
         const member = await storage.getChatThreadMember(thread.id, userId);
-        if (!member?.isAdmin && req.params.memberId !== userId) {
+        if (!member?.isAdmin && (req.params.memberId as string) !== userId) {
           return res.status(403).json({ error: "Only thread admins can remove members" });
         }
       }
 
-      await storage.removeChatThreadMember(thread.id, req.params.memberId);
+      await storage.removeChatThreadMember(thread.id, (req.params.memberId as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove member" });
@@ -4654,7 +4651,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
       const limit = parseInt(req.query.limit as string) || 100;
 
       if (!thread) {
@@ -4692,7 +4689,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
       const { content, mentions } = req.body;
 
       if (!thread) {
@@ -4817,7 +4814,7 @@ export async function registerRoutes(
   app.post("/api/chat/threads/:id/read", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
       const { messageId } = req.body;
 
       if (!thread) {
@@ -4844,7 +4841,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4893,7 +4890,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4923,7 +4920,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4953,7 +4950,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -4984,7 +4981,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread(req.params.id);
+      const thread = await storage.getChatThread((req.params.id as string));
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5041,7 +5038,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask((req.params.id as string));
 
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
@@ -5066,7 +5063,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -5193,7 +5190,7 @@ export async function registerRoutes(
       if (updateData.meetingTypeQuantities && typeof updateData.meetingTypeQuantities !== "string") {
         updateData.meetingTypeQuantities = JSON.stringify(updateData.meetingTypeQuantities);
       }
-      const campaignType = await storage.updateCampaignType(req.params.id, updateData);
+      const campaignType = await storage.updateCampaignType((req.params.id as string), updateData);
       if (!campaignType) {
         return res.status(404).json({ error: "Campaign type not found" });
       }
@@ -5212,7 +5209,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCampaignType(req.params.id);
+      await storage.deleteCampaignType((req.params.id as string));
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete campaign type" });
@@ -5225,7 +5222,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -5243,7 +5240,7 @@ export async function registerRoutes(
 
   app.get("/api/cadences/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const cadence = await storage.getCadence(req.params.id);
+      const cadence = await storage.getCadence((req.params.id as string));
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -5261,7 +5258,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -5298,14 +5295,14 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence(req.params.id);
+      const cadence = await storage.getCadence((req.params.id as string));
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
 
       const data = req.body;
       if (data.cancel) {
-        await storage.deleteCadence(req.params.id);
+        await storage.deleteCadence((req.params.id as string));
         return res.json({ deleted: true });
       }
 
@@ -5321,7 +5318,7 @@ export async function registerRoutes(
       if (data.noCredit !== undefined) updateData.noCredit = data.noCredit;
       if (data.taskOwnership !== undefined) updateData.taskOwnership = data.taskOwnership;
 
-      const updated = await storage.updateCadence(req.params.id, updateData);
+      const updated = await storage.updateCadence((req.params.id as string), updateData);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update cadence" });
@@ -5352,7 +5349,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence(req.params.id);
+      const cadence = await storage.getCadence((req.params.id as string));
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -5376,7 +5373,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence(req.params.id);
+      const cadence = await storage.getCadence((req.params.id as string));
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -5399,7 +5396,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -5451,7 +5448,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/campaign-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const isAdmin = await storage.isAdmin(userId);
 
       if (!isAdmin) {
@@ -5601,7 +5598,7 @@ export async function registerRoutes(
         }
         updateData.creditOverride = String(parsed);
       }
-      const existingRequest = await storage.getCampaignRequest(req.params.id);
+      const existingRequest = await storage.getCampaignRequest((req.params.id as string));
 
       if (req.body.rushDisabled !== undefined && existingRequest && existingRequest.isRush) {
         const wasDisabled = existingRequest.rushDisabled ?? false;
@@ -5615,7 +5612,7 @@ export async function registerRoutes(
         }
       }
 
-      const request = await storage.updateCampaignRequest(req.params.id, updateData);
+      const request = await storage.updateCampaignRequest((req.params.id as string), updateData);
       if (!request) {
         return res.status(404).json({ error: "Campaign request not found" });
       }
@@ -5764,7 +5761,7 @@ export async function registerRoutes(
             sendCampaignResponseEmail({
               recipientEmail: user.email,
               recipientName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email,
-              campaignName: request.name,
+              campaignName: request.name || "",
               campaignType: campaignType?.name || "Campaign",
               status: req.body.status,
               adminNotes: req.body.adminNotes,
@@ -5828,7 +5825,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const type = await storage.updateMeetingType(req.params.id, req.body);
+      const type = await storage.updateMeetingType((req.params.id as string), req.body);
       if (!type) {
         return res.status(404).json({ error: "Meeting type not found" });
       }
@@ -5847,7 +5844,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteMeetingType(req.params.id);
+      await storage.deleteMeetingType((req.params.id as string));
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete meeting type" });
@@ -5876,7 +5873,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/meeting-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       // Check access
       const isAdmin = await storage.isAdmin(userId);
@@ -5904,7 +5901,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/meeting-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       
       // Check access
       const isAdmin = await storage.isAdmin(userId);
@@ -5958,7 +5955,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const existingRequest = await storage.getMeetingRequest(req.params.id);
+      const existingRequest = await storage.getMeetingRequest((req.params.id as string));
       if (!existingRequest) {
         return res.status(404).json({ error: "Meeting request not found" });
       }
@@ -6017,7 +6014,7 @@ export async function registerRoutes(
         }
       }
 
-      const request = await storage.updateMeetingRequest(req.params.id, updateData);
+      const request = await storage.updateMeetingRequest((req.params.id as string), updateData);
 
       // Send email notification when meeting is approved
       if (req.body.status === "approved" && existingRequest.status === "pending") {
@@ -6122,7 +6119,7 @@ export async function registerRoutes(
   app.get("/api/meeting-requests/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const request = await storage.getMeetingRequest(req.params.id);
+      const request = await storage.getMeetingRequest((req.params.id as string));
       
       if (!request) {
         return res.status(404).json({ error: "Meeting request not found" });
@@ -6147,7 +6144,7 @@ export async function registerRoutes(
   app.get("/api/companies/:companyId/members-with-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       
       // Only admins can access this endpoint
       const isAdmin = await storage.isAdmin(userId);
@@ -6183,7 +6180,7 @@ export async function registerRoutes(
   app.get("/api/companies/:companyId/government-documents", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6205,7 +6202,7 @@ export async function registerRoutes(
   app.get("/api/government-documents/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const doc = await storage.getGovernmentDocument(id);
       if (!doc) {
@@ -6231,7 +6228,7 @@ export async function registerRoutes(
   app.post("/api/companies/:companyId/government-documents", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6303,7 +6300,7 @@ export async function registerRoutes(
   app.post("/api/government-documents/:id/sign", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       const { signatureData, signatureType } = req.body;
       
       if (!signatureData) {
@@ -6401,7 +6398,7 @@ export async function registerRoutes(
   app.delete("/api/government-documents/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6447,6 +6444,7 @@ export async function registerRoutes(
       }
 
       // Store the PDF in object storage
+      // @ts-ignore
       const { Client } = await import("@replit/object-storage");
       const client = new Client();
       
@@ -6481,7 +6479,7 @@ export async function registerRoutes(
   app.get("/api/companies/:companyId/signing-packets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6503,7 +6501,7 @@ export async function registerRoutes(
   app.get("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const packet = await storage.getSigningPacket(id);
       if (!packet) {
@@ -6533,7 +6531,7 @@ export async function registerRoutes(
   app.post("/api/companies/:companyId/signing-packets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6541,7 +6539,7 @@ export async function registerRoutes(
       }
 
       const { name, description, documentUrl, dueDate, participants, fields } = req.body;
-      const adminUser = await storage.getAdminUser(userId);
+      const adminUser = await storage.getAdminUser(userId) as any;
 
       if (!name || !documentUrl) {
         return res.status(400).json({ error: "Name and document URL are required" });
@@ -6616,7 +6614,7 @@ export async function registerRoutes(
   app.patch("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6667,7 +6665,7 @@ export async function registerRoutes(
   app.post("/api/signing-packets/:id/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6715,7 +6713,7 @@ export async function registerRoutes(
           documentTitle: packet.title,
           senderName: "Near Me Connect",
           dueDate: packet.dueDate || undefined,
-          signUrl: `${baseUrl}/sign?token=${participant.token}`,
+          signUrl: `${baseUrl}/sign?token=${(participant as any).token}`,
         }).catch(err => console.error(`Failed to send signature request email to ${participant.email}:`, err));
       }
 
@@ -6730,7 +6728,7 @@ export async function registerRoutes(
   app.delete("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params;
+      const { id } = req.params as Record<string, string>;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6757,7 +6755,7 @@ export async function registerRoutes(
   // Get signing session by token (public - for recipients)
   app.get("/api/sign/:token", async (req, res) => {
     try {
-      const { token } = req.params;
+      const { token } = req.params as Record<string, string>;
       
       const participant = await storage.getSigningParticipantByToken(token);
       if (!participant) {
@@ -6829,7 +6827,7 @@ export async function registerRoutes(
   // Submit signature (public - for recipients)
   app.post("/api/sign/:token/submit", async (req, res) => {
     try {
-      const { token } = req.params;
+      const { token } = req.params as Record<string, string>;
       const { fieldValues } = req.body;
       
       const participant = await storage.getSigningParticipantByToken(token);
@@ -6909,7 +6907,7 @@ export async function registerRoutes(
             recipientName: p.name,
             documentTitle: packet.title,
             completedAt,
-            downloadUrl: `${baseUrl}/sign?token=${p.token}`,
+            downloadUrl: `${baseUrl}/sign?token=${(p as any).token}`,
             participants: participantsWithSignDates,
           }).catch(err => console.error(`Failed to send signature completion email to ${p.email}:`, err));
         }
@@ -6980,7 +6978,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid training module data", details: parsed.error.errors });
       }
 
-      const module = await storage.updateTrainingModule(req.params.id, parsed.data);
+      const module = await storage.updateTrainingModule((req.params.id as string), parsed.data);
       res.json(module);
     } catch (error) {
       res.status(500).json({ error: "Failed to update training module" });
@@ -6996,7 +6994,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteTrainingModule(req.params.id);
+      await storage.deleteTrainingModule((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete training module" });
@@ -7022,7 +7020,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "File too large (max 50GB)" });
       }
 
-      const module = await storage.getTrainingModule(req.params.id);
+      const module = await storage.getTrainingModule((req.params.id as string));
       if (!module) {
         return res.status(404).json({ error: "Training module not found" });
       }
@@ -7042,7 +7040,7 @@ export async function registerRoutes(
       }
 
       // Update training module with document info
-      await storage.updateTrainingModule(req.params.id, {
+      await storage.updateTrainingModule((req.params.id as string), {
         contentType: "document",
         documentDriveId: result.driveId,
         documentItemId: result.itemId,
@@ -7066,7 +7064,7 @@ export async function registerRoutes(
   // Download training document (authenticated users)
   app.get("/api/training-modules/:id/document/download", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const module = await storage.getTrainingModule(req.params.id);
+      const module = await storage.getTrainingModule((req.params.id as string));
       if (!module) {
         return res.status(404).json({ error: "Training module not found" });
       }
@@ -7075,7 +7073,7 @@ export async function registerRoutes(
         return res.status(404).json({ error: "No document attached to this module" });
       }
 
-      const result = await downloadFromSharePoint(module.documentDriveId, module.documentItemId);
+      const result = await downloadFromSharePoint(module.documentDriveId, module.documentItemId) as any;
       if (!result.success || !result.content) {
         return res.status(500).json({ error: result.error || "Failed to download document" });
       }
@@ -7195,7 +7193,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteTrainingAssignment(req.params.id);
+      await storage.deleteTrainingAssignment((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete training assignment" });
@@ -7405,7 +7403,7 @@ export async function registerRoutes(
         
         // Send reminder if due within the specified days (including overdue up to -7 days)
         if (daysRemaining <= daysBeforeDue && daysRemaining >= -7) {
-          const assignee = await storage.getCompanyMemberById(task.assignedTo);
+          const assignee = await storage.getCompanyMemberById(task.assignedTo) as any;
           const company = await storage.getCompany(task.companyId);
           
           if (assignee?.email && company) {
@@ -7475,7 +7473,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -7524,9 +7522,9 @@ export async function registerRoutes(
           const user = await storage.getUser(member.userId);
           if (user) {
             contactsData.push({
-              email: user.email,
-              firstName: user.firstName,
-              lastName: user.lastName,
+              email: user.email || "",
+              firstName: user.firstName || "",
+              lastName: user.lastName || "",
               companyName: company.name,
             });
           }
@@ -7549,7 +7547,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { taskId } = req.params;
+      const { taskId } = req.params as Record<string, string>;
       const task = await storage.getTask(taskId);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
@@ -7607,7 +7605,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { hubspotId } = req.params;
+      const { hubspotId } = req.params as Record<string, string>;
       const result = await getHubSpotCompanyById(hubspotId);
       res.json(result);
     } catch (error) {
@@ -7625,7 +7623,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { hubspotId } = req.params;
+      const { hubspotId } = req.params as Record<string, string>;
       const result = await getHubSpotCompanyContacts(hubspotId);
       res.json(result);
     } catch (error) {
@@ -7709,7 +7707,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const pkg = await storage.updateCreditPackage(req.params.id, req.body);
+      const pkg = await storage.updateCreditPackage((req.params.id as string), req.body);
       res.json(pkg);
     } catch (error) {
       res.status(500).json({ error: "Failed to update credit package" });
@@ -7725,7 +7723,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCreditPackage(req.params.id);
+      await storage.deleteCreditPackage((req.params.id as string));
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credit package" });
@@ -7771,7 +7769,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const sale = await storage.updateCreditSale(req.params.id, req.body);
+      const sale = await storage.updateCreditSale((req.params.id as string), req.body);
       res.json(sale);
     } catch (error) {
       res.status(500).json({ error: "Failed to update credit sale" });
@@ -7787,7 +7785,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCreditSale(req.params.id);
+      await storage.deleteCreditSale((req.params.id as string));
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credit sale" });
@@ -7916,7 +7914,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const members = await storage.getCompanyMembers(companyId);
       const allTags = await storage.getUserTags();
       const allCustomRoles = await storage.getCustomRoles();
@@ -8013,7 +8011,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const tag = await storage.updateUserTag(req.params.id, req.body);
+      const tag = await storage.updateUserTag((req.params.id as string), req.body);
       if (!tag) {
         return res.status(404).json({ error: "Tag not found" });
       }
@@ -8032,7 +8030,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteUserTag(req.params.id);
+      await storage.deleteUserTag((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user tag" });
@@ -8048,7 +8046,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const assignments = await storage.getUserTagAssignments(req.params.userId);
+      const assignments = await storage.getUserTagAssignments((req.params.userId as string));
       const tags = await storage.getUserTags();
       const userTags = assignments
         .map(a => tags.find(t => t.id === a.tagId))
@@ -8074,7 +8072,7 @@ export async function registerRoutes(
       }
 
       const assignment = await storage.assignUserTag({
-        userId: req.params.userId,
+        userId: (req.params.userId as string),
         tagId,
         assignedBy: adminId,
       });
@@ -8093,7 +8091,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.removeUserTag(req.params.userId, req.params.tagId);
+      await storage.removeUserTag((req.params.userId as string), (req.params.tagId as string));
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove tag" });
@@ -8130,7 +8128,7 @@ export async function registerRoutes(
   app.patch("/api/notifications/:id/read", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const notification = await storage.markNotificationRead(req.params.id);
+      const notification = await storage.markNotificationRead((req.params.id as string));
       if (!notification) {
         return res.status(404).json({ error: "Notification not found" });
       }
@@ -8211,7 +8209,7 @@ export async function registerRoutes(
   app.get("/api/chat/threads/:id/mentionable-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const threadId = req.params.id;
+      const threadId = (req.params.id as string);
       
       const thread = await storage.getChatThread(threadId);
       if (!thread) {
@@ -8511,7 +8509,6 @@ export async function registerRoutes(
         amount: creditAmount,
         type: "allocation",
         description: `Simulated purchase: ${creditAmount} credits`,
-        createdBy: userId,
         balanceAfter: newCredits,
       });
 
@@ -8620,7 +8617,7 @@ export async function registerRoutes(
       const activeCompanies = allCompanies.filter(c => companiesWithTasksInPeriod.has(c.id) || companiesWithTasks.has(c.id));
       
       const avgCreditsPerCompany = allCompanies.length > 0
-        ? allCompanies.reduce((acc, c) => acc + parseFloat(c.currentCredits), 0) / allCompanies.length
+        ? allCompanies.reduce((acc, c) => acc + c.credits, 0) / allCompanies.length
         : null;
 
       // Time series data - tasks completed per day
@@ -8699,7 +8696,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
       if (!month || !year || month < 1 || month > 12) {
@@ -8719,7 +8716,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const companyId = req.params.id;
+      const companyId = (req.params.id as string);
       const { month, year, notes } = req.body;
       if (!month || !year || typeof notes !== "string") {
         return res.status(400).json({ error: "month (1-12), year (number), and notes (string) are required" });
@@ -8851,7 +8848,7 @@ export async function registerRoutes(
           if (company) {
             const members = await storage.getCompanyMembers(company.id);
             const owners = members.filter(m => m.role === "owner" || m.role === "admin");
-            const creditPackage = await storage.getCreditPackage(purchase.packageId);
+            const creditPackage = await storage.getCreditPackage(purchase.packageId!);
             
             const baseUrl = process.env.REPLIT_DEPLOYMENT
               ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
@@ -8868,8 +8865,8 @@ export async function registerRoutes(
                   companyName: company.name,
                   packageName: creditPackage?.name || "Credit Package",
                   creditsAdded: purchase.creditAmount,
-                  amountPaid: purchase.amountPaid,
-                  newBalance: company.credits + purchase.creditAmount,
+                  amountPaid: Number(purchase.amountPaid || 0),
+                  newBalance: company.credits + Number(purchase.creditAmount || 0),
                   transactionId: purchase.id,
                   portalUrl: `${baseUrl}/client/credits`,
                 }).catch(err => console.error("Failed to send credit purchase email:", err));
@@ -8926,7 +8923,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const profile = await storage.getMediaProfile(req.params.id);
+      const profile = await storage.getMediaProfile((req.params.id as string));
       if (!profile) {
         return res.status(404).json({ error: "Profile not found" });
       }
@@ -8989,7 +8986,7 @@ export async function registerRoutes(
       }
 
       const { name, description, isActive } = req.body;
-      const profile = await storage.updateMediaProfile(req.params.id, {
+      const profile = await storage.updateMediaProfile((req.params.id as string), {
         name,
         description,
         isActive,
@@ -9015,8 +9012,8 @@ export async function registerRoutes(
       }
 
       // Delete associated fields first
-      await storage.deleteMediaProfileFieldsByProfileId(req.params.id);
-      await storage.deleteMediaProfile(req.params.id);
+      await storage.deleteMediaProfileFieldsByProfileId((req.params.id as string));
+      await storage.deleteMediaProfile((req.params.id as string));
 
       res.json({ success: true });
     } catch (error) {
@@ -9035,7 +9032,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const fields = await storage.getMediaProfileFields(req.params.id);
+      const fields = await storage.getMediaProfileFields((req.params.id as string));
       res.json(fields);
     } catch (error) {
       console.error("Error fetching profile fields:", error);
@@ -9057,7 +9054,7 @@ export async function registerRoutes(
       }
 
       const field = await storage.createMediaProfileField({
-        profileId: req.params.id,
+        profileId: (req.params.id as string),
         fieldType,
         label,
         placeholder,
@@ -9083,7 +9080,7 @@ export async function registerRoutes(
       }
 
       const { fieldType, label, placeholder, helpText, isRequired, options, sortOrder } = req.body;
-      const field = await storage.updateMediaProfileField(req.params.id, {
+      const field = await storage.updateMediaProfileField((req.params.id as string), {
         fieldType,
         label,
         placeholder,
@@ -9112,7 +9109,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteMediaProfileField(req.params.id);
+      await storage.deleteMediaProfileField((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting profile field:", error);
@@ -9140,7 +9137,7 @@ export async function registerRoutes(
         )
       );
 
-      const fields = await storage.getMediaProfileFields(req.params.id);
+      const fields = await storage.getMediaProfileFields((req.params.id as string));
       res.json(fields);
     } catch (error) {
       console.error("Error reordering fields:", error);
@@ -9153,7 +9150,7 @@ export async function registerRoutes(
   // Get profiles assigned to a company
   app.get("/api/companies/:companyId/media-profiles", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const assignments = await storage.getCompanyMediaProfiles(req.params.companyId);
+      const assignments = await storage.getCompanyMediaProfiles((req.params.companyId as string));
       
       // Enrich with profile details
       const profiles = await Promise.all(
@@ -9190,13 +9187,13 @@ export async function registerRoutes(
       }
 
       // Check if already assigned
-      const existing = await storage.getCompanyMediaProfiles(req.params.companyId);
+      const existing = await storage.getCompanyMediaProfiles((req.params.companyId as string));
       if (existing.some(a => a.profileId === profileId)) {
         return res.status(400).json({ error: "Profile already assigned to this company" });
       }
 
       const assignment = await storage.assignMediaProfileToCompany({
-        companyId: req.params.companyId,
+        companyId: (req.params.companyId as string),
         profileId,
         assignedBy: req.user!.id,
       });
@@ -9216,7 +9213,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.unassignMediaProfileFromCompany(req.params.companyId, req.params.profileId);
+      await storage.unassignMediaProfileFromCompany((req.params.companyId as string), (req.params.profileId as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error unassigning profile:", error);
@@ -9232,7 +9229,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const assignments = await storage.getMediaProfileCompanies(req.params.profileId);
+      const assignments = await storage.getMediaProfileCompanies((req.params.profileId as string));
       
       // Enrich with company details
       const enriched = await Promise.all(
@@ -9265,7 +9262,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Company ID required" });
       }
 
-      const assignment = await storage.assignMediaProfileToCompany({ companyId, profileId: req.params.profileId, assignedBy: req.user!.id });
+      const assignment = await storage.assignMediaProfileToCompany({ companyId, profileId: (req.params.profileId as string), assignedBy: req.user!.id });
       res.json(assignment);
     } catch (error) {
       console.error("Error assigning profile:", error);
@@ -9281,7 +9278,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.unassignMediaProfileFromCompany(req.params.companyId, req.params.profileId);
+      await storage.unassignMediaProfileFromCompany((req.params.companyId as string), (req.params.profileId as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error unassigning profile:", error);
@@ -9330,7 +9327,7 @@ export async function registerRoutes(
   // Get submission details
   app.get("/api/media-submissions/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission(req.params.id);
+      const submission = await storage.getMediaSubmission((req.params.id as string));
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -9366,11 +9363,11 @@ export async function registerRoutes(
       const membership = await storage.getCompanyMemberById(req.user!.id);
       const isAdmin = await storage.isAdmin(req.user!.id);
       
-      if (!isAdmin && (!membership || membership.companyId !== req.params.companyId)) {
+      if (!isAdmin && (!membership || membership.companyId !== (req.params.companyId as string))) {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const submissions = await storage.getMediaSubmissions(req.params.companyId);
+      const submissions = await storage.getMediaSubmissions((req.params.companyId as string));
       
       // Enrich with profile, files, and submitter name
       const enriched = await Promise.all(
@@ -9433,11 +9430,11 @@ export async function registerRoutes(
     let userName = "Unknown User";
     const isAdmin = await storage.isAdmin(submission.submittedBy);
     if (isAdmin) {
-      const admin = await storage.getAdminUserById(submission.submittedBy);
+      const admin = await storage.getAdminUser(submission.submittedBy) as any;
       if (admin) userName = `${admin.firstName} ${admin.lastName}`.trim() || admin.email;
     } else {
-      const member = await storage.getCompanyMemberById(submission.submittedBy);
-      if (member) userName = `${member.firstName} ${member.lastName}`.trim() || (member as any).email;
+      const member = await storage.getCompanyMemberById(submission.submittedBy) as any;
+      if (member) userName = `${member.firstName} ${member.lastName}`.trim() || member.email;
     }
 
     let pdfResult: { success: boolean; path?: string; webUrl?: string; error?: string } = { success: false };
@@ -9624,7 +9621,7 @@ export async function registerRoutes(
     console.log(`[media-upload] Submission ${submissionId} ${finalStatus}`);
 
     try {
-      const admins = await storage.getAllAdminUsers();
+      const admins = await storage.getAllAdminUsers() as any[];
       const portalUrl = `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.replit.app` : 'https://app.nearmemarketinghub.com'}/admin/media-submissions`;
       for (const admin of admins) {
         await sendMediaUploadNotificationEmail({
@@ -9667,7 +9664,7 @@ export async function registerRoutes(
       const membership = await storage.getCompanyMemberById(req.user!.id);
       const isAdmin = await storage.isAdmin(req.user!.id);
       
-      if (!isAdmin && (!membership || membership.companyId !== req.params.companyId)) {
+      if (!isAdmin && (!membership || membership.companyId !== (req.params.companyId as string))) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -9683,7 +9680,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "At least one file is required" });
       }
 
-      const company = await storage.getCompany(req.params.companyId);
+      const company = await storage.getCompany((req.params.companyId as string));
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -9694,7 +9691,7 @@ export async function registerRoutes(
       }
 
       const submission = await storage.createMediaSubmission({
-        companyId: req.params.companyId,
+        companyId: (req.params.companyId as string),
         profileId,
         submittedBy: req.user!.id,
         title,
@@ -9740,7 +9737,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-      const file = await storage.getMediaSubmissionFile(req.params.fileId);
+      const file = await storage.getMediaSubmissionFile((req.params.fileId as string));
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -9781,7 +9778,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-      const file = await storage.getMediaSubmissionFile(req.params.fileId);
+      const file = await storage.getMediaSubmissionFile((req.params.fileId as string));
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -9853,7 +9850,7 @@ export async function registerRoutes(
 
   app.post("/api/media-uploads/:uploadId/chunk", isAuthenticated, chunkUpload.single("chunk"), async (req: AuthenticatedRequest, res) => {
     try {
-      const { uploadId } = req.params;
+      const { uploadId } = req.params as Record<string, string>;
       const upload = activeUploads.get(uploadId);
       if (!upload) {
         return res.status(404).json({ error: "Upload not found or expired" });
@@ -9888,7 +9885,7 @@ export async function registerRoutes(
 
   app.post("/api/media-uploads/:uploadId/complete", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const { uploadId } = req.params;
+      const { uploadId } = req.params as Record<string, string>;
       const upload = activeUploads.get(uploadId);
       if (!upload) {
         return res.status(404).json({ error: "Upload not found or expired" });
@@ -9942,12 +9939,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const submission = await storage.getMediaSubmission(req.params.id);
+      const submission = await storage.getMediaSubmission((req.params.id as string));
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
 
-      const files = await storage.getMediaSubmissionFiles(req.params.id);
+      const files = await storage.getMediaSubmissionFiles((req.params.id as string));
       const hasPendingOrFailed = files.some(f => f.status === "pending" || f.status === "failed");
       if (!hasPendingOrFailed) {
         return res.status(400).json({ error: "No files need retrying" });
@@ -9963,12 +9960,12 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateMediaSubmission(req.params.id, { status: "processing" });
+      await storage.updateMediaSubmission((req.params.id as string), { status: "processing" });
 
       res.json({ message: "Retry initiated" });
 
-      processSharePointUpload(req.params.id).catch(err => {
-        console.error(`[media-upload] Retry failed for submission ${req.params.id}:`, err);
+      processSharePointUpload((req.params.id as string)).catch(err => {
+        console.error(`[media-upload] Retry failed for submission ${(req.params.id as string)}:`, err);
       });
 
     } catch (error) {
@@ -9980,7 +9977,7 @@ export async function registerRoutes(
   // Update submission (e.g., after SharePoint upload)
   app.patch("/api/media-submissions/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission(req.params.id);
+      const submission = await storage.getMediaSubmission((req.params.id as string));
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -9991,7 +9988,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const updated = await storage.updateMediaSubmission(req.params.id, req.body);
+      const updated = await storage.updateMediaSubmission((req.params.id as string), req.body);
       res.json(updated);
     } catch (error) {
       console.error("Error updating media submission:", error);
@@ -10002,7 +9999,7 @@ export async function registerRoutes(
   // Add file to submission
   app.post("/api/media-submissions/:id/files", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission(req.params.id);
+      const submission = await storage.getMediaSubmission((req.params.id as string));
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -10019,7 +10016,7 @@ export async function registerRoutes(
       }
 
       const file = await storage.createMediaSubmissionFile({
-        submissionId: req.params.id,
+        submissionId: (req.params.id as string),
         fileName,
         fileType,
         fileSize,
@@ -10035,7 +10032,7 @@ export async function registerRoutes(
   // Update file (e.g., after SharePoint upload)
   app.patch("/api/media-submission-files/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const file = await storage.updateMediaSubmissionFile(req.params.id, req.body);
+      const file = await storage.updateMediaSubmissionFile((req.params.id as string), req.body);
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -10098,7 +10095,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const updated = await storage.updateCustomRole(req.params.id, req.body);
+      const updated = await storage.updateCustomRole((req.params.id as string), req.body);
       if (!updated) {
         return res.status(404).json({ error: "Custom role not found" });
       }
@@ -10117,7 +10114,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCustomRole(req.params.id);
+      await storage.deleteCustomRole((req.params.id as string));
       res.status(204).send();
     } catch (error) {
       console.error("Failed to delete custom role:", error);
@@ -10128,7 +10125,7 @@ export async function registerRoutes(
   // Public custom role lookup (any authenticated user)
   app.get("/api/custom-roles/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const role = await storage.getCustomRole(req.params.id);
+      const role = await storage.getCustomRole((req.params.id as string));
       if (!role) {
         return res.status(404).json({ error: "Custom role not found" });
       }
@@ -10181,7 +10178,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { companyId } = req.params;
+      const { companyId } = req.params as Record<string, string>;
       const { db } = await import("./db");
       const { eq, inArray } = await import("drizzle-orm");
       const {
@@ -10247,7 +10244,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const targetUserId = req.params.userId;
+      const targetUserId = (req.params.userId as string);
       if (currentUserId === targetUserId) {
         return res.status(400).json({ error: "Cannot delete yourself" });
       }

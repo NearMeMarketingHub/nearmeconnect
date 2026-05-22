@@ -152,7 +152,7 @@ export function TaskBoardView({
       allowDrag={allowDrag}
       getCompanyName={getCompanyName}
       sensors={sensors}
-      activeTask={activeTask}
+      activeTask={activeTask ?? null}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     />

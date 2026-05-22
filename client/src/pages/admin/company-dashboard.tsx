@@ -2447,7 +2447,7 @@ export default function CompanyDashboard() {
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Tasks</h2>
               <div className="flex items-center gap-2">
-                <ManageCategoriesDialog companyId={companyId} categories={taskCategoriesData || []} />
+                <ManageCategoriesDialog companyId={companyId!} categories={taskCategoriesData || []} />
                 <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
                   <DialogTrigger asChild>
                     <Button data-testid="button-assign-task">
@@ -4799,7 +4799,7 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="reporting" className="space-y-6">
-            <CompanyReportingTab companyId={companyId} companyName={company?.name || ""} tasks={tasks || []} />
+            <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
         </Tabs>
       </div>
