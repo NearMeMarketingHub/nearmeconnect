@@ -480,7 +480,11 @@ export const clientOnboarding = pgTable("client_onboarding", {
   authorizationName: text("authorization_name"),
   authorizationDate: text("authorization_date"),
   authorizationSignature: text("authorization_signature"),
-  
+
+  // Completion status — set by admin when onboarding is finalized
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: text("completed_at"),
+
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });

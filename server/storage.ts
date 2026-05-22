@@ -164,6 +164,18 @@ import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
 
+export type AdminUserWithProfile = AdminUser & {
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
+export type CompanyMemberWithProfile = CompanyMember & {
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
 
@@ -175,15 +187,15 @@ export interface IStorage {
   getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined>;
   getCompanyMembers(companyId: string): Promise<CompanyMember[]>;
   getCompanyMembership(companyId: string, userId: string): Promise<CompanyMember | undefined>;
-  getCompanyMemberById(userId: string): Promise<CompanyMember | undefined>;
+  getCompanyMemberById(userId: string): Promise<CompanyMemberWithProfile | undefined>;
   getUserCompanies(userId: string): Promise<CompanyMember[]>;
   createCompanyMember(member: InsertCompanyMember): Promise<CompanyMember>;
   deleteCompanyMember(id: string): Promise<void>;
   updateCompanyMemberRole(id: string, role: string, customRoleId?: string | null): Promise<CompanyMember>;
 
   isAdmin(userId: string): Promise<boolean>;
-  getAdminUser(userId: string): Promise<AdminUser | undefined>;
-  getAllAdminUsers(): Promise<AdminUser[]>;
+  getAdminUser(userId: string): Promise<AdminUserWithProfile | undefined>;
+  getAllAdminUsers(): Promise<AdminUserWithProfile[]>;
   createAdminUser(admin: InsertAdminUser): Promise<AdminUser>;
   deleteAdminUser(userId: string): Promise<void>;
 
@@ -525,10 +537,23 @@ export class DatabaseStorage implements IStorage {
     return membership;
   }
 
-  async getCompanyMemberById(userId: string): Promise<CompanyMember | undefined> {
-    const [member] = await db.select().from(companyMembers)
+  async getCompanyMemberById(userId: string): Promise<CompanyMemberWithProfile | undefined> {
+    const [result] = await db
+      .select({
+        id: companyMembers.id,
+        companyId: companyMembers.companyId,
+        userId: companyMembers.userId,
+        role: companyMembers.role,
+        customRoleId: companyMembers.customRoleId,
+        createdAt: companyMembers.createdAt,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(companyMembers)
+      .innerJoin(users, eq(companyMembers.userId, users.id))
       .where(eq(companyMembers.userId, userId));
-    return member;
+    return result;
   }
 
   async getUserCompanies(userId: string): Promise<CompanyMember[]> {
@@ -561,13 +586,34 @@ export class DatabaseStorage implements IStorage {
     return !!admin;
   }
 
-  async getAdminUser(userId: string): Promise<AdminUser | undefined> {
-    const [admin] = await db.select().from(adminUsers).where(eq(adminUsers.userId, userId));
-    return admin;
+  async getAdminUser(userId: string): Promise<AdminUserWithProfile | undefined> {
+    const [result] = await db
+      .select({
+        id: adminUsers.id,
+        userId: adminUsers.userId,
+        createdAt: adminUsers.createdAt,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(adminUsers)
+      .innerJoin(users, eq(adminUsers.userId, users.id))
+      .where(eq(adminUsers.userId, userId));
+    return result;
   }
 
-  async getAllAdminUsers(): Promise<AdminUser[]> {
-    return await db.select().from(adminUsers);
+  async getAllAdminUsers(): Promise<AdminUserWithProfile[]> {
+    return await db
+      .select({
+        id: adminUsers.id,
+        userId: adminUsers.userId,
+        createdAt: adminUsers.createdAt,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(adminUsers)
+      .innerJoin(users, eq(adminUsers.userId, users.id));
   }
 
   async createAdminUser(admin: InsertAdminUser): Promise<AdminUser> {

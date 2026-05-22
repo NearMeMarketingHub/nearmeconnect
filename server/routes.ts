@@ -2967,12 +2967,12 @@ export async function registerRoutes(
       let userType: "admin" | "client" = "client";
       
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId) as any;
-        userName = admin?.name || admin?.email || "Admin";
+        const admin = await storage.getAdminUser(userId);
+        userName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
         userType = "admin";
       } else {
-        const member = await storage.getCompanyMemberById(userId) as any;
-        userName = member?.name || member?.email || "Client";
+        const member = await storage.getCompanyMemberById(userId);
+        userName = member ? (`${member.firstName || ""} ${member.lastName || ""}`.trim() || member.email) : "Client";
         userType = "client";
       }
 
@@ -3101,8 +3101,8 @@ export async function registerRoutes(
       // Get uploader name
       let uploaderName = "Unknown";
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId) as any;
-        uploaderName = admin?.name || admin?.email || "Admin";
+        const admin = await storage.getAdminUser(userId);
+        uploaderName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
       } else {
         const user = await storage.getUser(userId);
         uploaderName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.email || "Client";
@@ -3243,8 +3243,8 @@ export async function registerRoutes(
 
       let createdByName = "Unknown";
       if (isAdmin) {
-        const admin = await storage.getAdminUser(userId) as any;
-        createdByName = admin?.name || admin?.email || "Admin";
+        const admin = await storage.getAdminUser(userId);
+        createdByName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
       } else {
         const user = await storage.getUser(userId);
         createdByName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.email || "Client";
@@ -3538,7 +3538,7 @@ export async function registerRoutes(
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) return res.status(403).json({ error: "Access denied" });
       }
-      const onboarding = await storage.getClientOnboarding(companyId) as any;
+      const onboarding = await storage.getClientOnboarding(companyId);
       if (!onboarding) return res.json(null);
       // Sanitize socialPlatforms — only expose client-safe fields, strip any admin-added keys
       type SocialPlatformEntry = {
@@ -3613,7 +3613,7 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Access denied" });
         }
         // Block non-admins from updating onboarding after it has been completed
-        const existing = await storage.getClientOnboarding(companyId) as any;
+        const existing = await storage.getClientOnboarding(companyId);
         if (existing?.isCompleted) {
           return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
         }
@@ -3738,7 +3738,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) return res.status(403).json({ error: "Access denied" });
-        const existingOnboarding = await storage.getClientOnboarding(companyId) as any;
+        const existingOnboarding = await storage.getClientOnboarding(companyId);
         if (existingOnboarding?.isCompleted) {
           return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
         }
@@ -4357,9 +4357,16 @@ export async function registerRoutes(
           
           let taskInfo: { isRush?: boolean; rushDisabled?: boolean; taskTitle?: string } | null = null;
           if (thread.type === "task" && thread.taskId) {
-            const task = await storage.getTask(thread.taskId) as any;
+            const task = await storage.getTask(thread.taskId);
             if (task) {
-              taskInfo = { isRush: task.isRush, rushDisabled: task.rushDisabled, taskTitle: task.title };
+              let isRush: boolean | undefined;
+              let rushDisabled: boolean | undefined;
+              if (task.campaignRequestId) {
+                const campaignReq = await storage.getCampaignRequest(task.campaignRequestId);
+                isRush = campaignReq?.isRush;
+                rushDisabled = campaignReq?.rushDisabled;
+              }
+              taskInfo = { isRush, rushDisabled, taskTitle: task.title };
             }
           }
 
@@ -6539,7 +6546,7 @@ export async function registerRoutes(
       }
 
       const { name, description, documentUrl, dueDate, participants, fields } = req.body;
-      const adminUser = await storage.getAdminUser(userId) as any;
+      const adminUser = await storage.getAdminUser(userId);
 
       if (!name || !documentUrl) {
         return res.status(400).json({ error: "Name and document URL are required" });
@@ -6713,7 +6720,7 @@ export async function registerRoutes(
           documentTitle: packet.title,
           senderName: "Near Me Connect",
           dueDate: packet.dueDate || undefined,
-          signUrl: `${baseUrl}/sign?token=${(participant as any).token}`,
+          signUrl: `${baseUrl}/sign?token=${participant.accessToken}`,
         }).catch(err => console.error(`Failed to send signature request email to ${participant.email}:`, err));
       }
 
@@ -6907,7 +6914,7 @@ export async function registerRoutes(
             recipientName: p.name,
             documentTitle: packet.title,
             completedAt,
-            downloadUrl: `${baseUrl}/sign?token=${(p as any).token}`,
+            downloadUrl: `${baseUrl}/sign?token=${p.accessToken}`,
             participants: participantsWithSignDates,
           }).catch(err => console.error(`Failed to send signature completion email to ${p.email}:`, err));
         }
@@ -7073,14 +7080,14 @@ export async function registerRoutes(
         return res.status(404).json({ error: "No document attached to this module" });
       }
 
-      const result = await downloadFromSharePoint(module.documentDriveId, module.documentItemId) as any;
-      if (!result.success || !result.content) {
+      const result = await downloadFromSharePoint(module.documentDriveId, module.documentItemId);
+      if (!result.success || !result.buffer) {
         return res.status(500).json({ error: result.error || "Failed to download document" });
       }
 
       res.setHeader("Content-Type", result.contentType || "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(module.documentFileName || 'document')}"`);
-      res.send(result.content);
+      res.send(result.buffer);
     } catch (error) {
       console.error("Training document download error:", error);
       res.status(500).json({ error: "Failed to download document" });
@@ -7403,14 +7410,14 @@ export async function registerRoutes(
         
         // Send reminder if due within the specified days (including overdue up to -7 days)
         if (daysRemaining <= daysBeforeDue && daysRemaining >= -7) {
-          const assignee = await storage.getCompanyMemberById(task.assignedTo) as any;
+          const assignee = await storage.getCompanyMemberById(task.assignedTo);
           const company = await storage.getCompany(task.companyId);
           
           if (assignee?.email && company) {
             try {
               await sendTaskDueReminderEmail({
                 recipientEmail: assignee.email,
-                recipientName: assignee.name,
+                recipientName: `${assignee.firstName || ""} ${assignee.lastName || ""}`.trim() || assignee.email,
                 taskTitle: task.title,
                 dueDate: task.dueDate,
                 daysRemaining,
@@ -9430,11 +9437,11 @@ export async function registerRoutes(
     let userName = "Unknown User";
     const isAdmin = await storage.isAdmin(submission.submittedBy);
     if (isAdmin) {
-      const admin = await storage.getAdminUser(submission.submittedBy) as any;
-      if (admin) userName = `${admin.firstName} ${admin.lastName}`.trim() || admin.email;
+      const admin = await storage.getAdminUser(submission.submittedBy);
+      if (admin) userName = `${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email;
     } else {
-      const member = await storage.getCompanyMemberById(submission.submittedBy) as any;
-      if (member) userName = `${member.firstName} ${member.lastName}`.trim() || member.email;
+      const member = await storage.getCompanyMemberById(submission.submittedBy);
+      if (member) userName = `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.email;
     }
 
     let pdfResult: { success: boolean; path?: string; webUrl?: string; error?: string } = { success: false };
@@ -9621,7 +9628,7 @@ export async function registerRoutes(
     console.log(`[media-upload] Submission ${submissionId} ${finalStatus}`);
 
     try {
-      const admins = await storage.getAllAdminUsers() as any[];
+      const admins = await storage.getAllAdminUsers();
       const portalUrl = `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.replit.app` : 'https://app.nearmemarketinghub.com'}/admin/media-submissions`;
       for (const admin of admins) {
         await sendMediaUploadNotificationEmail({
