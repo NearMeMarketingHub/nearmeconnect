@@ -885,6 +885,7 @@ export default function AdminTasks() {
       </div>
 
       <ErrorBoundary
+        key={selectedTask?.id ?? "none"}
         fallback={
           <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-background border-l shadow-xl flex flex-col items-center justify-center gap-4 p-6 z-50">
             <p className="text-sm text-muted-foreground text-center">Something went wrong loading this task.</p>
