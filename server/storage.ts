@@ -198,6 +198,7 @@ export interface IStorage {
   getAllAdminUsers(): Promise<AdminUserWithProfile[]>;
   createAdminUser(admin: InsertAdminUser): Promise<AdminUser>;
   deleteAdminUser(userId: string): Promise<void>;
+  updateUserName(userId: string, firstName: string, lastName: string): Promise<void>;
 
   getAdminInvitation(token: string): Promise<AdminInvitation | undefined>;
   getAdminInvitationByEmail(email: string): Promise<AdminInvitation | undefined>;
@@ -626,6 +627,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAdminUser(userId: string): Promise<void> {
     await db.delete(adminUsers).where(eq(adminUsers.userId, userId));
+  }
+
+  async updateUserName(userId: string, firstName: string, lastName: string): Promise<void> {
+    await db.update(users).set({ firstName, lastName }).where(eq(users.id, userId));
   }
 
   async getAdminInvitation(token: string): Promise<AdminInvitation | undefined> {

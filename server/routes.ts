@@ -2765,6 +2765,32 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/admin/users/:userId/name", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const requesterId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(requesterId);
+      if (!isUserAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const schema = z.object({
+        firstName: z.string().min(1, "First name is required").max(100),
+        lastName: z.string().min(1, "Last name is required").max(100),
+      });
+      const { firstName, lastName } = schema.parse(req.body);
+
+      await storage.updateUserName((req.params.userId as string), firstName, lastName);
+      broadcastInvalidation(["/api/admin/users"]);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Failed to update user name:", error);
+      res.status(500).json({ error: "Failed to update name" });
+    }
+  });
+
   app.patch("/api/admin/members/:memberId/role", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
