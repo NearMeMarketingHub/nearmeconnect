@@ -161,7 +161,7 @@ import {
   companyKnowledgeItems,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql } from "drizzle-orm";
+import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
 
 export type AdminUserWithProfile = AdminUser & {
@@ -178,6 +178,7 @@ export type CompanyMemberWithProfile = CompanyMember & {
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
+  getUsersByIds(ids: string[]): Promise<User[]>;
 
   getCompany(id: string): Promise<Company | undefined>;
   getAllCompanies(): Promise<Company[]>;
@@ -324,6 +325,7 @@ export interface IStorage {
 
   // User Tag Assignments
   getUserTagAssignments(userId: string): Promise<UserTagAssignment[]>;
+  getUserTagAssignmentsForUsers(userIds: string[]): Promise<UserTagAssignment[]>;
   getUserTagAssignment(userId: string, tagId: string): Promise<UserTagAssignment | undefined>;
   assignUserTag(assignment: InsertUserTagAssignment): Promise<UserTagAssignment>;
   removeUserTag(userId: string, tagId: string): Promise<void>;
@@ -466,6 +468,11 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  async getUsersByIds(ids: string[]): Promise<User[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(users).where(inArray(users.id, ids));
   }
 
   async getCompany(id: string): Promise<Company | undefined> {
@@ -1887,6 +1894,12 @@ export class DatabaseStorage implements IStorage {
   async getUserTagAssignments(userId: string): Promise<UserTagAssignment[]> {
     return await db.select().from(userTagAssignments)
       .where(eq(userTagAssignments.userId, userId));
+  }
+
+  async getUserTagAssignmentsForUsers(userIds: string[]): Promise<UserTagAssignment[]> {
+    if (userIds.length === 0) return [];
+    return await db.select().from(userTagAssignments)
+      .where(inArray(userTagAssignments.userId, userIds));
   }
 
   async getUserTagAssignment(userId: string, tagId: string): Promise<UserTagAssignment | undefined> {

@@ -136,12 +136,32 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const { data: adminUsersData } = useQuery<any>({
     queryKey: ["/api/admin/users"],
     enabled: isAdmin && open,
+    staleTime: 60000,
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/users", { credentials: "include" });
+        if (!res.ok) return { admins: [] };
+        return res.json();
+      } catch {
+        return { admins: [] };
+      }
+    },
   });
   const adminUsers = Array.isArray(adminUsersData) ? adminUsersData : (adminUsersData?.admins || []);
 
   const { data: companyUsers } = useQuery<any[]>({
     queryKey: ["/api/admin/companies", companyId, "users"],
     enabled: isAdmin && !!companyId && open,
+    staleTime: 60000,
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/admin/companies/${companyId}/users`, { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
   });
 
   const { data: deliverableTypes } = useQuery<DeliverableType[]>({

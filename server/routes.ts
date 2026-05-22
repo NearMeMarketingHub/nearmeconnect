@@ -609,14 +609,15 @@ export async function registerRoutes(
       const companyId = req.query.companyId as string | undefined;
 
       const enrichWithCreatorName = async (tasks: any[]) => {
-        const creatorCache = new Map<string, string>();
-        return Promise.all(tasks.map(async (t) => {
-          if (!t.assignedBy) return { ...t, assignedByName: null };
-          if (creatorCache.has(t.assignedBy)) return { ...t, assignedByName: creatorCache.get(t.assignedBy) };
-          const creator = await storage.getUser(t.assignedBy);
-          const name = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email || "Unknown" : "Unknown";
-          creatorCache.set(t.assignedBy, name);
-          return { ...t, assignedByName: name };
+        const uniqueCreatorIds = [...new Set(tasks.map(t => t.assignedBy).filter(Boolean))];
+        const creators = await storage.getUsersByIds(uniqueCreatorIds);
+        const creatorMap = new Map(creators.map(u => [
+          u.id,
+          `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Unknown"
+        ]));
+        return tasks.map(t => ({
+          ...t,
+          assignedByName: t.assignedBy ? (creatorMap.get(t.assignedBy) ?? "Unknown") : null,
         }));
       };
       
@@ -7949,42 +7950,53 @@ export async function registerRoutes(
 
       const companyId = (req.params.id as string);
       const members = await storage.getCompanyMembers(companyId);
-      const allTags = await storage.getUserTags();
-      const allCustomRoles = await storage.getCustomRoles();
+      const memberIds = members.map(m => m.userId);
+
+      const [allTags, allCustomRoles, memberUsers, allTagAssignments] = await Promise.all([
+        storage.getUserTags(),
+        storage.getCustomRoles(),
+        storage.getUsersByIds(memberIds),
+        storage.getUserTagAssignmentsForUsers(memberIds),
+      ]);
+
       const customRolesMap = new Map(allCustomRoles.map(r => [r.id, r.name]));
-      
-      const usersWithDetails = await Promise.all(
-        members.map(async (member) => {
-          const user = await storage.getUser(member.userId);
-          const tagAssignments = await storage.getUserTagAssignments(member.userId);
-          const userTags = tagAssignments
-            .map(a => allTags.find(t => t.id === a.tagId))
-            .filter(Boolean);
-          
-          let roleLabel: string | null = null;
-          if (member.role === "company_owner") {
-            roleLabel = "Owner";
-          } else if (member.role === "company_admin") {
-            roleLabel = "Company Admin";
-          } else if (member.role === "custom" && member.customRoleId) {
-            roleLabel = customRolesMap.get(member.customRoleId) || "Team Member";
-          } else {
-            roleLabel = "Team Member";
-          }
-          
-          return {
-            id: member.userId,
-            memberId: member.id,
-            role: member.role,
-            roleLabel,
-            email: user?.email || "",
-            firstName: user?.firstName || "",
-            lastName: user?.lastName || "",
-            createdAt: member.createdAt,
-            tags: userTags,
-          };
-        })
-      );
+      const usersMap = new Map(memberUsers.map(u => [u.id, u]));
+      const tagAssignmentsByUser = new Map<string, typeof allTagAssignments>();
+      for (const a of allTagAssignments) {
+        if (!tagAssignmentsByUser.has(a.userId)) tagAssignmentsByUser.set(a.userId, []);
+        tagAssignmentsByUser.get(a.userId)!.push(a);
+      }
+
+      const usersWithDetails = members.map((member) => {
+        const user = usersMap.get(member.userId);
+        const tagAssignments = tagAssignmentsByUser.get(member.userId) ?? [];
+        const userTags = tagAssignments
+          .map(a => allTags.find(t => t.id === a.tagId))
+          .filter(Boolean);
+
+        let roleLabel: string | null = null;
+        if (member.role === "company_owner") {
+          roleLabel = "Owner";
+        } else if (member.role === "company_admin") {
+          roleLabel = "Company Admin";
+        } else if (member.role === "custom" && member.customRoleId) {
+          roleLabel = customRolesMap.get(member.customRoleId) || "Team Member";
+        } else {
+          roleLabel = "Team Member";
+        }
+
+        return {
+          id: member.userId,
+          memberId: member.id,
+          role: member.role,
+          roleLabel,
+          email: user?.email || "",
+          firstName: user?.firstName || "",
+          lastName: user?.lastName || "",
+          createdAt: member.createdAt,
+          tags: userTags,
+        };
+      });
 
       res.json(usersWithDetails);
     } catch (error) {

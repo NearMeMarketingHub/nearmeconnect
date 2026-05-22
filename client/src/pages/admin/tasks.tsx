@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { parseLocalDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin-layout";
@@ -883,23 +884,37 @@ export default function AdminTasks() {
         )}
       </div>
 
-      <TaskDetailPanel
-        task={selectedTask}
-        open={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
-        isAdmin={true}
-        companyId={selectedTask?.companyId || ""}
-        onNavigateToChat={(threadId, companyId) => {
-          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
-        }}
-        onViewCampaign={(campaignRequestId) => {
-          const campaign = getCampaignForTask(campaignRequestId);
-          if (campaign) {
-            setSelectedTask(null);
-            setSelectedCampaign(campaign);
-          }
-        }}
-      />
+      <ErrorBoundary
+        fallback={
+          <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-background border-l shadow-xl flex flex-col items-center justify-center gap-4 p-6 z-50">
+            <p className="text-sm text-muted-foreground text-center">Something went wrong loading this task.</p>
+            <button
+              className="text-sm underline text-primary"
+              onClick={() => setSelectedTask(null)}
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        <TaskDetailPanel
+          task={selectedTask}
+          open={!!selectedTask}
+          onClose={() => setSelectedTask(null)}
+          isAdmin={true}
+          companyId={selectedTask?.companyId || ""}
+          onNavigateToChat={(threadId, companyId) => {
+            setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
+          }}
+          onViewCampaign={(campaignRequestId) => {
+            const campaign = getCampaignForTask(campaignRequestId);
+            if (campaign) {
+              setSelectedTask(null);
+              setSelectedCampaign(campaign);
+            }
+          }}
+        />
+      </ErrorBoundary>
 
       <CampaignDetailPanel
         campaign={selectedCampaign}
