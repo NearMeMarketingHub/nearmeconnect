@@ -89,7 +89,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const { data: task } = useQuery<Task>({
     queryKey: ["/api/tasks", initialTask?.id],
     queryFn: async () => {
-      if (!initialTask) return null;
+      if (!initialTask) throw new Error("No task selected");
       const response = await fetch(`/api/tasks/${initialTask.id}`);
       if (!response.ok) throw new Error("Failed to fetch task");
       return response.json();
