@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar, Repeat } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { parseLocalDate } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { Task, TaskChecklistItem, TaskCategory, TaskStatus } from "@shared/schema";
@@ -55,6 +55,7 @@ export function BoardTaskCard({
   });
 
   const toggleChecklistMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, isCompleted }: { id: string; isCompleted: boolean }) => {
       return apiRequest("PATCH", `/api/checklist-items/${id}`, { isCompleted });
     },

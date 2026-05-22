@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target } from "lucide-react";
 import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
@@ -174,6 +174,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const removeAssigneeMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (userId: string) => {
       return apiRequest("DELETE", `/api/tasks/${task?.id}/assignees/${userId}`);
     },
@@ -417,6 +418,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const updateChecklistItemMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, data }: { id: string; data: Partial<TaskChecklistItem> }) => {
       return apiRequest("PATCH", `/api/checklist-items/${id}`, data);
     },
@@ -429,6 +431,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteChecklistItemMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/checklist-items/${id}`);
     },
@@ -539,6 +542,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const updateCommentMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, content }: { id: string; content: string }) => {
       return apiRequest("PATCH", `/api/comments/${id}`, { content });
     },
@@ -553,6 +557,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteCommentMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/comments/${id}`);
     },
@@ -606,6 +611,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteAttachmentMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/attachments/${id}`);
     },
@@ -655,6 +661,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteLinkMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/task-links/${id}`);
     },

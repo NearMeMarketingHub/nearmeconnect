@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { parseLocalDate } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -122,6 +122,7 @@ export function CampaignDetailPanel({
   });
 
   const updateStatusMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (status: string) => {
       return apiRequest("PATCH", `/api/campaign-requests/${campaign?.id}`, { status });
     },
@@ -140,6 +141,7 @@ export function CampaignDetailPanel({
   });
 
   const updateNotesMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (notes: string) => {
       return apiRequest("PATCH", `/api/campaign-requests/${campaign?.id}`, { adminNotes: notes });
     },
@@ -155,6 +157,7 @@ export function CampaignDetailPanel({
   });
 
   const saveEditsMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: {
       requestDeliverableIds: string[];
       requestDeliverableQuantities: string;
@@ -176,6 +179,7 @@ export function CampaignDetailPanel({
   });
 
   const toggleRushMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (newRushDisabled: boolean) => {
       setRushDisabledLocal(newRushDisabled);
       return apiRequest("PATCH", `/api/campaign-requests/${campaign?.id}`, { rushDisabled: newRushDisabled });

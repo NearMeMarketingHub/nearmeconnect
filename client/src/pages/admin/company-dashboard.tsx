@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useUpload } from "@/hooks/use-upload";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import {
@@ -205,6 +205,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const updateMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { name, color: color || null });
     },
@@ -216,6 +217,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const deleteMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/task-categories/${id}`);
     },
@@ -227,6 +229,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const reorderMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, sortOrder }: { id: string; sortOrder: number }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { sortOrder });
     },
@@ -847,6 +850,7 @@ export default function CompanyDashboard() {
   });
 
   const companyEditMeetingMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, proposedDate, proposedTime, creditCost, duration, teamsLink }: { id: string; proposedDate: string; proposedTime: string; creditCost: string; duration: number; teamsLink: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { proposedDate, proposedTime, creditCost, duration, teamsLink });
     },
@@ -862,6 +866,7 @@ export default function CompanyDashboard() {
   });
 
   const companyRejectMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { status: "rejected" });
     },
@@ -875,6 +880,7 @@ export default function CompanyDashboard() {
   });
 
   const saveMeetingNotesMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { notes });
     },
@@ -1098,6 +1104,7 @@ export default function CompanyDashboard() {
   });
 
   const renameThreadMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ threadId, name }: { threadId: string; name: string }) => {
       return apiRequest("PATCH", `/api/chat/threads/${threadId}`, { name });
     },
@@ -1112,6 +1119,7 @@ export default function CompanyDashboard() {
   });
 
   const deleteThreadMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (threadId: string) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}`);
     },
@@ -1141,6 +1149,7 @@ export default function CompanyDashboard() {
   });
 
   const removeChatMemberMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ threadId, memberId }: { threadId: string; memberId: string }) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}/members/${memberId}`);
     },
@@ -1229,6 +1238,7 @@ export default function CompanyDashboard() {
   });
 
   const updateCadenceMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       return apiRequest("PATCH", `/api/cadences/${id}`, data);
     },
@@ -1302,6 +1312,7 @@ export default function CompanyDashboard() {
   });
 
   const editCompanyMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest("PATCH", `/api/companies/${companyId}`, data);
       return res.json();
@@ -1343,6 +1354,7 @@ export default function CompanyDashboard() {
   };
 
   const updateLogoMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (logoUrl: string) => {
       return apiRequest("PATCH", `/api/companies/${companyId}`, { logoUrl });
     },
@@ -5675,6 +5687,7 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const removeTagMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (tagId: string) => {
       return apiRequest("DELETE", `/api/admin/users/${user.id}/tags/${tagId}`);
     },
@@ -5688,6 +5701,7 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const changeRoleMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ role, customRoleId }: { role: string; customRoleId?: string }) => {
       return apiRequest("PATCH", `/api/admin/members/${user.memberId}/role`, { role, customRoleId });
     },
@@ -5856,6 +5870,7 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   }, [reportNote, noteLoading]);
 
   const saveNotesMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => {
       await apiRequest("PUT", `/api/admin/companies/${companyId}/report-notes`, { month, year, notes: notesText });
     },

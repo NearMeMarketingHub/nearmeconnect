@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { Plus, ListTodo, Circle, CheckCircle2, Users, User, ImageUp, Clock, AlertTriangle, Building2, Zap, Target, ChevronLeft, ChevronRight, Calendar, List, LayoutGrid, Kanban } from "lucide-react";
 import { TaskBoardView } from "@/components/task-board-view";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -146,6 +146,7 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
   });
 
   const clientStatusMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ taskId, status }: { taskId: string; status: TaskStatus }) => {
       const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, { status });
       return res.json() as Promise<Task>;

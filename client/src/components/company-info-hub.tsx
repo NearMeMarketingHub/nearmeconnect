@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import type { ClientOnboarding, CompanyCredential, CompanyKnowledgeItem } from "@shared/schema";
 import {
   CheckCircle,
@@ -101,6 +101,7 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
   });
 
   const updateMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => {
       const payload: Record<string, string | null> = {
         label: form.label,
@@ -123,6 +124,7 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
   });
 
   const deleteMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/credentials/${cred.id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] }); toast({ title: "Credential deleted" }); },
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
@@ -221,12 +223,14 @@ function KnowledgeItemRow({ item, companyId }: { item: CompanyKnowledgeItem; com
   const { toast } = useToast();
 
   const updateMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/knowledge/${item.id}`, { title: form.title, content: form.content || null, url: form.url || null }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "knowledge"] }); setEditOpen(false); toast({ title: "Item updated" }); },
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/knowledge/${item.id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "knowledge"] }); toast({ title: "Item deleted" }); },
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
@@ -435,6 +439,7 @@ function OnboardingEditPanel({
     setForm(p => ({ ...p, [field]: v === true }));
 
   const saveMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => {
       const payload: Partial<ClientOnboarding> = {
         primaryContactName: form.primaryContactName || null,

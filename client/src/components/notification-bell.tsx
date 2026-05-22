@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Notification } from "@shared/schema";
 
@@ -57,6 +57,7 @@ export function NotificationBell() {
   const unreadCount = unreadData?.count ?? 0;
 
   const markReadMutation = useMutation({
+    ...retryTransient,
     mutationFn: (id: string) => apiRequest("PATCH", `/api/notifications/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -73,6 +74,7 @@ export function NotificationBell() {
   });
 
   const clearReadMutation = useMutation({
+    ...retryTransient,
     mutationFn: () => apiRequest("DELETE", "/api/notifications/clear-read"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });

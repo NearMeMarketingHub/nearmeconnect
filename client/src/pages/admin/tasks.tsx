@@ -35,7 +35,7 @@ import { Link, useLocation } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Company, Task, CampaignRequest } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
@@ -136,6 +136,7 @@ export default function AdminTasks() {
   };
 
   const updateTaskMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
       const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
       return res.json() as Promise<Task>;

@@ -15,7 +15,7 @@ import { Building2, Mail, User, LogOut, Bell, Save, Loader2, Pencil } from "luci
 import { tierPricing } from "@shared/schema";
 import type { Company } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 
 interface ClientSettingsProps {
   companyId: string;
@@ -89,6 +89,7 @@ export default function ClientSettings({ companyId }: ClientSettingsProps) {
   }, [company]);
 
   const updateProfileMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: { firstName: string; lastName: string }) => {
       const res = await apiRequest("PATCH", "/api/auth/profile", data);
       return res.json();
@@ -104,6 +105,7 @@ export default function ClientSettings({ companyId }: ClientSettingsProps) {
   });
 
   const updateCompanyMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: { name: string; industry: string }) => {
       const res = await apiRequest("PATCH", `/api/companies/${companyId}`, data);
       return res.json();
@@ -119,6 +121,7 @@ export default function ClientSettings({ companyId }: ClientSettingsProps) {
   });
 
   const updatePrefMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: Partial<NotificationPrefs>) => {
       const res = await apiRequest("PATCH", "/api/notification-preferences", data);
       return res.json();
