@@ -288,6 +288,7 @@ export const deliverableTypes = pgTable("deliverable_types", {
   name: text("name").notNull(),
   credits: decimal("credits", { precision: 10, scale: 2 }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  contentPlatform: text("content_platform"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -1467,13 +1468,13 @@ export type BrandProfile = typeof brandProfiles.$inferSelect;
 
 // ── Content Calendar ─────────────────────────────────────────────────────────
 
-export const contentPlatformEnum = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "other"] as const;
+export const contentPlatformEnum = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "website_landing_page", "youtube_video", "medium_blog_site", "directory_citation", "other"] as const;
 export type ContentPlatform = typeof contentPlatformEnum[number];
 
 export const contentTypeEnum = ["post", "story", "reel", "article", "newsletter", "ad", "event", "offer", "product"] as const;
 export type ContentType = typeof contentTypeEnum[number];
 
-export const contentStatusEnum = ["draft", "in_review", "approved", "scheduled", "published", "archived"] as const;
+export const contentStatusEnum = ["placeholder", "drafting", "internal_review", "client_review", "draft", "in_review", "approved", "scheduled", "published", "repurpose_syndicate", "cancelled", "archived"] as const;
 export type ContentStatus = typeof contentStatusEnum[number];
 
 export const gbpPostTypeEnum = ["whats_new", "event", "offer", "product"] as const;
@@ -1545,6 +1546,7 @@ export const contentCalendarItems = pgTable("content_calendar_items", {
   gbpProductDescription: text("gbp_product_description"),
   linkedTaskId: varchar("linked_task_id"),
   campaignRequestId: varchar("campaign_request_id"),
+  cadenceId: varchar("cadence_id"),
   createdBy: varchar("created_by"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),

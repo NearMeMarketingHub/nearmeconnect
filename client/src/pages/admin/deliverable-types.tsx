@@ -15,6 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Plus, Pencil, Trash2, Tag, Coins, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { DeliverableType } from "@shared/schema";
+import { contentPlatformEnum } from "@shared/schema";
+import { PLATFORM_CONFIG } from "@/components/content-item-modal";
 
 export default function AdminDeliverableTypes() {
   const { toast } = useToast();
@@ -25,6 +27,7 @@ export default function AdminDeliverableTypes() {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [credits, setCredits] = useState("");
+  const [contentPlatform, setContentPlatform] = useState<string>("");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -94,6 +97,7 @@ export default function AdminDeliverableTypes() {
     setName("");
     setKey("");
     setCredits("");
+    setContentPlatform("");
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -103,7 +107,8 @@ export default function AdminDeliverableTypes() {
       key: key.toLowerCase().replace(/\s+/g, '_'),
       name,
       credits,
-    });
+      contentPlatform: contentPlatform || null,
+    } as any);
   };
 
   const handleEdit = (e: React.FormEvent) => {
@@ -114,7 +119,8 @@ export default function AdminDeliverableTypes() {
       data: {
         name,
         credits,
-      },
+        contentPlatform: contentPlatform || null,
+      } as any,
     });
   };
 
@@ -122,6 +128,7 @@ export default function AdminDeliverableTypes() {
     setEditingType(type);
     setName(type.name);
     setCredits(String(type.credits));
+    setContentPlatform((type as any).contentPlatform || "");
     setEditOpen(true);
   };
 
@@ -297,6 +304,21 @@ export default function AdminDeliverableTypes() {
                     placeholder="e.g., 2.5"
                     data-testid="input-deliverable-credits"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Content Platform (for auto-generation)</Label>
+                  <Select value={contentPlatform || "_none"} onValueChange={v => setContentPlatform(v === "_none" ? "" : v)}>
+                    <SelectTrigger data-testid="select-content-platform-create">
+                      <SelectValue placeholder="None — no content items" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">None</SelectItem>
+                      {contentPlatformEnum.map(p => (
+                        <SelectItem key={p} value={p}>{PLATFORM_CONFIG[p]?.label || p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">When set, approved campaigns and cadences will auto-create content calendar placeholders for this deliverable.</p>
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-deliverable">
@@ -498,6 +520,21 @@ export default function AdminDeliverableTypes() {
                   placeholder="e.g., 2.5"
                   data-testid="input-edit-credits"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Content Platform (for auto-generation)</Label>
+                <Select value={contentPlatform || "_none"} onValueChange={v => setContentPlatform(v === "_none" ? "" : v)}>
+                  <SelectTrigger data-testid="select-content-platform-edit">
+                    <SelectValue placeholder="None — no content items" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {contentPlatformEnum.map(p => (
+                      <SelectItem key={p} value={p}>{PLATFORM_CONFIG[p]?.label || p}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">When set, approved campaigns and cadences will auto-create content calendar placeholders for this deliverable.</p>
               </div>
               <DialogFooter>
                 <Button type="submit" disabled={updateMutation.isPending} data-testid="button-update-deliverable">

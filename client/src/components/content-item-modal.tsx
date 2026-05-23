@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X } from "lucide-react";
+import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X, Video, Link, MapPin } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type FormValues = z.infer<typeof insertContentCalendarItemSchema>;
@@ -29,15 +29,25 @@ export const PLATFORM_CONFIG: Record<string, { label: string; color: string; dar
   linkedin: { label: "LinkedIn", color: "#0A66C2", darkBg: "#DBEAFE", Icon: Briefcase },
   email: { label: "Email", color: "#F59E0B", darkBg: "#FEF3C7", Icon: Mail },
   blog: { label: "Blog", color: "#10B981", darkBg: "#D1FAE5", Icon: BookOpen },
+  website_landing_page: { label: "Website / Landing Page", color: "#8B5CF6", darkBg: "#EDE9FE", Icon: Globe },
+  youtube_video: { label: "YouTube / Video", color: "#EF4444", darkBg: "#FEE2E2", Icon: Video },
+  medium_blog_site: { label: "Medium / Public Blog", color: "#059669", darkBg: "#D1FAE5", Icon: Link },
+  directory_citation: { label: "Directory / Citation", color: "#D97706", darkBg: "#FEF3C7", Icon: MapPin },
   other: { label: "Other", color: "#6B7280", darkBg: "#F3F4F6", Icon: FileText },
 };
 
 export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  placeholder: { label: "Placeholder", color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400" },
+  drafting: { label: "Drafting", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+  internal_review: { label: "Internal Review", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  client_review: { label: "Client Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
   draft: { label: "Draft", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   in_review: { label: "In Review", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300" },
   approved: { label: "Approved", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
   scheduled: { label: "Scheduled", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
   published: { label: "Published", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" },
+  repurpose_syndicate: { label: "Repurpose / Syndicate", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" },
+  cancelled: { label: "Cancelled", color: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
   archived: { label: "Archived", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
 };
 
@@ -48,6 +58,10 @@ const CHAR_LIMITS: Record<string, number> = {
   linkedin: 3000,
   email: Infinity,
   blog: Infinity,
+  website_landing_page: Infinity,
+  youtube_video: Infinity,
+  medium_blog_site: Infinity,
+  directory_citation: 750,
   other: Infinity,
 };
 

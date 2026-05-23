@@ -578,6 +578,7 @@ export interface IStorage {
   bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]>;
   getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]>;
   createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity>;
+  getContentCalendarReadiness(daysAhead?: number): Promise<Array<{ companyId: string; companyName: string; count30: number; count60: number; approvedCampaigns: number; activeCadences: number }>>;
 
   // HubSpot Onboarding Checklist
   getHubspotOnboardingChecklist(companyId: string): Promise<HubspotOnboardingItem[]>;
@@ -2975,6 +2976,48 @@ export class DatabaseStorage implements IStorage {
   async createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity> {
     const [row] = await db.insert(contentCalendarActivity).values({ ...data, createdAt: new Date().toISOString() }).returning();
     return row;
+  }
+
+  async getContentCalendarReadiness(): Promise<Array<{ companyId: string; companyName: string; count30: number; count60: number; approvedCampaigns: number; activeCadences: number }>> {
+    const now = new Date();
+    const d30 = new Date(now); d30.setDate(d30.getDate() + 30);
+    const d60 = new Date(now); d60.setDate(d60.getDate() + 60);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+    const todayStr = fmt(now);
+    const d30Str = fmt(d30);
+    const d60Str = fmt(d60);
+
+    const allCompanies = await db.select().from(companies).orderBy(companies.name);
+    const results = [];
+    for (const company of allCompanies) {
+      const items30 = await db.select().from(contentCalendarItems)
+        .where(and(
+          eq(contentCalendarItems.companyId, company.id),
+          sql`${contentCalendarItems.scheduledDate} >= ${todayStr}`,
+          sql`${contentCalendarItems.scheduledDate} <= ${d30Str}`,
+          sql`${contentCalendarItems.status} NOT IN ('cancelled','archived')`
+        ));
+      const items60 = await db.select().from(contentCalendarItems)
+        .where(and(
+          eq(contentCalendarItems.companyId, company.id),
+          sql`${contentCalendarItems.scheduledDate} > ${d30Str}`,
+          sql`${contentCalendarItems.scheduledDate} <= ${d60Str}`,
+          sql`${contentCalendarItems.status} NOT IN ('cancelled','archived')`
+        ));
+      const approvedCampaignRows = await db.select().from(campaignRequests)
+        .where(and(eq(campaignRequests.companyId, company.id), eq(campaignRequests.status, "approved")));
+      const activeCadenceRows = await db.select().from(cadences)
+        .where(and(eq(cadences.companyId, company.id), eq(cadences.isActive, true)));
+      results.push({
+        companyId: company.id,
+        companyName: company.name,
+        count30: items30.length,
+        count60: items60.length,
+        approvedCampaigns: approvedCampaignRows.length,
+        activeCadences: activeCadenceRows.length,
+      });
+    }
+    return results;
   }
 
   // ── HubSpot Onboarding Checklist ──────────────────────────────────────────

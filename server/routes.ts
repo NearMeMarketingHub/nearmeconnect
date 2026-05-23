@@ -5816,6 +5816,34 @@ export async function registerRoutes(
                 bulkQuantity: qty > 1 ? qty : null,
               });
             }
+
+            // Auto-create content calendar placeholders for deliverables with contentPlatform
+            try {
+              for (const delId of effectiveDeliverableIds) {
+                const del = deliverableTypes.find((d: any) => d.id === delId || d.key === delId);
+                if (!(del as any)?.contentPlatform) continue;
+                const qty = quantities[delId] || 1;
+                const campaignTitle = request.name || approvalCampaignType!.name;
+                const title = `${campaignTitle} — ${del!.name}`;
+                const existing = await storage.getContentCalendarItems({ companyId: request.companyId, campaignRequestId: request.id });
+                const alreadyExists = existing.some((e: any) => e.title === title);
+                if (alreadyExists) continue;
+                for (let q = 0; q < qty; q++) {
+                  await storage.createContentCalendarItem({
+                    companyId: request.companyId,
+                    platform: (del as any).contentPlatform as any,
+                    contentType: "post",
+                    title: qty > 1 ? `${title} (${q + 1}/${qty})` : title,
+                    status: "placeholder" as any,
+                    scheduledDate: request.dueDate || null,
+                    campaignRequestId: request.id,
+                    createdBy: userId,
+                  });
+                }
+              }
+            } catch (contentErr: any) {
+              console.error("Failed to auto-create content calendar items for approved campaign:", contentErr.message);
+            }
           }
           checkProjectedUsageAndNotify(request.companyId).catch(() => {});
         } catch (taskError: any) {
@@ -11512,6 +11540,108 @@ export async function registerRoutes(
     const campaignRequestId = req.query.campaignRequestId as string | undefined;
     const items = await storage.getContentCalendarItems({ companyId, month, year, platform, status, campaignRequestId });
     res.json(items);
+  });
+
+  app.get("/api/content-calendar/readiness", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const rows = await storage.getContentCalendarReadiness();
+    res.json(rows);
+  });
+
+  app.post("/api/content-calendar/build-schedule", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const { companyId } = req.body as { companyId: string };
+    if (!companyId) return res.status(400).json({ error: "companyId required" });
+
+    const now = new Date();
+    const d60 = new Date(now); d60.setDate(d60.getDate() + 60);
+    const todayStr = now.toISOString().split("T")[0];
+    const d60Str = d60.toISOString().split("T")[0];
+
+    let created = 0;
+
+    // 1. Placeholders from approved campaigns
+    const campaigns = await storage.getCampaignRequests(companyId);
+    const approvedCampaigns = campaigns.filter((c: any) => c.status === "approved");
+    const allDeliverableTypes = await storage.getDeliverableTypes();
+
+    for (const campaign of approvedCampaigns) {
+      const campaignType = await storage.getCampaignType(campaign.campaignTypeId);
+      const effectiveDelIds = campaign.requestDeliverableIds || campaignType?.includedDeliverableIds || [];
+      for (const delId of effectiveDelIds) {
+        const del = allDeliverableTypes.find((d: any) => d.id === delId || d.key === delId);
+        if (!del?.contentPlatform) continue;
+        const title = `${campaign.name || campaignType?.name || "Campaign"} — ${del.name}`;
+        // Dedup: check if already exists
+        const existing = await storage.getContentCalendarItems({ companyId, campaignRequestId: campaign.id });
+        const alreadyExists = existing.some((e: any) => e.title === title && e.platform === del.contentPlatform);
+        if (alreadyExists) continue;
+        await storage.createContentCalendarItem({
+          companyId,
+          platform: del.contentPlatform as any,
+          contentType: "post",
+          title,
+          status: "placeholder" as any,
+          scheduledDate: campaign.dueDate || todayStr,
+          campaignRequestId: campaign.id,
+          createdBy: userId,
+        });
+        created++;
+      }
+    }
+
+    // 2. Placeholders from active cadences (next 60 days)
+    const cadenceList = await storage.getCadences(companyId);
+    const activeCadences = cadenceList.filter((c: any) => c.isActive);
+    for (const cadence of activeCadences) {
+      if (!cadence.deliverableTypeId) continue;
+      const del = allDeliverableTypes.find((d: any) => d.id === cadence.deliverableTypeId);
+      if (!del?.contentPlatform) continue;
+
+      // Generate dates for next 60 days
+      const dates: string[] = [];
+      const checkDate = new Date(now);
+      while (checkDate <= d60) {
+        const dayOfWeek = checkDate.getDay();
+        const dateStr = checkDate.toISOString().split("T")[0];
+        let include = false;
+        if (cadence.frequency === "daily") {
+          include = true;
+        } else if (cadence.frequency === "weekly" && cadence.scheduledDays) {
+          const DAY_MAP: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+          include = cadence.scheduledDays.some((d: string) => DAY_MAP[d.toLowerCase()] === dayOfWeek);
+        } else if (cadence.frequency === "monthly" && cadence.monthDays) {
+          include = cadence.monthDays.includes(checkDate.getDate());
+        }
+        if (include) dates.push(dateStr);
+        checkDate.setDate(checkDate.getDate() + 1);
+      }
+
+      for (const dateStr of dates) {
+        const title = `${cadence.title} — ${dateStr}`;
+        const existing = await storage.getContentCalendarItems({ companyId });
+        const alreadyExists = existing.some((e: any) => e.cadenceId === cadence.id && e.scheduledDate === dateStr);
+        if (alreadyExists) continue;
+        await storage.createContentCalendarItem({
+          companyId,
+          platform: del.contentPlatform as any,
+          contentType: "post",
+          title,
+          status: "placeholder" as any,
+          scheduledDate: dateStr,
+          cadenceId: cadence.id,
+          createdBy: userId,
+        });
+        created++;
+      }
+    }
+
+    broadcastInvalidation(["/api/content-calendar"]);
+    res.json({ created });
   });
 
   app.get("/api/content-calendar/:id/activity", isAuthenticated, async (req: AuthenticatedRequest, res) => {

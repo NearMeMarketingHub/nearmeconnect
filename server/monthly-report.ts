@@ -628,11 +628,15 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
   let created = 0;
 
   let resolvedCreditCost = cadence.creditCost;
-  if (!cadence.noCredit && cadence.deliverableTypeId) {
+  let deliverableTypeRecord: any = null;
+  if (cadence.deliverableTypeId) {
     try {
-      const deliverableType = await db.select().from(deliverableTypes).where(eq(deliverableTypes.id, cadence.deliverableTypeId));
-      if (deliverableType.length > 0 && deliverableType[0].credits) {
-        resolvedCreditCost = String(deliverableType[0].credits);
+      const rows = await db.select().from(deliverableTypes).where(eq(deliverableTypes.id, cadence.deliverableTypeId));
+      if (rows.length > 0) {
+        deliverableTypeRecord = rows[0];
+        if (!cadence.noCredit && deliverableTypeRecord.credits) {
+          resolvedCreditCost = String(deliverableTypeRecord.credits);
+        }
       }
     } catch (err) {
       log(`Failed to look up deliverable type ${cadence.deliverableTypeId} for cadence ${cadence.id}, using cadence creditCost`, 'cadence-generator');
@@ -640,7 +644,8 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
   }
 
   for (const dueDate of dates) {
-    await storage.createTask({
+    const dateStr = formatDateStr(dueDate);
+    const task = await storage.createTask({
       companyId: cadence.companyId,
       title: cadence.title,
       description: null,
@@ -650,7 +655,7 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
       creditCost: cadence.noCredit ? "0" : resolvedCreditCost,
       type: "assigned",
       deliverableType: cadence.deliverableTypeId || null,
-      dueDate: formatDateStr(dueDate),
+      dueDate: dateStr,
       startDate: billingPeriodStart,
       assignedBy: cadence.createdBy,
       assignedTo: cadence.assignedTo || null,
@@ -663,6 +668,29 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
       approvalStatus: "approved",
     });
     created++;
+
+    // Auto-create content calendar placeholder if deliverable has a contentPlatform
+    if (deliverableTypeRecord?.contentPlatform) {
+      try {
+        const existingItems = await storage.getContentCalendarItems({ companyId: cadence.companyId });
+        const alreadyExists = existingItems.some((e: any) => e.cadenceId === cadence.id && e.scheduledDate === dateStr);
+        if (!alreadyExists) {
+          await storage.createContentCalendarItem({
+            companyId: cadence.companyId,
+            platform: deliverableTypeRecord.contentPlatform,
+            contentType: "post",
+            title: `${cadence.title} — ${dateStr}`,
+            status: "placeholder" as any,
+            scheduledDate: dateStr,
+            linkedTaskId: task.id,
+            cadenceId: cadence.id,
+            createdBy: cadence.createdBy,
+          });
+        }
+      } catch (err: any) {
+        log(`Failed to create content calendar item for cadence ${cadence.id} on ${dateStr}: ${err.message}`, 'cadence-generator');
+      }
+    }
   }
   return created;
 }

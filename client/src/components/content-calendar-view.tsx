@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronLeft, ChevronRight, Plus, Wand2, Loader2, Download, FileText, Calendar, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Wand2, Loader2, Download, FileText, Calendar, Sparkles, AlertTriangle, CheckCircle2, Clock, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContentItemModal, PLATFORM_CONFIG, STATUS_CONFIG } from "./content-item-modal";
 import { BulkScheduleWizard } from "./bulk-schedule-wizard";
@@ -19,7 +19,159 @@ interface ContentCalendarViewProps {
   companies: Company[];
 }
 
-type ViewMode = "month" | "week" | "list" | "queue";
+type ViewMode = "month" | "week" | "list" | "queue" | "readiness";
+
+interface ReadinessRow {
+  companyId: string;
+  companyName: string;
+  count30: number;
+  count60: number;
+  approvedCampaigns: number;
+  activeCadences: number;
+}
+
+// ── ReadinessView ─────────────────────────────────────────────────────────────
+function ReadinessView({ companies }: { companies: Company[] }) {
+  const { toast } = useToast();
+  const { data: rows = [], isLoading, refetch, isFetching } = useQuery<ReadinessRow[]>({
+    queryKey: ["/api/content-calendar/readiness"],
+  });
+
+  const buildScheduleMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await apiRequest("POST", "/api/content-calendar/build-schedule", { companyId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: `Schedule built — ${data.created ?? 0} placeholder(s) added` });
+      queryClient.invalidateQueries({ queryKey: ["/api/content-calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/content-calendar/readiness"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const getStatusIcon = (count: number, hasSetup: boolean) => {
+    if (count >= 4) return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+    if (count >= 1) return <Clock className="h-4 w-4 text-amber-500" />;
+    if (!hasSetup) return <AlertTriangle className="h-4 w-4 text-red-500" />;
+    return <AlertTriangle className="h-4 w-4 text-orange-400" />;
+  };
+
+  const getCountColor = (count: number) => {
+    if (count >= 4) return "text-green-600 dark:text-green-400 font-semibold";
+    if (count >= 1) return "text-amber-600 dark:text-amber-400 font-semibold";
+    return "text-red-600 dark:text-red-400 font-semibold";
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-4 space-y-2">
+        {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
+      </div>
+    );
+  }
+
+  const issues = rows.filter(r => r.count30 === 0 || r.activeCadences === 0 || r.approvedCampaigns === 0);
+  const healthy = rows.filter(r => r.count30 > 0 && (r.activeCadences > 0 || r.approvedCampaigns > 0));
+
+  return (
+    <div className="p-4 space-y-4 overflow-auto">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">30/60-Day Content Readiness</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Shows how much planned content each client has for the next 30 and 60 days.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} data-testid="button-refresh-readiness">
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+      </div>
+
+      {issues.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 p-3">
+          <p className="text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {issues.length} client{issues.length > 1 ? "s" : ""} need attention — no scheduled content, missing approved campaigns, or no active cadences
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-lg border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-56">Company</TableHead>
+              <TableHead className="text-center w-32">Next 30 Days</TableHead>
+              <TableHead className="text-center w-32">31–60 Days</TableHead>
+              <TableHead className="text-center w-32">Campaigns</TableHead>
+              <TableHead className="text-center w-32">Cadences</TableHead>
+              <TableHead className="text-right w-36">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 && (
+              <TableRow>
+                <td colSpan={6} className="text-center text-sm text-muted-foreground py-8">No companies found</td>
+              </TableRow>
+            )}
+            {rows.map((row) => {
+              const hasSetup = row.activeCadences > 0 || row.approvedCampaigns > 0;
+              const isIssue = row.count30 === 0 || !hasSetup;
+              return (
+                <TableRow key={row.companyId} className={isIssue ? "bg-red-50/40 dark:bg-red-950/10" : ""} data-testid={`readiness-row-${row.companyId}`}>
+                  <TableCell className="font-medium text-sm">
+                    <div className="flex items-center gap-1.5">
+                      {getStatusIcon(row.count30, hasSetup)}
+                      {row.companyName}
+                    </div>
+                  </TableCell>
+                  <TableCell className={`text-center text-sm ${getCountColor(row.count30)}`} data-testid={`readiness-30-${row.companyId}`}>
+                    {row.count30} items
+                  </TableCell>
+                  <TableCell className={`text-center text-sm ${getCountColor(row.count60)}`} data-testid={`readiness-60-${row.companyId}`}>
+                    {row.count60} items
+                  </TableCell>
+                  <TableCell className="text-center text-sm">
+                    <Badge variant={row.approvedCampaigns > 0 ? "default" : "secondary"} className="text-xs">
+                      {row.approvedCampaigns}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center text-sm">
+                    <Badge variant={row.activeCadences > 0 ? "default" : "secondary"} className="text-xs">
+                      {row.activeCadences}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={buildScheduleMutation.isPending}
+                      onClick={() => buildScheduleMutation.mutate(row.companyId)}
+                      data-testid={`button-build-schedule-${row.companyId}`}
+                    >
+                      <Wand2 className="h-3 w-3 mr-1" />
+                      Build Schedule
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+
+      {healthy.length > 0 && (
+        <p className="text-xs text-muted-foreground text-right">
+          <CheckCircle2 className="inline h-3 w-3 mr-1 text-green-500" />
+          {healthy.length} client{healthy.length > 1 ? "s" : ""} with good content coverage
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ── StatusDropdown ────────────────────────────────────────────────────────────
 function StatusDropdown({ item, onStatusChange }: { item: ContentCalendarItem; onStatusChange: (id: string, status: string) => void }) {
@@ -495,6 +647,7 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
     { id: "week", label: "Week" },
     { id: "list", label: "List" },
     { id: "queue", label: "Queue" },
+    { id: "readiness", label: "Readiness" },
   ];
 
   return (
@@ -631,6 +784,8 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
           <WeekView items={filteredItems} year={year} month={month} companies={companies} onClickItem={openEdit} onClickSlot={date => openNew(date)} />
         ) : viewMode === "list" ? (
           <ListView items={filteredItems} companies={companies} onClickItem={openEdit} onStatusChange={(id, status) => statusChangeMutation.mutate({ id, status })} />
+        ) : viewMode === "readiness" ? (
+          <ReadinessView companies={companies} />
         ) : (
           <QueueView items={filteredItems} companies={companies} onClickItem={openEdit} />
         )}

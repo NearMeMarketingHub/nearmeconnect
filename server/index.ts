@@ -102,6 +102,8 @@ async function migrateCampaignWorkspaceColumns() {
     "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS reporting_included boolean NOT NULL DEFAULT false",
     "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS published_urls text",
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS campaign_request_id varchar",
+    "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS cadence_id varchar",
+    "ALTER TABLE deliverable_types ADD COLUMN IF NOT EXISTS content_platform text",
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);
@@ -299,6 +301,8 @@ async function seedDatabase() {
 }
 
 (async () => {
+  await migrateCampaignWorkspaceColumns().catch(err => log(`[campaign-workspace-migration] Error: ${err}`, "campaign-workspace-migration"));
+  await migrateOnboardingCredentials().catch(err => log(`[onboarding-migration] Error: ${err}`, "onboarding-migration"));
   await seedDatabase();
   setupWebSocket(httpServer);
   await registerRoutes(httpServer, app);
@@ -343,8 +347,7 @@ async function seedDatabase() {
         log("WARNING: CREDENTIAL_ENCRYPTION_KEY is not set — credential password writes will be rejected until the key is configured", "credential-encryption");
       }
       // One-time migration: move plaintext loginCredentials from onboarding records into encrypted company_credentials
-      migrateOnboardingCredentials().catch(err => log(`[onboarding-migration] Error: ${err}`, "onboarding-migration"));
-      migrateCampaignWorkspaceColumns().catch(err => log(`[campaign-workspace-migration] Error: ${err}`, "campaign-workspace-migration"));
+      // Migrations already ran at startup above
     },
   );
 
