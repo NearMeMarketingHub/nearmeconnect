@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ChevronRight, ChevronLeft, CalendarRange } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -118,7 +117,7 @@ export function BulkScheduleWizard({ open, onOpenChange, companyId: initialCompa
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-5 pb-3 border-b flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <CalendarRange className="h-5 w-5" />
@@ -129,7 +128,7 @@ export function BulkScheduleWizard({ open, onOpenChange, companyId: initialCompa
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Step 1: Company + Month */}
           {step === 1 && (
             <div className="p-6 space-y-4">
@@ -337,7 +336,7 @@ export function BulkScheduleWizard({ open, onOpenChange, companyId: initialCompa
               </p>
             </div>
           )}
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="px-6 py-3 border-t flex-shrink-0">
           <Button variant="outline" onClick={() => step > 1 ? setStep(s => s - 1) : handleClose()} data-testid="wizard-back">
