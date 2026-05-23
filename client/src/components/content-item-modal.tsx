@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash } from "lucide-react";
+import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type FormValues = z.infer<typeof insertContentCalendarItemSchema>;
@@ -110,6 +110,11 @@ export function ContentItemModal({
 
   const companyId = form.watch("companyId");
   const platform = form.watch("platform");
+
+  // Media upload state
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [mediaFiles, setMediaFiles] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const bodyContent = form.watch("bodyContent") || "";
   const gbpPostType = form.watch("gbpPostType");
   const title = form.watch("title") || "";
@@ -122,8 +127,54 @@ export function ContentItemModal({
     if (open) {
       form.reset(defaultVals());
       setActiveTab("content");
+      try {
+        setMediaFiles(item?.mediaUrls ? JSON.parse(item.mediaUrls) : []);
+      } catch {
+        setMediaFiles([]);
+      }
     }
   }, [open, item?.id, initialDate, initialCompanyId]);
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (e.target) e.target.value = "";
+    if (files.length === 0) return;
+    if (!companyId) {
+      toast({ title: "Select a company before uploading media", variant: "destructive" });
+      return;
+    }
+    setIsUploading(true);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch(`/api/companies/${companyId}/media-uploads`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const url = data.sharepointUrl || data.fileUrl || data.url;
+          if (url) newUrls.push(url);
+        } else {
+          toast({ title: "Upload failed", variant: "destructive" });
+        }
+      } catch {
+        toast({ title: "Upload error", variant: "destructive" });
+      }
+    }
+    if (newUrls.length > 0) {
+      setMediaFiles(prev => [...prev, ...newUrls]);
+      toast({ title: `${newUrls.length} file(s) uploaded` });
+    }
+    setIsUploading(false);
+  };
+
+  const removeMediaFile = (index: number) => {
+    setMediaFiles(prev => prev.filter((_, i) => i !== index));
+  };
 
   const { data: pillars = [] } = useQuery<ContentPillar[]>({
     queryKey: ["/api/content-pillars", companyId],
@@ -150,7 +201,8 @@ export function ContentItemModal({
     mutationFn: async (data: FormValues) => {
       const url = item ? `/api/content-calendar/${item.id}` : "/api/content-calendar";
       const method = item ? "PATCH" : "POST";
-      const res = await apiRequest(method, url, data);
+      const payload = { ...data, mediaUrls: mediaFiles.length > 0 ? JSON.stringify(mediaFiles) : null };
+      const res = await apiRequest(method, url, payload);
       return res.json();
     },
     onSuccess: () => {
@@ -563,28 +615,68 @@ export function ContentItemModal({
 
                     {/* ── MEDIA TAB ── */}
                     <TabsContent value="media" className="mt-0 p-4 space-y-4">
-                      <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                        <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                        <p className="text-sm font-medium">Asset Library</p>
-                        <p className="text-xs mt-1">Attach images, videos, and documents from your asset library</p>
-                        <Button variant="outline" size="sm" className="mt-3" type="button" data-testid="button-browse-assets">
-                          Browse Asset Library
-                        </Button>
-                      </div>
-                      {item?.mediaUrls && (() => {
-                        try {
-                          const urls = JSON.parse(item.mediaUrls) as string[];
-                          return urls.length > 0 ? (
-                            <div className="grid grid-cols-3 gap-2">
-                              {urls.map((url, i) => (
-                                <div key={i} className="aspect-square rounded-md border bg-muted overflow-hidden">
+                      {/* Hidden file input — must be directly hidden, not inside a hidden parent */}
+                      <input
+                        ref={mediaInputRef}
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,.pdf,.docx"
+                        multiple
+                        onChange={handleMediaUpload}
+                        data-testid="input-media-file"
+                      />
+
+                      {/* Dropzone / upload area */}
+                      <button
+                        type="button"
+                        className="w-full py-8 border-2 border-dashed rounded-lg text-center text-muted-foreground hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => mediaInputRef.current?.click()}
+                        disabled={isUploading || !companyId}
+                        data-testid="button-upload-media"
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin opacity-60" />
+                            <p className="text-sm font-medium">Uploading…</p>
+                          </>
+                        ) : (
+                          <>
+                            <UploadCloud className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                            <p className="text-sm font-medium">
+                              {companyId ? "Click to upload photos, videos or documents" : "Select a company first"}
+                            </p>
+                            <p className="text-xs mt-1 opacity-70">JPG, PNG, GIF, MP4, PDF, DOCX — multiple files OK</p>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Uploaded files grid */}
+                      {mediaFiles.length > 0 && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {mediaFiles.map((url, i) => {
+                            const isImage = /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(url);
+                            return (
+                              <div key={i} className="relative aspect-square rounded-md border bg-muted overflow-hidden group">
+                                {isImage ? (
                                   <img src={url} alt={`Media ${i + 1}`} className="w-full h-full object-cover" />
-                                </div>
-                              ))}
-                            </div>
-                          ) : null;
-                        } catch { return null; }
-                      })()}
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ImageIcon className="h-8 w-8 opacity-40" />
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => removeMediaFile(i)}
+                                  className="absolute top-1 right-1 rounded-full bg-black/60 text-white p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  data-testid={`button-remove-media-${i}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </TabsContent>
 
                     {/* ── HUBSPOT TAB ── */}
