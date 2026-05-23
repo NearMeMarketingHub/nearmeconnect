@@ -175,7 +175,10 @@ import {
   type InsertContentCalendarItem,
   type ContentCalendarActivity,
   type InsertContentCalendarActivity,
+  hubspotOnboardingChecklist,
+  type HubspotOnboardingItem,
 } from "@shared/schema";
+import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
@@ -505,6 +508,11 @@ export interface IStorage {
   bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]>;
   getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]>;
   createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity>;
+
+  // HubSpot Onboarding Checklist
+  getHubspotOnboardingChecklist(companyId: string): Promise<HubspotOnboardingItem[]>;
+  seedHubspotOnboardingChecklist(companyId: string): Promise<void>;
+  updateHubspotOnboardingItem(id: string, data: Partial<HubspotOnboardingItem>): Promise<HubspotOnboardingItem | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2831,6 +2839,38 @@ export class DatabaseStorage implements IStorage {
 
   async createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity> {
     const [row] = await db.insert(contentCalendarActivity).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
+  }
+
+  // ── HubSpot Onboarding Checklist ──────────────────────────────────────────
+
+  async getHubspotOnboardingChecklist(companyId: string): Promise<HubspotOnboardingItem[]> {
+    return db.select().from(hubspotOnboardingChecklist)
+      .where(eq(hubspotOnboardingChecklist.companyId, companyId))
+      .orderBy(hubspotOnboardingChecklist.sortOrder);
+  }
+
+  async seedHubspotOnboardingChecklist(companyId: string): Promise<void> {
+    let sortOrder = 0;
+    const items = HUBSPOT_CHECKLIST_MASTER.flatMap(({ section, items }) =>
+      items.map(({ key, label }) => ({
+        companyId,
+        section,
+        itemKey: key,
+        label,
+        isCompleted: false,
+        sortOrder: sortOrder++,
+        createdAt: new Date().toISOString(),
+      }))
+    );
+    await db.insert(hubspotOnboardingChecklist).values(items);
+  }
+
+  async updateHubspotOnboardingItem(id: string, data: Partial<HubspotOnboardingItem>): Promise<HubspotOnboardingItem | undefined> {
+    const [row] = await db.update(hubspotOnboardingChecklist)
+      .set(data)
+      .where(eq(hubspotOnboardingChecklist.id, id))
+      .returning();
     return row;
   }
 }

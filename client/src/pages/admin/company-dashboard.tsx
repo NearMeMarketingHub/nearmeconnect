@@ -4832,6 +4832,20 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="hubspot" className="space-y-6">
+            <Link href={`/admin/companies/${companyId}/hubspot-onboarding`}>
+              <div className="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/40 px-4 py-3 hover:bg-orange-100 dark:hover:bg-orange-950/30 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+                    <BarChart3 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">HubSpot Onboarding Tracker</p>
+                    <p className="text-xs text-orange-600/70 dark:text-orange-400/70">73-item structured checklist across 6 sections</p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-orange-500" />
+              </div>
+            </Link>
             <HubspotPanel companyId={companyId!} />
           </TabsContent>
         </Tabs>

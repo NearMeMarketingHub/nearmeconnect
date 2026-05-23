@@ -1554,3 +1554,24 @@ export const contentCalendarActivity = pgTable("content_calendar_activity", {
 export const insertContentCalendarActivitySchema = createInsertSchema(contentCalendarActivity).omit({ id: true, createdAt: true });
 export type InsertContentCalendarActivity = z.infer<typeof insertContentCalendarActivitySchema>;
 export type ContentCalendarActivity = typeof contentCalendarActivity.$inferSelect;
+
+// ── HubSpot Onboarding Checklist ──────────────────────────────────────────────
+
+export const hubspotOnboardingChecklist = pgTable("hubspot_onboarding_checklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  section: text("section").notNull(),
+  itemKey: varchar("item_key").notNull(),
+  label: text("label").notNull(),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedBy: varchar("completed_by"),
+  completedByName: text("completed_by_name"),
+  completedAt: text("completed_at"),
+  notes: text("notes"),
+  assignedTo: varchar("assigned_to"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertHubspotOnboardingItemSchema = createInsertSchema(hubspotOnboardingChecklist).omit({ id: true, createdAt: true });
+export type InsertHubspotOnboardingItem = z.infer<typeof insertHubspotOnboardingItemSchema>;
+export type HubspotOnboardingItem = typeof hubspotOnboardingChecklist.$inferSelect;

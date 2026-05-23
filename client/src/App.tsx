@@ -44,6 +44,7 @@ import AdminCustomRoles from "@/pages/admin/custom-roles";
 import AdminSubscriptionTiers from "@/pages/admin/subscription-tiers";
 import CompanyDashboard from "@/pages/admin/company-dashboard";
 import AdminContentCalendar from "@/pages/admin/content-calendar";
+import HubspotOnboarding from "@/pages/admin/hubspot-onboarding";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -163,6 +164,7 @@ function AppContent() {
         <Route path="/admin/dashboard">{() => <ErrorBoundary showNav><AdminDashboard /></ErrorBoundary>}</Route>
         <Route path="/admin/tasks">{() => <ErrorBoundary showNav><AdminTasks /></ErrorBoundary>}</Route>
         <Route path="/admin/companies/new">{() => <ErrorBoundary showNav><AdminAddCompany /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/:id/hubspot-onboarding">{() => <ErrorBoundary showNav><HubspotOnboarding /></ErrorBoundary>}</Route>
         <Route path="/admin/companies/:id">{() => <ErrorBoundary showNav><CompanyDashboard /></ErrorBoundary>}</Route>
         <Route path="/admin/companies">{() => <ErrorBoundary showNav><AdminCompanies /></ErrorBoundary>}</Route>
         <Route path="/admin/deliverables">{() => <ErrorBoundary showNav><AdminDeliverableTypes /></ErrorBoundary>}</Route>

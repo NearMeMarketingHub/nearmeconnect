@@ -1,0 +1,131 @@
+Build a structured HubSpot onboarding tracker for each client company.
+Reads/writes to hubspot_onboarding_checklist table.
+Accessible at: /company/:companyId/hubspot-onboarding
+
+=== ONBOARDING SECTIONS & CHECKLIST ITEMS ===
+
+On first load for a company: if no checklist records exist, 
+auto-seed all items from this master list:
+
+SECTION: Universal Setup
+  domain_connected — Connect website domain to HubSpot
+  ssl_enabled — Verify SSL certificate active
+  subdomain_configured — Configure tracking/landing page subdomain
+  social_facebook — Connect Facebook Page to HubSpot
+  social_instagram — Connect Instagram Business account
+  social_linkedin — Connect LinkedIn Company Page
+  social_google_business — Connect Google Business Profile
+  social_youtube — Connect YouTube channel (if applicable)
+  google_search_console — Connect Google Search Console for SEO data
+  brand_primary_color — Upload primary brand color to Brand Kit
+  brand_secondary_color — Upload secondary brand color
+  brand_logo_primary — Upload primary logo (PNG, SVG)
+  brand_logo_white — Upload white/reversed logo
+  brand_font_heading — Set heading font in Brand Kit
+  brand_font_body — Set body font in Brand Kit
+  icp_defined — Define Ideal Customer Profiles (min. 1 ICP)
+  icp_properties_added — Add ICP properties to contact records
+  users_added — Add all team members as HubSpot users
+  permissions_configured — Set user permissions and access levels
+  email_connected — Connect team email accounts
+  calendar_connected — Connect Google/Outlook calendar(s)
+  ga4_connected — Connect Google Analytics 4
+  gtm_installed — Install Google Tag Manager on website
+  ads_google_connected — Connect Google Ads account
+  ads_meta_connected — Connect Meta Ads account
+  commerce_payments — Set up payment processing (if applicable)
+
+SECTION: CRM Setup
+  contact_properties — Configure contact properties + custom fields
+  company_properties — Configure company properties
+  deal_properties — Configure deal properties
+  lifecycle_stages — Configure lifecycle stages
+  lead_status_values — Configure lead status values
+  pipeline_created — Create primary deal pipeline
+  pipeline_stages — Configure all deal stages with probability
+  data_import_contacts — Import existing contacts (CSV)
+  data_import_companies — Import existing companies
+  data_import_deals — Import existing deals
+  views_created — Create saved views (My Contacts, Hot Leads, etc.)
+  lists_segmentation — Create segmentation lists (by ICP, by stage, etc.)
+  base_notifications — Set up internal notifications for deal changes
+
+SECTION: Sales Hub
+  email_templates — Create initial email templates (min. 5)
+  sequences_created — Build initial sequences (prospecting, follow-up, nurture)
+  meetings_link — Set up meetings scheduling link
+  calling_configured — Configure HubSpot Calling
+  lead_scoring — Set up lead scoring model
+  quotes_products — Configure products and quotes (if applicable)
+  sales_report_dashboard — Set up sales reporting dashboard
+  forecasting_configured — Configure sales forecasting
+
+SECTION: Marketing Hub
+  email_confirmed_sender — Verify sending domain for email
+  email_template_branded — Create branded email templates
+  email_list_welcome — Create welcome/intro email sequence
+  forms_created — Create lead capture forms (min. 3)
+  cta_buttons — Create CTAs for website/landing pages
+  landing_page_1 — Publish first landing page
+  workflow_lead_nurture — Build lead nurture automation workflow
+  workflow_lead_scoring_notify — Build lead scoring notification workflow
+  attribution_report — Set up attribution reporting
+  campaign_tracking_urls — Create campaign UTM tracking URLs
+
+SECTION: Content Hub
+  blog_setup — Configure blog (domain, template, SEO settings)
+  blog_post_1 — Publish first blog post
+  seo_tool_configured — Set up SEO tool with target keywords
+  seo_topic_clusters — Create minimum 3 topic clusters
+  content_calendar_linked — Link HubSpot content plan to Near Me portal calendar
+  case_study_1 — Create first case study (if applicable)
+  podcast_setup — Set up podcast (if applicable)
+  content_remix_workflow — Build content repurposing workflow
+
+SECTION: Service Hub
+  ticket_pipeline — Configure help desk ticket pipeline
+  live_chat — Set up live chat on website
+  chatbot_basic — Build basic chatbot flow
+  knowledge_base — Create knowledge base with min. 5 articles
+  nps_survey — Create NPS survey automation
+  csat_survey — Create CSAT survey
+  customer_portal — Configure customer portal (if Enterprise)
+  service_report — Set up service reporting dashboard
+
+=== UI LAYOUT ===
+
+Page header: Company name + "HubSpot Onboarding" + overall progress ring 
+  (X of Y items complete, shown as a circular progress indicator)
+
+Progress bar row showing % complete per section:
+  Universal: [████░░░░] 40% (8/20)
+  CRM: [██░░░░░░] 20% (3/15)
+  etc.
+
+Each section is a collapsible accordion:
+  Section header: name + X/Y complete + section progress bar
+  Inside: list of checklist items as rows:
+    [ ] checkbox | item label | description (hover tooltip) | 
+    assigned to (optional) | notes | completed by/date (if done)
+  
+  Checking a box:
+    UPDATE hubspot_onboarding_checklist SET 
+      is_completed = true, 
+      completed_by = currentUserId,
+      completed_by_name = currentUserName,
+      completed_at = now()
+    Also creates a notification to account manager if a full section completes.
+  
+  Unchecking a box: clears completed_by, completed_by_name, completed_at
+
+Add Notes button per item → inline text area saves to checklist.notes
+
+"Assign to team member" per item → saves to company_knowledge_items or a 
+  task linked to that checklist item
+
+=== HUBSPOT LAUNCH READINESS REPORT ===
+"Generate Report" button → creates a formatted summary showing:
+  - Completed items: green list
+  - Remaining items: red list grouped by section
+  - Estimated time to complete
+  - "Ready to Launch" / "Not Ready" status per Hub

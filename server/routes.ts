@@ -10532,5 +10532,52 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // ── HubSpot Onboarding Checklist ──────────────────────────────────────────
+
+  app.get("/api/companies/:id/hubspot-onboarding", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const companyId = req.params.id as string;
+    let items = await storage.getHubspotOnboardingChecklist(companyId);
+    if (items.length === 0) {
+      await storage.seedHubspotOnboardingChecklist(companyId);
+      items = await storage.getHubspotOnboardingChecklist(companyId);
+    }
+    res.json(items);
+  });
+
+  app.patch("/api/companies/:id/hubspot-onboarding/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const itemId = req.params.itemId as string;
+    const item = await storage.updateHubspotOnboardingItem(itemId, req.body);
+    if (!item) return res.status(404).json({ error: "Item not found" });
+
+    if (req.body.isCompleted === true) {
+      const allItems = await storage.getHubspotOnboardingChecklist(item.companyId);
+      const sectionItems = allItems.filter(i => i.section === item.section);
+      const sectionComplete = sectionItems.every(i => i.isCompleted);
+      if (sectionComplete) {
+        const company = await storage.getCompany(item.companyId);
+        const companyName = company?.name ?? "a company";
+        const admins = await storage.getAllAdminUsers();
+        await Promise.all(admins.map(admin =>
+          storage.createNotification({
+            userId: admin.userId,
+            type: "info",
+            title: `HubSpot Section Complete: ${item.section}`,
+            message: `All items in "${item.section}" have been completed for ${companyName}.`,
+            link: `/admin/companies/${item.companyId}/hubspot-onboarding`,
+            createdBy: userId,
+          })
+        ));
+      }
+    }
+
+    res.json(item);
+  });
+
   return httpServer;
 }
