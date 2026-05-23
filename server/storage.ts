@@ -211,7 +211,7 @@ import {
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
-import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray, or } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
 
 export type AdminUserWithProfile = AdminUser & {
@@ -259,11 +259,13 @@ export interface IStorage {
   deleteAdminInvitation(id: string): Promise<void>;
 
   getAllTaskCategories(): Promise<TaskCategory[]>;
+  getGlobalTaskCategories(): Promise<TaskCategory[]>;
   getTaskCategories(companyId: string): Promise<TaskCategory[]>;
   getTaskCategory(id: string): Promise<TaskCategory | undefined>;
   createTaskCategory(category: InsertTaskCategory): Promise<TaskCategory>;
   updateTaskCategory(id: string, data: Partial<TaskCategory>): Promise<TaskCategory | undefined>;
   deleteTaskCategory(id: string): Promise<void>;
+  seedGlobalTaskCategories(): Promise<void>;
 
   getTasks(companyId: string): Promise<Task[]>;
   getAllTasks(): Promise<Task[]>;
@@ -822,12 +824,43 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(taskCategories).orderBy(taskCategories.companyId, taskCategories.sortOrder);
   }
 
+  async getGlobalTaskCategories(): Promise<TaskCategory[]> {
+    return await db
+      .select()
+      .from(taskCategories)
+      .where(eq(taskCategories.isGlobal, true))
+      .orderBy(taskCategories.sortOrder);
+  }
+
   async getTaskCategories(companyId: string): Promise<TaskCategory[]> {
     return await db
       .select()
       .from(taskCategories)
-      .where(eq(taskCategories.companyId, companyId))
+      .where(or(eq(taskCategories.companyId, companyId), eq(taskCategories.isGlobal, true)))
       .orderBy(taskCategories.sortOrder);
+  }
+
+  async seedGlobalTaskCategories(): Promise<void> {
+    const existing = await db.select().from(taskCategories).where(eq(taskCategories.isGlobal, true));
+    if (existing.length > 0) return;
+    const defaults = [
+      { name: "Content Writing",   color: "#6366f1", icon: "FileText",   description: "Blog posts, copy, articles" },
+      { name: "Graphic Design",    color: "#f59e0b", icon: "Image",      description: "Visual assets and design work" },
+      { name: "Video Production",  color: "#ef4444", icon: "Video",      description: "Video creation and editing" },
+      { name: "SEO & Research",    color: "#10b981", icon: "Search",     description: "Search optimization and market research" },
+      { name: "Social Media",      color: "#3b82f6", icon: "Share",      description: "Social posts and campaigns" },
+      { name: "Google Business",   color: "#4285f4", icon: "MapPin",     description: "Google Business Profile management" },
+      { name: "Email Marketing",   color: "#f97316", icon: "Mail",       description: "Email campaigns and newsletters" },
+      { name: "Web Updates",       color: "#8b5cf6", icon: "Globe",      description: "Website changes and maintenance" },
+      { name: "Strategy",          color: "#06b6d4", icon: "Zap",        description: "Planning and strategic direction" },
+      { name: "Admin & Reporting", color: "#6b7280", icon: "BarChart3",  description: "Reporting, admin, and operations" },
+      { name: "Client Review",     color: "#ec4899", icon: "CheckCircle", description: "Client feedback and approvals" },
+      { name: "Meetings",          color: "#14b8a6", icon: "Users",      description: "Calls, check-ins, and meetings" },
+    ];
+    const now = formatDateShortET(new Date());
+    await db.insert(taskCategories).values(
+      defaults.map((d, i) => ({ ...d, isGlobal: true, sortOrder: i, createdAt: now }))
+    );
   }
 
   async getTaskCategory(id: string): Promise<TaskCategory | undefined> {

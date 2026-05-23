@@ -108,9 +108,12 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 
 export const taskCategories = pgTable("task_categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
+  companyId: varchar("company_id"),
   name: text("name").notNull(),
   color: text("color"),
+  icon: text("icon"),
+  description: text("description"),
+  isGlobal: boolean("is_global").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
 });
@@ -255,7 +258,7 @@ export type TaskAssignee = typeof taskAssignees.$inferSelect;
 export const insertTaskCategorySchema = createInsertSchema(taskCategories).omit({
   id: true,
   createdAt: true,
-});
+}).partial({ companyId: true });
 
 export type InsertTaskCategory = z.infer<typeof insertTaskCategorySchema>;
 export type TaskCategory = typeof taskCategories.$inferSelect;

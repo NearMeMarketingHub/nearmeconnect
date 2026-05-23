@@ -1,0 +1,58 @@
+Add a Categories management section to the Settings page.
+Currently task_categories exist per-company. We need a GLOBAL 
+category system manageable from Settings, plus per-company overrides.
+
+=== DATABASE ===
+
+ALTER TABLE public.task_categories 
+  ADD COLUMN IF NOT EXISTS is_global boolean DEFAULT false NOT NULL,
+  ADD COLUMN IF NOT EXISTS sort_order integer DEFAULT 0;
+
+-- Global categories apply to all companies unless overridden
+-- is_global = true means created in Settings, available everywhere
+-- company_id can be NULL for global categories
+
+=== SETTINGS PAGE — /admin/settings ===
+
+Add a "Categories" section with two tabs:
+
+TAB 1: Task & Board Categories
+  List of all global categories (is_global = true):
+    [Color swatch] [Icon] [Name] [Description] [# tasks using it] [Edit] [Delete]
+  
+  "Add Category" button → inline form:
+    Name (text)
+    Color (color picker — shows hex)
+    Icon (icon picker — grid of available Lucide icons to choose from)
+    Description (short text)
+    Save → INSERT task_categories with is_global = true, company_id = NULL
+
+  Drag to reorder (updates sort_order)
+  
+  Pre-seed these global categories if none exist:
+    Content Writing    | #6366f1 | FileText
+    Graphic Design     | #f59e0b | Image  
+    Video Production   | #ef4444 | Video
+    SEO & Research     | #10b981 | Search
+    Social Media       | #3b82f6 | Share
+    Google Business    | #4285f4 | MapPin
+    Email Marketing    | #f97316 | Mail
+    Web Updates        | #8b5cf6 | Globe
+    Strategy           | #06b6d4 | Zap
+    Admin & Reporting  | #6b7280 | BarChart3
+    Client Review      | #ec4899 | CheckCircle
+    Meetings           | #14b8a6 | Users
+
+TAB 2: Per-Company Category Overrides
+  Company dropdown → shows that company's custom categories
+  Can add company-specific categories (is_global = false, company_id = X)
+  Global categories always available to all companies
+
+=== BOARD VIEW ===
+In the board view (kanban), add a second grouping option:
+  Current: group by STATUS (Pending | In Progress | Waiting | Complete)
+  New toggle: "Group by Category" → columns become the categories
+  
+  "Group by" toggle button at top of board: [Status] [Category]
+  When grouped by category: each column = one category, tasks appear in their column
+  Tasks with no category appear in "Uncategorized" column

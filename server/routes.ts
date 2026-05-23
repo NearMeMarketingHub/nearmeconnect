@@ -540,6 +540,72 @@ export async function registerRoutes(
     }
   });
 
+  // ── Global task categories (Settings page) ───────────────────────────────
+  app.get("/api/admin/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const categories = await storage.getGlobalTaskCategories();
+      res.json(categories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/task-categories/seed", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      await storage.seedGlobalTaskCategories();
+      broadcastInvalidation(["/api/admin/task-categories"]);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const parsed = insertTaskCategorySchema.safeParse({ ...req.body, isGlobal: true });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
+      const category = await storage.createTaskCategory(parsed.data);
+      broadcastInvalidation(["/api/admin/task-categories"]);
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/admin/task-categories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const updateSchema = insertTaskCategorySchema.partial();
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
+      const category = await storage.updateTaskCategory((req.params.id as string), parsed.data);
+      if (!category) return res.status(404).json({ message: "Category not found" });
+      broadcastInvalidation(["/api/admin/task-categories"]);
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/task-categories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      await storage.deleteTaskCategory((req.params.id as string));
+      broadcastInvalidation(["/api/admin/task-categories"]);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/companies/:companyId/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);

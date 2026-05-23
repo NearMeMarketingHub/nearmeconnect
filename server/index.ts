@@ -267,6 +267,8 @@ async function seedDatabase() {
       }
     }
     if (tierCount > 0) log(`Seeded ${tierCount} subscription tiers`);
+
+    await storage.seedGlobalTaskCategories();
   } catch (error) {
     console.error("Database seed error:", error);
   }
