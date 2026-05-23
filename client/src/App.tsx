@@ -45,6 +45,8 @@ import AdminSubscriptionTiers from "@/pages/admin/subscription-tiers";
 import CompanyDashboard from "@/pages/admin/company-dashboard";
 import AdminContentCalendar from "@/pages/admin/content-calendar";
 import HubspotOnboarding from "@/pages/admin/hubspot-onboarding";
+import AiBriefPage from "@/pages/admin/ai-brief";
+import AdminAiTemplates from "@/pages/admin/ai-templates";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -184,6 +186,9 @@ function AppContent() {
         <Route path="/admin/custom-roles">{() => <ErrorBoundary showNav><AdminCustomRoles /></ErrorBoundary>}</Route>
         <Route path="/admin/subscription-tiers">{() => <ErrorBoundary showNav><AdminSubscriptionTiers /></ErrorBoundary>}</Route>
         <Route path="/admin/content-calendar">{() => <ErrorBoundary showNav><AdminContentCalendar /></ErrorBoundary>}</Route>
+        <Route path="/admin/ai-brief/:companyId">{() => <ErrorBoundary showNav><AiBriefPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/ai-brief">{() => <ErrorBoundary showNav><AiBriefPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/ai-templates">{() => <ErrorBoundary showNav><AdminAiTemplates /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );

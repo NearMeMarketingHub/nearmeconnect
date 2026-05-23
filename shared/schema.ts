@@ -1604,3 +1604,31 @@ export const hubspotSyncLog = pgTable("hubspot_sync_log", {
   createdAt: text("created_at").notNull(),
 });
 export type HubspotSyncLog = typeof hubspotSyncLog.$inferSelect;
+
+// ── AI Brief Templates ────────────────────────────────────────────────────────
+
+export const contentGoalEnum = [
+  "google_business_post", "social_image", "social_video", "email_banner",
+  "blog_feature", "ad_creative", "newsletter_header", "podcast_thumbnail", "case_study_visual",
+] as const;
+export type ContentGoal = typeof contentGoalEnum[number];
+
+export const aiPromptTemplates = pgTable("ai_prompt_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contentGoal: text("content_goal").$type<ContentGoal>().notNull(),
+  name: text("name").notNull(),
+  imagePromptTemplate: text("image_prompt_template"),
+  captionTemplate: text("caption_template"),
+  hashtagTemplate: text("hashtag_template"),
+  ctaTemplate: text("cta_template"),
+  gbpPostTemplate: text("gbp_post_template"),
+  emailSubjectTemplate: text("email_subject_template"),
+  linkedinOutlineTemplate: text("linkedin_outline_template"),
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertAiPromptTemplateSchema = createInsertSchema(aiPromptTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAiPromptTemplate = z.infer<typeof insertAiPromptTemplateSchema>;
+export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;

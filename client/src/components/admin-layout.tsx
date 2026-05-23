@@ -28,7 +28,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Building2, LogOut, Tag, Calendar, CalendarRange, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers } from "lucide-react";
+import { LayoutDashboard, Building2, LogOut, Tag, Calendar, CalendarRange, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers, Sparkles, Library } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
@@ -50,6 +50,7 @@ const servicesItems = [
 const communicationItems = [
   { title: "Calendar", href: "/admin/calendar", icon: Calendar },
   { title: "Content Calendar", href: "/admin/content-calendar", icon: CalendarRange },
+  { title: "AI Brief Generator", href: "/admin/ai-brief", icon: Sparkles },
   { title: "Chat", href: "/admin/chat", icon: MessageCircle },
   { title: "Media Submissions", href: "/admin/media-submissions", icon: Upload },
 ];
@@ -61,6 +62,7 @@ const configurationItems = [
   { title: "Subscription Tiers", href: "/admin/subscription-tiers", icon: Layers },
   { title: "Credit Store", href: "/admin/credit-store", icon: CreditCard },
   { title: "Reporting", href: "/admin/reporting", icon: BarChart3 },
+  { title: "AI Templates", href: "/admin/ai-templates", icon: Library },
   { title: "Settings", href: "/admin/settings", icon: Settings },
 ];
 

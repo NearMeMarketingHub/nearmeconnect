@@ -182,6 +182,9 @@ import {
   reportPresets,
   type ReportPreset,
   type InsertReportPreset,
+  aiPromptTemplates,
+  type AiPromptTemplate,
+  type InsertAiPromptTemplate,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -528,6 +531,13 @@ export interface IStorage {
   createReportPreset(data: InsertReportPreset): Promise<ReportPreset>;
   updateReportPreset(id: string, data: Partial<ReportPreset>): Promise<ReportPreset | undefined>;
   deleteReportPreset(id: string): Promise<void>;
+
+  // AI Prompt Templates
+  getAiPromptTemplates(): Promise<AiPromptTemplate[]>;
+  getAiPromptTemplateByGoal(contentGoal: string): Promise<AiPromptTemplate | undefined>;
+  createAiPromptTemplate(data: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
+  updateAiPromptTemplate(id: string, data: Partial<InsertAiPromptTemplate>): Promise<AiPromptTemplate | undefined>;
+  deleteAiPromptTemplate(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2932,6 +2942,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteReportPreset(id: string): Promise<void> {
     await db.delete(reportPresets).where(eq(reportPresets.id, id));
+  }
+
+  // ── AI Prompt Templates ───────────────────────────────────────────────────
+
+  async getAiPromptTemplates(): Promise<AiPromptTemplate[]> {
+    return db.select().from(aiPromptTemplates).orderBy(aiPromptTemplates.contentGoal, aiPromptTemplates.name);
+  }
+
+  async getAiPromptTemplateByGoal(contentGoal: string): Promise<AiPromptTemplate | undefined> {
+    const rows = await db.select().from(aiPromptTemplates)
+      .where(and(eq(aiPromptTemplates.contentGoal, contentGoal as any), eq(aiPromptTemplates.isActive, true)))
+      .orderBy(desc(aiPromptTemplates.isDefault))
+      .limit(1);
+    return rows[0];
+  }
+
+  async createAiPromptTemplate(data: InsertAiPromptTemplate): Promise<AiPromptTemplate> {
+    const now = new Date().toISOString();
+    const [tmpl] = await db.insert(aiPromptTemplates).values({ ...data, contentGoal: data.contentGoal as any, createdAt: now }).returning();
+    return tmpl;
+  }
+
+  async updateAiPromptTemplate(id: string, data: Partial<InsertAiPromptTemplate>): Promise<AiPromptTemplate | undefined> {
+    const payload: Record<string, any> = { ...data, updatedAt: new Date().toISOString() };
+    const [tmpl] = await db.update(aiPromptTemplates)
+      .set(payload)
+      .where(eq(aiPromptTemplates.id, id))
+      .returning();
+    return tmpl;
+  }
+
+  async deleteAiPromptTemplate(id: string): Promise<void> {
+    await db.delete(aiPromptTemplates).where(eq(aiPromptTemplates.id, id));
   }
 }
 

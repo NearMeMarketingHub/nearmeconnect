@@ -96,6 +96,7 @@ import {
   Kanban,
   Megaphone,
   CalendarRange,
+  Sparkles,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -4557,10 +4558,20 @@ export default function CompanyDashboard() {
           {/* Content Calendar Tab */}
           <TabsContent value="content-calendar" className="h-[calc(100vh-220px)] min-h-0 flex flex-col">
             {companyId && (
-              <ContentCalendarView
-                companyId={companyId}
-                companies={company ? [company] : []}
-              />
+              <>
+                <div className="flex justify-end px-4 pt-2 pb-1 shrink-0">
+                  <Link href={`/admin/ai-brief/${companyId}`}>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" data-testid="btn-ai-brief-from-calendar">
+                      <Sparkles className="h-3.5 w-3.5 text-primary" />
+                      Generate AI Brief
+                    </Button>
+                  </Link>
+                </div>
+                <ContentCalendarView
+                  companyId={companyId}
+                  companies={company ? [company] : []}
+                />
+              </>
             )}
           </TabsContent>
 

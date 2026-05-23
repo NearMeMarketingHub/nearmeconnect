@@ -10986,6 +10986,238 @@ export async function registerRoutes(
     }
   });
 
+  // ── AI Brief Generator ────────────────────────────────────────────────────
+
+  function substituteVars(template: string, vars: Record<string, string>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] || "");
+  }
+
+  const CONTENT_GOAL_LABELS: Record<string, string> = {
+    google_business_post: "Google Business Profile Post",
+    social_image: "Social Media Image",
+    social_video: "Social Media Video",
+    email_banner: "Email Campaign Banner",
+    blog_feature: "Blog Feature Image",
+    ad_creative: "Ad Creative",
+    newsletter_header: "Newsletter Header",
+    podcast_thumbnail: "Podcast Thumbnail",
+    case_study_visual: "Case Study Visual",
+  };
+
+  const PLATFORM_LABELS_BRIEF: Record<string, string> = {
+    google_business: "Google Business Profile",
+    facebook: "Facebook",
+    instagram: "Instagram",
+    linkedin: "LinkedIn",
+    email: "Email",
+    blog: "Blog",
+    other: "Other",
+  };
+
+  function buildFallbackBrief(vars: Record<string, string>, outputs: string[]): Record<string, string | null> {
+    const co = vars.company_name || "the company";
+    const geo = vars.geographic_focus ? ` in ${vars.geographic_focus}` : "";
+    const audience = vars.target_audience || "potential customers";
+    const topic = vars.topic || "our latest work";
+    const campaign = vars.campaign_context || "";
+    const style = vars.visual_style || "photorealistic";
+    const platform = PLATFORM_LABELS_BRIEF[vars.platform] || vars.platform || "social media";
+    const pillar = vars.pillar_name ? `${vars.pillar_name} content pillar` : "brand content";
+    const voice = vars.brand_voice || "professional and engaging";
+    const uvp = vars.uvp || "";
+    const colors = [vars.primary_color, vars.secondary_color].filter(Boolean).join(" and ");
+    const doNotUse = vars.do_not_use ? `Avoid: ${vars.do_not_use}.` : "";
+    const goal = vars.content_goal_label || "marketing content";
+
+    const imagePrompt = outputs.includes("image_prompt")
+      ? `Create a ${style} photograph/image for a ${goal} by ${co}${geo}, a ${vars.industry || "professional services"} company.\n\nContent Focus: ${topic}\n${campaign ? `Campaign Context: ${campaign}\n` : ""}Platform: ${platform}\nContent Pillar: ${pillar}\n\nBrand Details:\n- Primary Colors: ${colors || "brand colors"}\n- Brand Voice: ${voice}\n- Target Audience: ${audience}\n${uvp ? `- Unique Value: ${uvp}\n` : ""}${doNotUse}\n\nStyle Requirements: ${style} quality, professional commercial photography, perfect for ${platform} marketing. Well-lit, sharp, visually striking. No text overlays. Ultra-realistic.`
+      : null;
+
+    const captionPrompt = outputs.includes("caption")
+      ? `Write a compelling social media caption for ${co}${geo} about the following:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Platform: ${platform}\nBrand Voice: ${voice}\nTarget Audience: ${audience}\n${uvp ? `Key Message: ${uvp}\n` : ""}\nContent Pillar: ${pillar}\n\nRequirements:\n- Match the ${voice} brand voice\n- Speak directly to ${audience}\n- Drive engagement appropriate for ${platform}\n- Include a natural call to action\n- Do not use generic filler phrases\n${doNotUse}`
+      : null;
+
+    const hashtagPrompt = outputs.includes("hashtags")
+      ? `Generate 15–20 targeted hashtags for a ${platform} post by ${co}${geo} about:\n\nTopic: ${topic}\nIndustry: ${vars.industry || "professional services"}\nContent Pillar: ${pillar}\n\nMix of:\n- 3–5 high-volume broad hashtags\n- 5–8 industry/niche hashtags\n- 3–5 location-specific hashtags (for ${vars.geographic_focus || "their service area"})\n- 2–3 branded or campaign hashtags\n\nFormat each hashtag on its own line, starting with #`
+      : null;
+
+    const ctaPrompt = outputs.includes("cta")
+      ? `Generate 3 distinct call-to-action options for ${co}${geo} related to:\n\nTopic: ${topic}\nPlatform: ${platform}\nAudience: ${audience}\n\nEach CTA should:\n- Be concise (under 10 words)\n- Drive a specific action (call, visit, book, learn, etc.)\n- Fit the ${voice} brand voice\n\nFormat:\nCTA 1: [text]\nCTA 2: [text]\nCTA 3: [text]`
+      : null;
+
+    const gbpPostPrompt = outputs.includes("gbp_post")
+      ? `Write a complete Google Business Profile post for ${co}${geo} ready to paste:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Brand Voice: ${voice}\n\nRequirements:\n- Maximum 1,500 characters\n- Start with the most important information\n- Include a clear call to action\n- Professional, local business tone\n- Can include emojis sparingly\n- End with contact/visit prompt\n\nFormat the post as ready-to-paste text for Google Business Profile.`
+      : null;
+
+    const emailSubjectPrompt = outputs.includes("email_subject")
+      ? `Write 3 email subject line variants for ${co}${geo} about:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Audience: ${audience}\nBrand Voice: ${voice}\n\nRequirements:\n- Under 50 characters each (for mobile preview)\n- Create curiosity or urgency without being clickbait\n- Vary the approach: one benefit-focused, one curiosity-based, one direct\n\nFormat:\nOption 1: [subject line]\nOption 2: [subject line]\nOption 3: [subject line]`
+      : null;
+
+    const linkedinOutlinePrompt = outputs.includes("linkedin_outline")
+      ? `Create a LinkedIn article outline for ${co}${geo} on:\n\nTopic: ${topic}\n${campaign ? `Context: ${campaign}\n` : ""}Industry: ${vars.industry || "professional services"}\nTarget Audience: ${audience}\nBrand Voice: ${voice}\n\nOutline Format:\n- Article Title (2 options)\n- Hook/Opening paragraph (2–3 sentences)\n- 4–5 main sections with bullet points\n- Key takeaway / conclusion\n- Call to action`
+      : null;
+
+    return { imagePrompt, captionPrompt, hashtagPrompt, ctaPrompt, gbpPostPrompt, emailSubjectPrompt, linkedinOutlinePrompt };
+  }
+
+  app.get("/api/admin/ai-brief/:companyId/data", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const { companyId } = req.params as { companyId: string };
+      const [company, brandProfile, pillars] = await Promise.all([
+        storage.getCompany(companyId),
+        storage.getBrandProfile(companyId),
+        storage.getContentPillars(companyId),
+      ]);
+      if (!company) return res.status(404).json({ error: "Company not found" });
+      res.json({ company, brandProfile: brandProfile || null, pillars: pillars.filter(p => p.isActive) });
+    } catch (e) {
+      console.error("ai-brief data error:", e);
+      res.status(500).json({ error: "Failed to load brief data" });
+    }
+  });
+
+  app.post("/api/admin/ai-brief/:companyId/generate", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const { companyId } = req.params as { companyId: string };
+      const { contentGoal, platform, pillarId, campaignContext, topic, visualStyle, outputs } = req.body;
+
+      if (!contentGoal || !topic) return res.status(400).json({ error: "contentGoal and topic are required" });
+
+      const [company, brandProfile, pillars, template] = await Promise.all([
+        storage.getCompany(companyId),
+        storage.getBrandProfile(companyId),
+        storage.getContentPillars(companyId),
+        storage.getAiPromptTemplateByGoal(contentGoal),
+      ]);
+
+      if (!company) return res.status(404).json({ error: "Company not found" });
+
+      const pillar = pillars.find(p => p.id === pillarId);
+
+      const vars: Record<string, string> = {
+        company_name: company.name || "",
+        industry: company.industry || "",
+        geographic_focus: brandProfile?.geographicFocus || "",
+        brand_voice: brandProfile?.brandVoiceSummary || "professional and engaging",
+        target_audience: brandProfile?.targetAudienceDescription || "potential customers",
+        uvp: brandProfile?.uniqueValueProposition || "",
+        tagline: brandProfile?.tagline || "",
+        primary_color: brandProfile?.primaryColor || "",
+        secondary_color: brandProfile?.secondaryColor || "",
+        do_not_use: brandProfile?.doNotUsePhrases || "",
+        pillar_name: pillar?.name || "",
+        pillar_description: pillar?.description || "",
+        topic: topic || "",
+        campaign_context: campaignContext || "",
+        visual_style: visualStyle || "photorealistic",
+        platform: platform || "",
+        platform_label: PLATFORM_LABELS_BRIEF[platform] || platform || "",
+        content_goal_label: CONTENT_GOAL_LABELS[contentGoal] || contentGoal,
+      };
+
+      let sections: Record<string, string | null>;
+
+      if (template) {
+        sections = {
+          imagePrompt: (outputs || []).includes("image_prompt") && template.imagePromptTemplate
+            ? substituteVars(template.imagePromptTemplate, vars) : null,
+          captionPrompt: (outputs || []).includes("caption") && template.captionTemplate
+            ? substituteVars(template.captionTemplate, vars) : null,
+          hashtagPrompt: (outputs || []).includes("hashtags") && template.hashtagTemplate
+            ? substituteVars(template.hashtagTemplate, vars) : null,
+          ctaPrompt: (outputs || []).includes("cta") && template.ctaTemplate
+            ? substituteVars(template.ctaTemplate, vars) : null,
+          gbpPostPrompt: (outputs || []).includes("gbp_post") && template.gbpPostTemplate
+            ? substituteVars(template.gbpPostTemplate, vars) : null,
+          emailSubjectPrompt: (outputs || []).includes("email_subject") && template.emailSubjectTemplate
+            ? substituteVars(template.emailSubjectTemplate, vars) : null,
+          linkedinOutlinePrompt: (outputs || []).includes("linkedin_outline") && template.linkedinOutlineTemplate
+            ? substituteVars(template.linkedinOutlineTemplate, vars) : null,
+        };
+      } else {
+        sections = buildFallbackBrief(vars, outputs || []);
+      }
+
+      res.json({ sections, templateUsed: template?.name || "Built-in Default", vars });
+    } catch (e) {
+      console.error("ai-brief generate error:", e);
+      res.status(500).json({ error: "Failed to generate brief" });
+    }
+  });
+
+  app.post("/api/admin/ai-brief/:companyId/save", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const { companyId } = req.params as { companyId: string };
+      const { platform, pillarId, title, bodyContent, hashtags, aiPromptUsed, scheduledDate } = req.body;
+      if (!platform || !title) return res.status(400).json({ error: "platform and title are required" });
+
+      const defaultDate = (() => {
+        const d = new Date(); d.setDate(d.getDate() + 7);
+        return d.toISOString().split("T")[0];
+      })();
+
+      const item = await storage.createContentCalendarItem({
+        companyId,
+        platform,
+        pillarId: pillarId || null,
+        title: title.substring(0, 255),
+        bodyContent: bodyContent || null,
+        hashtags: hashtags || null,
+        status: "draft",
+        scheduledDate: scheduledDate || defaultDate,
+        contentType: "post",
+        createdBy: currentUserId,
+      });
+
+      res.json(item);
+    } catch (e) {
+      console.error("ai-brief save error:", e);
+      res.status(500).json({ error: "Failed to save calendar item" });
+    }
+  });
+
+  // AI Template CRUD
+  app.get("/api/admin/ai-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
+      const templates = await storage.getAiPromptTemplates();
+      res.json(templates);
+    } catch (e) { res.status(500).json({ error: "Failed to get templates" }); }
+  });
+
+  app.post("/api/admin/ai-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
+      const { contentGoal, name, imagePromptTemplate, captionTemplate, hashtagTemplate, ctaTemplate, gbpPostTemplate, emailSubjectTemplate, linkedinOutlineTemplate, isDefault, isActive } = req.body;
+      if (!contentGoal || !name) return res.status(400).json({ error: "contentGoal and name required" });
+      const tmpl = await storage.createAiPromptTemplate({ contentGoal, name, imagePromptTemplate: imagePromptTemplate || null, captionTemplate: captionTemplate || null, hashtagTemplate: hashtagTemplate || null, ctaTemplate: ctaTemplate || null, gbpPostTemplate: gbpPostTemplate || null, emailSubjectTemplate: emailSubjectTemplate || null, linkedinOutlineTemplate: linkedinOutlineTemplate || null, isDefault: !!isDefault, isActive: isActive !== false });
+      res.json(tmpl);
+    } catch (e) { res.status(500).json({ error: "Failed to create template" }); }
+  });
+
+  app.patch("/api/admin/ai-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
+      const tmpl = await storage.updateAiPromptTemplate(String(req.params.id), req.body);
+      if (!tmpl) return res.status(404).json({ error: "Template not found" });
+      res.json(tmpl);
+    } catch (e) { res.status(500).json({ error: "Failed to update template" }); }
+  });
+
+  app.delete("/api/admin/ai-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteAiPromptTemplate(String(req.params.id));
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: "Failed to delete template" }); }
+  });
+
   // ── Content Calendar ──────────────────────────────────────────────────────
 
   // Content Pillars
