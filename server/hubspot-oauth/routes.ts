@@ -18,17 +18,53 @@ import type { HubspotConnection } from "@shared/schema";
 function buildAuthUrl(companyId: string): string {
   const clientId = process.env.HUBSPOT_CLIENT_ID || "";
   const redirectUri = process.env.HUBSPOT_REDIRECT_URI || "";
-  // Only include scopes that are available to standard public apps.
-  // Scopes like analytics.behavioral_events.send, cms.knowledge_base.articles.read,
-  // tickets, and crm.objects.marketing_events.read require special app types and
-  // will cause HubSpot to show "Unable to load app information".
   const scopes = [
-    "crm.objects.contacts.read", "crm.objects.contacts.write",
-    "crm.objects.companies.read", "crm.objects.companies.write",
-    "crm.objects.deals.read", "crm.objects.deals.write",
-    "crm.objects.tasks.read", "crm.objects.tasks.write",
-    "content", "social", "automation", "reports",
-  ].join(" ");
+    'automation',
+    'automation.sequences.enrollments.write',
+    'automation.sequences.read',
+    'content',
+    'conversations.read',
+    'crm.import',
+    'crm.lists.read',
+    'crm.lists.write',
+    'crm.objects.companies.read',
+    'crm.objects.companies.write',
+    'crm.objects.contacts.read',
+    'crm.objects.contacts.write',
+    'crm.objects.deals.read',
+    'crm.objects.deals.write',
+    'crm.objects.goals.read',
+    'crm.objects.goals.write',
+    'crm.objects.invoices.read',
+    'crm.objects.invoices.write',
+    'crm.objects.leads.read',
+    'crm.objects.leads.write',
+    'crm.objects.marketing_events.read',
+    'crm.objects.marketing_events.write',
+    'crm.objects.partner-clients.read',
+    'crm.objects.partner-clients.write',
+    'crm.objects.products.read',
+    'crm.objects.products.write',
+    'crm.objects.projects.read',
+    'crm.objects.projects.write',
+    'crm.objects.quotes.read',
+    'crm.objects.quotes.write',
+    'crm.objects.services.read',
+    'crm.objects.services.write',
+    'crm.objects.subscriptions.read',
+    'crm.objects.subscriptions.write',
+    'crm.schemas.commercepayments.read',
+    'crm.schemas.commercepayments.write',
+    'files',
+    'hubdb',
+    'marketing-email',
+    'marketing.campaigns.read',
+    'marketing.campaigns.revenue.read',
+    'marketing.campaigns.write',
+    'oauth',
+    'social',
+    'tickets',
+  ].join(' ');
 
   const state = Buffer.from(JSON.stringify({ companyId })).toString("base64url");
   const params = new URLSearchParams({
