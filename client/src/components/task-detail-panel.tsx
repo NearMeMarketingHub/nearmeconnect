@@ -235,7 +235,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       return res.json() as Promise<Task>;
     },
     onMutate: async (data) => {
-      if (data.status === undefined) return;
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
       if (companyId) await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
       if (task?.id) await queryClient.cancelQueries({ queryKey: ["/api/tasks", task.id] });

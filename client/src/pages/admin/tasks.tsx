@@ -143,27 +143,32 @@ export default function AdminTasks() {
       return res.json() as Promise<Task>;
     },
     onMutate: async ({ taskId, updates }) => {
-      if (updates.status === undefined) return;
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", taskId] });
       const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
+      const previousTask = queryClient.getQueryData<Task>(["/api/tasks", taskId]);
       if (previousTasks) {
         queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
           t.id === taskId ? { ...t, ...updates } : t
         ));
       }
-      return { previousTasks };
+      if (previousTask) {
+        queryClient.setQueryData<Task>(["/api/tasks", taskId], { ...previousTask, ...updates });
+      }
+      return { previousTasks, previousTask };
     },
     onSuccess: (
       updatedTask: Task,
       { updates }: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[] } | undefined
+      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
     ) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
         old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
       );
+      queryClient.setQueryData<Task>(["/api/tasks", updatedTask.id], updatedTask);
       const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
-      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
-      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
+      const prevStatus = context?.previousTask?.status;
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== prevStatus) {
         queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId] });
         queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId, "credits"] });
         queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
@@ -173,11 +178,14 @@ export default function AdminTasks() {
     },
     onError: (
       _err: Error,
-      _vars: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[] } | undefined
+      { taskId }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
     ) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(["/api/tasks"], context.previousTasks);
+      }
+      if (context?.previousTask) {
+        queryClient.setQueryData(["/api/tasks", taskId], context.previousTask);
       }
       toast({ title: "Failed to update task", variant: "destructive" });
     },
