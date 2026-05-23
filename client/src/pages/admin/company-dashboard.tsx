@@ -114,6 +114,7 @@ import { MarketingHub } from "@/components/marketing-hub";
 import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
 import { NotepadPanel } from "@/components/notepad-panel";
 import { MessageBoardPanel } from "@/components/message-board-panel";
+import { SeoPanel } from "@/components/seo-panel";
 import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -424,6 +425,7 @@ export default function CompanyDashboard() {
       { key: "hubspot",    label: "HubSpot" },
       { key: "workflows",  label: "Workflows" },
       { key: "notes",      label: "Notes" },
+      { key: "seo",        label: "SEO / Directories" },
     ], defaultSub: "marketing" },
     { key: "communicate", label: "Communicate", subTabs: [
       { key: "chat",     label: "Chat" },
@@ -440,7 +442,7 @@ export default function CompanyDashboard() {
   const TAB_TO_CATEGORY: Record<string, string> = {
     details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
     calendar: "work", cadences: "work", pending_approval: "work",
-    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing",
+    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
     users: "admin", "credit-history": "admin", reporting: "admin",
@@ -4567,6 +4569,18 @@ export default function CompanyDashboard() {
                 companyId={companyId}
                 currentUserId={user.id}
                 currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+              />
+            )}
+          </TabsContent>
+
+          {/* SEO / Directories Tab */}
+          <TabsContent value="seo" className="space-y-4">
+            {companyId && user && (
+              <SeoPanel
+                companyId={companyId}
+                currentUserId={user.id}
+                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+                isAdmin={true}
               />
             )}
           </TabsContent>

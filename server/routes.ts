@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema, insertSeoDirectorySchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -12113,6 +12113,67 @@ export async function registerRoutes(
       broadcastInvalidation([`/api/companies/${req.params.companyId}/hill-charts`]);
       res.json({ ok: true });
     } catch { res.status(500).json({ error: "Failed to delete hill chart" }); }
+  });
+
+  // ─── SEO / Directory Tracking ────────────────────────────────────────────────
+
+  // Global admin view (all companies)
+  app.get("/api/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const items = await storage.getAllSeoDirectories();
+      res.json(items);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Company-scoped list
+  app.get("/api/companies/:companyId/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const items = await storage.getSeoDirectories(req.params.companyId as string);
+      res.json(items);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Create
+  app.post("/api/companies/:companyId/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const parsed = insertSeoDirectorySchema.partial().parse({ ...req.body, companyId });
+      if (!parsed.name) return res.status(400).json({ error: "Name is required" });
+      const user = await storage.getUser(req.user!.id);
+      const item = await storage.createSeoDirectory({
+        ...parsed,
+        companyId,
+        name: parsed.name,
+        type: parsed.type ?? "directory",
+        status: parsed.status ?? "not_started",
+        createdBy: req.user!.id,
+        createdByName: user ? `${user.firstName} ${user.lastName}`.trim() : parsed.createdByName ?? "",
+      } as any);
+      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
+      res.json(item);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  // Update
+  app.patch("/api/companies/:companyId/seo-directories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const item = await storage.updateSeoDirectory(req.params.id as string, req.body);
+      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
+      res.json(item);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Delete
+  app.delete("/api/companies/:companyId/seo-directories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      await storage.deleteSeoDirectory(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   return httpServer;

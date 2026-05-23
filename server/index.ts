@@ -141,6 +141,30 @@ async function migrateCampaignWorkspaceColumns() {
     "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_campaign_id varchar",
     "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_task_id varchar",
     "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_content_item_id varchar",
+    // SEO / Directory Tracking
+    `CREATE TABLE IF NOT EXISTS seo_directories (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      campaign_id varchar,
+      name text NOT NULL,
+      type text NOT NULL DEFAULT 'directory',
+      url text,
+      login_url text,
+      target_keyword text,
+      target_city text,
+      status text NOT NULL DEFAULT 'not_started',
+      owner text,
+      due_date text,
+      submitted_date text,
+      live_date text,
+      published_url text,
+      notes text,
+      evidence_url text,
+      created_by varchar NOT NULL,
+      created_by_name text,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

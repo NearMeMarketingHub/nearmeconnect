@@ -50,6 +50,7 @@ import AdminAiTemplates from "@/pages/admin/ai-templates";
 import WorkflowLibraryPage from "@/pages/admin/workflow-library";
 import AdminCheckIns from "@/pages/admin/check-ins";
 import AdminResourceLibrary from "@/pages/admin/resource-library";
+import AdminSeo from "@/pages/admin/seo";
 import ClientResourceLibrary from "@/pages/client/resource-library";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
@@ -196,6 +197,7 @@ function AppContent() {
         <Route path="/admin/workflow-library">{() => <ErrorBoundary showNav><WorkflowLibraryPage /></ErrorBoundary>}</Route>
         <Route path="/admin/check-ins">{() => <ErrorBoundary showNav><AdminCheckIns /></ErrorBoundary>}</Route>
         <Route path="/admin/resource-library">{() => <ErrorBoundary showNav><AdminResourceLibrary /></ErrorBoundary>}</Route>
+        <Route path="/admin/seo">{() => <ErrorBoundary showNav><AdminSeo /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );

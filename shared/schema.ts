@@ -1845,3 +1845,34 @@ export const hillCharts = pgTable("hill_charts", {
 export const insertHillChartSchema = createInsertSchema(hillCharts).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertHillChart = z.infer<typeof insertHillChartSchema>;
 export type HillChart = typeof hillCharts.$inferSelect;
+
+// ── SEO / Directory Tracking ──────────────────────────────────────────────────
+export const seoDirectoryTypeEnum = ["directory", "citation", "gbp", "local_landing_page", "public_blog", "blog_post", "backlink_resource", "other"] as const;
+export const seoDirectoryStatusEnum = ["not_started", "assigned", "in_progress", "submitted", "pending_verification", "live", "needs_update", "rejected", "archived"] as const;
+
+export const seoDirectories = pgTable("seo_directories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  campaignId: varchar("campaign_id"),
+  name: text("name").notNull(),
+  type: text("type").notNull().$type<typeof seoDirectoryTypeEnum[number]>().default("directory"),
+  url: text("url"),
+  loginUrl: text("login_url"),
+  targetKeyword: text("target_keyword"),
+  targetCity: text("target_city"),
+  status: text("status").notNull().$type<typeof seoDirectoryStatusEnum[number]>().default("not_started"),
+  owner: text("owner"),
+  dueDate: text("due_date"),
+  submittedDate: text("submitted_date"),
+  liveDate: text("live_date"),
+  publishedUrl: text("published_url"),
+  notes: text("notes"),
+  evidenceUrl: text("evidence_url"),
+  createdBy: varchar("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertSeoDirectorySchema = createInsertSchema(seoDirectories).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSeoDirectory = z.infer<typeof insertSeoDirectorySchema>;
+export type SeoDirectory = typeof seoDirectories.$inferSelect;

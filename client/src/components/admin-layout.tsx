@@ -50,6 +50,7 @@ import {
   UserPlus,
   Shield,
   FolderOpen,
+  Globe,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
@@ -100,6 +101,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: "Asset Library",      href: "/admin/asset-library",  icon: Image },
       { title: "Resource Library",   href: "/admin/resource-library", icon: FolderOpen },
       { title: "Workflows Library",  href: "/admin/workflow-library", icon: Activity },
+      { title: "SEO / Directories",  href: "/admin/seo",              icon: Globe },
     ],
   },
   {

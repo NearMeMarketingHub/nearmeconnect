@@ -47,6 +47,7 @@ import type {
   BrandProfile,
   ContentCalendarItem,
   CompanyKnowledgeItem,
+  SeoDirectory,
 } from "@shared/schema";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -1228,6 +1229,94 @@ function PinnedNotesCard({
   );
 }
 
+// ─── SEO Coverage Card ────────────────────────────────────────────────────────
+
+function SeoCoverageCard({ companyId, onNavigate }: { companyId: string; onNavigate: (tab: string) => void }) {
+  const { data: items = [] } = useQuery<SeoDirectory[]>({
+    queryKey: ["/api/companies", companyId, "seo-directories"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/seo-directories`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const total = items.length;
+  const liveCount = items.filter(i => i.status === "live").length;
+  const inProgressCount = items.filter(i => ["in_progress", "assigned", "submitted", "pending_verification"].includes(i.status)).length;
+  const overdueCount = items.filter(i => i.dueDate && new Date(i.dueDate) < new Date() && i.status !== "live" && i.status !== "archived").length;
+  const pct = total > 0 ? Math.round((liveCount / total) * 100) : 0;
+
+  const recentLive = items
+    .filter(i => i.status === "live")
+    .sort((a, b) => (b.liveDate ?? b.createdAt).localeCompare(a.liveDate ?? a.createdAt))
+    .slice(0, 4);
+
+  return (
+    <Card data-testid="card-seo-coverage">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Globe className="h-4 w-4 text-muted-foreground" /> SEO / Directories
+          </CardTitle>
+          <Button size="sm" variant="ghost" className="text-xs h-6 px-2" onClick={() => onNavigate("seo")} data-testid="button-seo-view-all">
+            View All <ChevronRight className="h-3 w-3" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {total === 0 ? (
+          <EmptyState icon={Globe} text="No SEO directories tracked yet." />
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className="text-lg font-bold text-green-600 dark:text-green-400">{liveCount}</p>
+                <p className="text-[10px] text-muted-foreground">Live</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className="text-lg font-bold text-yellow-600 dark:text-yellow-400">{inProgressCount}</p>
+                <p className="text-[10px] text-muted-foreground">In Progress</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className={`text-lg font-bold ${overdueCount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>{overdueCount}</p>
+                <p className="text-[10px] text-muted-foreground">Overdue</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Live coverage</span>
+                <span className="font-medium">{pct}% ({liveCount}/{total})</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+
+            {recentLive.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Recently Live</p>
+                {recentLive.map(item => (
+                  <div key={item.id} className="flex items-center gap-2 text-xs group">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                    <span className="truncate flex-1">{item.name}</span>
+                    {item.publishedUrl && (
+                      <a href={item.publishedUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100">
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export interface CompanyCommandCenterProps {
@@ -1327,8 +1416,11 @@ export function CompanyCommandCenter({
         <RecentActivityCard tasks={tasks} threads={threads} contentItems={contentItems} onNavigate={onNavigate} />
       </div>
 
-      {/* Row 6: Pinned Notes */}
-      <PinnedNotesCard companyId={companyId} onNavigate={onNavigate} />
+      {/* Row 6: SEO Coverage + Pinned Notes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <SeoCoverageCard companyId={companyId} onNavigate={onNavigate} />
+        <PinnedNotesCard companyId={companyId} onNavigate={onNavigate} />
+      </div>
     </div>
   );
 }

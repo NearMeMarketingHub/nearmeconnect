@@ -211,6 +211,9 @@ import {
   clientResources,
   type ClientResource,
   type InsertClientResource,
+  seoDirectories,
+  type SeoDirectory,
+  type InsertSeoDirectory,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -425,6 +428,14 @@ export interface IStorage {
   getCheckinResponses(questionId: string): Promise<CheckinResponse[]>;
   createCheckinResponse(data: InsertCheckinResponse): Promise<CheckinResponse>;
   getUserCheckinResponse(questionId: string, responderId: string): Promise<CheckinResponse | undefined>;
+
+  // SEO Directories
+  getSeoDirectories(companyId: string): Promise<SeoDirectory[]>;
+  getAllSeoDirectories(): Promise<SeoDirectory[]>;
+  getSeoDirectory(id: string): Promise<SeoDirectory | undefined>;
+  createSeoDirectory(data: InsertSeoDirectory): Promise<SeoDirectory>;
+  updateSeoDirectory(id: string, data: Partial<InsertSeoDirectory>): Promise<SeoDirectory | undefined>;
+  deleteSeoDirectory(id: string): Promise<void>;
 
   // Hill Charts
   getHillCharts(companyId: string): Promise<HillChart[]>;
@@ -3368,6 +3379,35 @@ export class DatabaseStorage implements IStorage {
   async getClientResource(id: string): Promise<ClientResource | undefined> {
     const [row] = await db.select().from(clientResources).where(eq(clientResources.id, id));
     return row;
+  }
+
+  async getSeoDirectories(companyId: string): Promise<SeoDirectory[]> {
+    return db.select().from(seoDirectories).where(eq(seoDirectories.companyId, companyId)).orderBy(seoDirectories.createdAt);
+  }
+
+  async getAllSeoDirectories(): Promise<SeoDirectory[]> {
+    return db.select().from(seoDirectories).orderBy(seoDirectories.createdAt);
+  }
+
+  async getSeoDirectory(id: string): Promise<SeoDirectory | undefined> {
+    const [row] = await db.select().from(seoDirectories).where(eq(seoDirectories.id, id));
+    return row;
+  }
+
+  async createSeoDirectory(data: InsertSeoDirectory): Promise<SeoDirectory> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(seoDirectories).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateSeoDirectory(id: string, data: Partial<InsertSeoDirectory>): Promise<SeoDirectory | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(seoDirectories).set({ ...(data as any), updatedAt: now }).where(eq(seoDirectories.id, id)).returning();
+    return row;
+  }
+
+  async deleteSeoDirectory(id: string): Promise<void> {
+    await db.delete(seoDirectories).where(eq(seoDirectories.id, id));
   }
 
   async createClientResource(data: InsertClientResource): Promise<ClientResource> {
