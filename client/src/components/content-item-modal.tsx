@@ -87,6 +87,7 @@ export function ContentItemModal({
     scheduledTime: item?.scheduledTime || "",
     pillarId: item?.pillarId || undefined,
     assignedTo: item?.assignedTo || undefined,
+    assignedToName: item?.assignedToName || undefined,
     gbpPostType: (item?.gbpPostType as any) || undefined,
     gbpEventTitle: item?.gbpEventTitle || "",
     gbpEventStart: item?.gbpEventStart || "",
@@ -313,10 +314,26 @@ export function ContentItemModal({
                       <FormField control={form.control} name="assignedTo" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Assigned To</FormLabel>
-                          <Select value={field.value || "_none"} onValueChange={v => field.onChange(v === "_none" ? undefined : v)}>
+                          <Select
+                            disabled={!companyId}
+                            value={field.value || "_none"}
+                            onValueChange={v => {
+                              if (v === "_none") {
+                                field.onChange(undefined);
+                                form.setValue("assignedToName", undefined);
+                              } else {
+                                field.onChange(v);
+                                const member = members.find((m: any) => m.userId === v);
+                                if (member) {
+                                  const name = [member.firstName, member.lastName].filter(Boolean).join(" ") || member.email || "";
+                                  form.setValue("assignedToName", name);
+                                }
+                              }
+                            }}
+                          >
                             <FormControl>
                               <SelectTrigger data-testid="select-assigned-to">
-                                <SelectValue placeholder="Unassigned" />
+                                <SelectValue placeholder={companyId ? "Unassigned" : "Select a company first"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
