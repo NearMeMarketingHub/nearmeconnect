@@ -745,10 +745,10 @@ function AnalyticsOverview() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { title: "Total Tasks", value: analytics?.taskStats.total || 0, sub: `${analytics?.taskStats.totalInPeriod || 0} created in period`, icon: ListTodo },
-          { title: "Completed", value: analytics?.taskStats.completedInPeriod || 0, sub: `${analytics?.taskStats.completed || 0} all time`, icon: CheckCircle2 },
-          { title: "Credits Used", value: (analytics?.creditStats.totalCreditsUsed || 0).toLocaleString(), sub: `${analytics?.creditStats.transactionCount || 0} transactions`, icon: CreditCard },
-          { title: "Active Companies", value: analytics?.companyStats.activeCompanies || 0, sub: `of ${analytics?.companyStats.totalCompanies || 0} total`, icon: Building2 },
+          { title: "Total Tasks", value: analytics?.taskStats?.total || 0, sub: `${analytics?.taskStats?.totalInPeriod || 0} created in period`, icon: ListTodo },
+          { title: "Completed", value: analytics?.taskStats?.completedInPeriod || 0, sub: `${analytics?.taskStats?.completed || 0} all time`, icon: CheckCircle2 },
+          { title: "Credits Used", value: (analytics?.creditStats?.totalCreditsUsed || 0).toLocaleString(), sub: `${analytics?.creditStats?.transactionCount || 0} transactions`, icon: CreditCard },
+          { title: "Active Companies", value: analytics?.companyStats?.activeCompanies || 0, sub: `of ${analytics?.companyStats?.totalCompanies || 0} total`, icon: Building2 },
         ].map(({ title, value, sub, icon: Icon }) => (
           <Card key={title}>
             <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -774,9 +774,9 @@ function AnalyticsOverview() {
             {isLoading ? <Skeleton className="h-64 w-full" /> : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analytics?.timeSeriesData.tasksCompleted?.map(d => ({ ...d, date: formatDate(d.date) })) || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <LineChart data={analytics?.timeSeriesData?.tasksCompleted?.map(d => ({ ...d, date: formatDate(d.date) })) || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(0, Math.floor((analytics?.timeSeriesData.tasksCompleted?.length || 0) / 10) - 1)} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(0, Math.floor((analytics?.timeSeriesData?.tasksCompleted?.length || 0) / 10) - 1)} />
                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                     <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }} />
                     <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
@@ -792,9 +792,9 @@ function AnalyticsOverview() {
             {isLoading ? <Skeleton className="h-64 w-full" /> : (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={analytics?.timeSeriesData.creditsUsed?.map(d => ({ ...d, date: formatDate(d.date) })) || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <LineChart data={analytics?.timeSeriesData?.creditsUsed?.map(d => ({ ...d, date: formatDate(d.date) })) || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(0, Math.floor((analytics?.timeSeriesData.creditsUsed?.length || 0) / 10) - 1)} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={Math.max(0, Math.floor((analytics?.timeSeriesData?.creditsUsed?.length || 0) / 10) - 1)} />
                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                     <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, fontSize: 12 }} />
                     <Line type="monotone" dataKey="amount" stroke="hsl(var(--chart-2, #f97316))" strokeWidth={2} dot={false} />

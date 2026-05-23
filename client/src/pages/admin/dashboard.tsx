@@ -157,7 +157,7 @@ function PersonCard({ person }: { person: WorkloadPerson }) {
             <p className="font-semibold truncate">{person.name}</p>
             <p className="text-xs text-muted-foreground truncate">{person.email}</p>
           </div>
-          <Badge variant="secondary" className="font-mono text-xs shrink-0">{person.stats.total} tasks</Badge>
+          <Badge variant="secondary" className="font-mono text-xs shrink-0">{person.stats?.total ?? 0} tasks</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -684,7 +684,7 @@ export default function AdminDashboard() {
                             {contentStatus.statuses.map(s => (
                               <td key={s} className="py-2 px-2 text-center font-mono">{contentStatus.byStatus[s] || 0}</td>
                             ))}
-                            <td className="py-2 px-2 text-center font-mono">{contentStatus.total}</td>
+                            <td className="py-2 px-2 text-center font-mono">{contentStatus?.total ?? 0}</td>
                           </tr>
                         </tbody>
                       </table>
