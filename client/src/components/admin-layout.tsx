@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -12,11 +12,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -28,90 +23,90 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Building2, LogOut, Tag, Calendar, CalendarRange, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers, Sparkles, Library, Workflow } from "lucide-react";
+import {
+  Home,
+  Building2,
+  CheckCircle,
+  Calendar,
+  Zap,
+  Star,
+  Image,
+  Activity,
+  Users,
+  BarChart3,
+  User,
+  FolderOpen,
+  BookOpen,
+  Package,
+  Briefcase,
+  Bell,
+  Settings,
+  LogOut,
+} from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
 
-const coreItems = [
-  { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+const mainItems = [
+  { title: "Dashboard", href: "/admin/dashboard", icon: Home },
   { title: "Companies", href: "/admin/companies", icon: Building2 },
-  { title: "Tasks", href: "/admin/tasks", icon: ListTodo },
+  { title: "Tasks", href: "/admin/tasks", icon: CheckCircle },
+  { title: "Content Calendar", href: "/admin/content-calendar", icon: Calendar },
 ];
 
-const servicesItems = [
-  { title: "Campaigns", href: "/admin/campaigns", icon: Megaphone },
-  { title: "Meetings", href: "/admin/meetings", icon: Video },
-  { title: "Training", href: "/admin/training", icon: GraduationCap },
-  { title: "Media Profiles", href: "/admin/media-profiles", icon: FileImage },
-  { title: "Government", href: "/admin/government", icon: Landmark },
+const marketingItems = [
+  { title: "Strategy Board", href: "/admin/strategy", icon: Zap },
+  { title: "AI Brief Generator", href: "/admin/ai-brief", icon: Star },
+  { title: "Asset Library", href: "/admin/asset-library", icon: Image },
+  { title: "Workflows", href: "/admin/workflow-library", icon: Activity },
 ];
 
-const communicationItems = [
-  { title: "Calendar", href: "/admin/calendar", icon: Calendar },
-  { title: "Content Calendar", href: "/admin/content-calendar", icon: CalendarRange },
-  { title: "AI Brief Generator", href: "/admin/ai-brief", icon: Sparkles },
-  { title: "Workflow Library", href: "/admin/workflow-library", icon: Workflow },
-  { title: "Chat", href: "/admin/chat", icon: MessageCircle },
-  { title: "Media Submissions", href: "/admin/media-submissions", icon: Upload },
-];
-
-const configurationItems = [
-  { title: "User Management", href: "/admin/user-management", icon: Users },
-  { title: "Custom Roles", href: "/admin/custom-roles", icon: ShieldCheck },
-  { title: "Deliverables", href: "/admin/deliverables", icon: Tag },
-  { title: "Subscription Tiers", href: "/admin/subscription-tiers", icon: Layers },
-  { title: "Credit Store", href: "/admin/credit-store", icon: CreditCard },
+const adminItems = [
+  { title: "Meetings", href: "/admin/meetings", icon: Users },
   { title: "Reporting", href: "/admin/reporting", icon: BarChart3 },
-  { title: "AI Templates", href: "/admin/ai-templates", icon: Library },
-  { title: "Settings", href: "/admin/settings", icon: Settings },
+  { title: "Users", href: "/admin/user-management", icon: User },
+  { title: "Workflow Library", href: "/admin/workflow-library", icon: FolderOpen },
+  { title: "Training", href: "/admin/training", icon: BookOpen },
+  { title: "Deliverable Types", href: "/admin/deliverables", icon: Package },
+  { title: "Campaign Types", href: "/admin/campaigns", icon: Briefcase },
 ];
 
-const devItems = [
-  { title: "Sandbox", href: "/admin/sandbox", icon: FlaskConical },
-];
+interface UserInfo {
+  isAdmin: boolean;
+}
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
-  const isAdminDashboard = location.split('?')[0] === '/admin/dashboard';
-  
-  // Load collapsed states from localStorage, default to false (collapsed)
-  const [servicesOpen, setServicesOpen] = useState(() => {
-    const saved = localStorage.getItem('sidebar_services_open');
-    return saved === 'true';
-  });
-  const [communicationOpen, setCommunicationOpen] = useState(() => {
-    const saved = localStorage.getItem('sidebar_communication_open');
-    return saved === 'true';
-  });
-  const [configurationOpen, setConfigurationOpen] = useState(() => {
-    const saved = localStorage.getItem('sidebar_configuration_open');
-    return saved === 'true';
-  });
+  const isAdminDashboard = location.split("?")[0] === "/admin/dashboard";
 
-  // Persist collapsed states to localStorage
-  useEffect(() => {
-    localStorage.setItem('sidebar_services_open', String(servicesOpen));
-  }, [servicesOpen]);
-  useEffect(() => {
-    localStorage.setItem('sidebar_communication_open', String(communicationOpen));
-  }, [communicationOpen]);
-  useEffect(() => {
-    localStorage.setItem('sidebar_configuration_open', String(configurationOpen));
-  }, [configurationOpen]);
+  const { data: userInfo } = useQuery<UserInfo>({
+    queryKey: ["/api/me"],
+  });
+  const isAdmin = userInfo?.isAdmin ?? true;
 
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
-  const isActive = (href: string) => location.split('?')[0] === href;
+  const isActive = (href: string) => {
+    const path = location.split("?")[0];
+    if (href === "/admin/dashboard") return path === href;
+    return path === href || path.startsWith(href + "/");
+  };
 
-  const renderNavItem = (item: { title: string; href: string; icon: React.ComponentType<{ className?: string }> }) => (
+  const renderNavItem = (item: {
+    title: string;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }) => (
     <SidebarMenuItem key={item.title}>
       <SidebarMenuButton asChild isActive={isActive(item.href)}>
-        <Link href={item.href} data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
+        <Link
+          href={item.href}
+          data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+        >
           <item.icon className="w-4 h-4" />
           <span>{item.title}</span>
         </Link>
@@ -123,99 +118,101 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <Sidebar>
-          <SidebarContent>
-            <div className="p-4 border-b">
-              <div className="flex items-center gap-2">
-                <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto" />
-                <span className="font-bold tracking-tight">Admin Portal</span>
-              </div>
+          <div className="p-4 border-b flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto" />
+              <span className="font-bold tracking-tight">Admin Portal</span>
             </div>
+          </div>
 
+          <SidebarContent>
+            {/* MAIN — no category label */}
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {coreItems.map(renderNavItem)}
+                  {mainItems.map(renderNavItem)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <Collapsible open={servicesOpen} onOpenChange={setServicesOpen}>
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer hover-elevate flex items-center justify-between pr-2" data-testid="group-services">
-                    <div className="flex items-center gap-2">
-                      <Briefcase className="w-3.5 h-3.5" />
-                      <span>Services</span>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${servicesOpen ? '' : '-rotate-90'}`} />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {servicesItems.map(renderNavItem)}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-
-            <Collapsible open={communicationOpen} onOpenChange={setCommunicationOpen}>
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer hover-elevate flex items-center justify-between pr-2" data-testid="group-communication">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>Communication</span>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${communicationOpen ? '' : '-rotate-90'}`} />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {communicationItems.map(renderNavItem)}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-
-            <Collapsible open={configurationOpen} onOpenChange={setConfigurationOpen}>
-              <SidebarGroup>
-                <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer hover-elevate flex items-center justify-between pr-2" data-testid="group-configuration">
-                    <div className="flex items-center gap-2">
-                      <Wrench className="w-3.5 h-3.5" />
-                      <span>Configuration</span>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${configurationOpen ? '' : '-rotate-90'}`} />
-                  </SidebarGroupLabel>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarGroupContent>
-                    <SidebarMenu>
-                      {configurationItems.map(renderNavItem)}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
-
+            {/* MARKETING */}
             <SidebarGroup>
-              <SidebarGroupLabel className="flex items-center gap-2" data-testid="group-development">
-                <FlaskConical className="w-3.5 h-3.5" />
-                <span>Development</span>
+              <SidebarGroupLabel
+                className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
+                data-testid="group-marketing"
+              >
+                Marketing
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {devItems.map(renderNavItem)}
+                  {marketingItems.map(renderNavItem)}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
+
+            {/* ADMIN — only for admin users */}
+            {isAdmin && (
+              <SidebarGroup>
+                <SidebarGroupLabel
+                  className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
+                  data-testid="group-admin"
+                >
+                  Admin
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {adminItems.map(renderNavItem)}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
           </SidebarContent>
-          <div className="px-4 py-2 border-t text-center">
-            <span className="text-xs text-muted-foreground" data-testid="text-version">v1.7</span>
+
+          {/* ACCOUNT — pinned to bottom */}
+          <div className="border-t">
+            <SidebarGroup>
+              <SidebarGroupLabel
+                className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
+                data-testid="group-account"
+              >
+                Account
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/admin/settings#notifications")}>
+                      <Link href="/admin/settings" data-testid="nav-notifications">
+                        <Bell className="w-4 h-4" />
+                        <span>Notifications</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/admin/settings")}>
+                      <Link href="/admin/settings" data-testid="nav-settings">
+                        <Settings className="w-4 h-4" />
+                        <span>Settings</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => logout()}
+                      data-testid="nav-logout"
+                      className="cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Log out</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <div className="px-4 py-2 border-t text-center">
+              <span className="text-xs text-muted-foreground" data-testid="text-version">
+                v1.7
+              </span>
+            </div>
           </div>
         </Sidebar>
 
@@ -232,7 +229,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full" data-testid="button-user-menu">
+                  <Button
+                    variant="ghost"
+                    className="relative h-9 w-9 rounded-full"
+                    data-testid="button-user-menu"
+                  >
                     <Avatar className="h-9 w-9">
                       <AvatarFallback>
                         {user?.firstName?.[0] || user?.email?.[0] || "A"}
@@ -248,7 +249,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                     <p className="text-xs text-muted-foreground">{user?.email}</p>
                   </div>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => logout()} className="cursor-pointer" data-testid="button-logout">
+                  <DropdownMenuItem
+                    onClick={() => logout()}
+                    className="cursor-pointer"
+                    data-testid="button-logout"
+                  >
                     <LogOut className="w-4 h-4 mr-2" />
                     Log out
                   </DropdownMenuItem>
@@ -256,9 +261,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </DropdownMenu>
             </div>
           </header>
-          <main className="flex-1 overflow-auto bg-muted/30">
-            {children}
-          </main>
+          <main className="flex-1 overflow-auto bg-muted/30">{children}</main>
         </div>
       </div>
     </SidebarProvider>
