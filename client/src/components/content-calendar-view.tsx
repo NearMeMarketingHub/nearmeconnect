@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronLeft, ChevronRight, Plus, Wand2, Loader2, Download, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Wand2, Loader2, Download, FileText, Calendar, Sparkles } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ContentItemModal, PLATFORM_CONFIG, STATUS_CONFIG } from "./content-item-modal";
 import { BulkScheduleWizard } from "./bulk-schedule-wizard";
 
@@ -309,7 +310,15 @@ function ListView({ items, companies, onClickItem, onStatusChange }: {
           </TableHeader>
           <TableBody>
             {sorted.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-10">No content items found</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={8} className="py-16">
+                  <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                    <FileText className="h-10 w-10 opacity-20" />
+                    <p className="text-sm font-medium">No content items yet</p>
+                    <p className="text-xs">Use the <strong>New Item</strong> button above to add your first post.</p>
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : sorted.map(item => {
               const cfg = PLATFORM_CONFIG[item.platform];
               return (
@@ -592,8 +601,29 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <div className="p-4">
+            {viewMode === "month" ? (
+              <div className="grid grid-cols-7 gap-1">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
+                  <Skeleton key={d} className="h-6 rounded" />
+                ))}
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 rounded-lg" />
+                ))}
+              </div>
+            ) : viewMode === "list" ? (
+              <div className="space-y-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 rounded-lg w-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="max-w-2xl mx-auto space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 rounded-lg w-full" />
+                ))}
+              </div>
+            )}
           </div>
         ) : viewMode === "month" ? (
           <MonthView items={filteredItems} year={year} month={month} companies={companies} onClickItem={openEdit} onClickDay={date => openNew(date)} />

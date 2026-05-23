@@ -256,8 +256,30 @@ export default function WorkflowLibraryPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          No workflows match your filters.
+        <div className="text-center py-20">
+          {!hasFilters ? (
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                <Zap className="h-8 w-8 text-muted-foreground opacity-50" />
+              </div>
+              <div>
+                <p className="text-base font-semibold text-foreground">No workflows yet</p>
+                <p className="text-sm text-muted-foreground mt-1">Run the seed script to load the 100 HubSpot workflow templates.</p>
+              </div>
+              <code className="text-xs bg-muted px-3 py-2 rounded-md font-mono text-muted-foreground">
+                node scripts/seed-workflows.js
+              </code>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <Search className="h-10 w-10 opacity-20" />
+              <p className="text-sm font-medium">No workflows match your filters</p>
+              <p className="text-xs">Try adjusting the search or filters above.</p>
+              <Button variant="outline" size="sm" onClick={() => { setSearch(""); setCategoryFilter("all"); setComplexityFilter("all"); }} data-testid="btn-clear-filters-empty">
+                Clear filters
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-8">
