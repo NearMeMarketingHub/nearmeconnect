@@ -31,6 +31,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { HubspotPanel } from "@/components/hubspot-panel";
 import { ContentCalendarView } from "@/components/content-calendar-view";
+import { CompanyCommandCenter } from "@/components/company-command-center";
 import {
   ArrowLeft,
   Plus,
@@ -2419,155 +2420,23 @@ export default function CompanyDashboard() {
           />
 
           {/* Details Tab */}
-          <TabsContent value="details" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Credits</CardTitle>
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{company.credits}</div>
-                  <p className="text-xs text-muted-foreground">
-                    of {company.monthlyCredits} monthly
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Projected Usage</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold font-mono" data-testid="text-projected-credits">{projectedCredits.toFixed(2)}</div>
-                  <p className="text-xs text-muted-foreground">Tasks & Meetings this period</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Subscription</CardTitle>
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold capitalize">{company.subscriptionTier}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {company.industry || "No industry set"}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Status</CardTitle>
-                  {company.isPaused ? (
-                    <AlertTriangle className="h-4 w-4 text-destructive" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {company.isPaused ? "Paused" : "Active"}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {company.isPaused && company.pausedAt
-                      ? `Since ${new Date(company.pausedAt).toLocaleDateString()}`
-                      : company.onboardingComplete ? "Onboarding Complete" : "Onboarding pending"
-                    }
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{activeTasks.length}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {completedTasks.length} completed
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Pause/Resume Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Account Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {company.isPaused ? "Account is Paused" : "Account is Active"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {company.isPaused
-                        ? "Clients cannot access the portal. Click Resume to restore access with full credits."
-                        : "Clients have full access to the portal. Click Pause to suspend access."
-                      }
-                    </p>
-                  </div>
-                  {company.isPaused ? (
-                    <Button
-                      onClick={() => resumeCompanyMutation.mutate()}
-                      disabled={resumeCompanyMutation.isPending}
-                      data-testid="button-resume-company-details"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      {resumeCompanyMutation.isPending ? "Resuming..." : "Resume Account"}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => pauseCompanyMutation.mutate()}
-                      disabled={pauseCompanyMutation.isPending}
-                      data-testid="button-pause-company-details"
-                    >
-                      <Pause className="h-4 w-4 mr-2" />
-                      {pauseCompanyMutation.isPending ? "Pausing..." : "Pause Account"}
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Credit History */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Recent Credit Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {transactions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No credit activity yet
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {transactions.slice(0, 10).map((t) => (
-                      <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <div className="flex items-center gap-3">
-                          {parseFloat(t.amount) > 0 ? (
-                            <TrendingUp className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-orange-500" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium">{t.description}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(t.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={parseFloat(t.amount) > 0 ? "default" : "secondary"}>
-                          {parseFloat(t.amount) > 0 ? "+" : ""}{t.amount}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <TabsContent value="details">
+            <CompanyCommandCenter
+              companyId={companyId!}
+              company={company}
+              tasks={tasks || []}
+              campaigns={companyCampaignRequests}
+              meetings={companyMeetingRequests}
+              transactions={transactions}
+              onboardingData={onboardingData}
+              threads={threads}
+              companyUsers={companyUsers}
+              agencyAdmins={agencyAdmins}
+              onNavigate={(tab) => {
+                setActiveTab(tab);
+                setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
+              }}
+            />
           </TabsContent>
 
           {/* Tasks Tab */}
