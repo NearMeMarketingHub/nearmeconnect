@@ -405,7 +405,7 @@ export default function CompanyDashboard() {
   
   // Parse URL query params
   const urlParams = new URLSearchParams(searchString);
-  const initialTab = urlParams.get("tab") || "details";
+  const initialTab = urlParams.get("tab") || "marketing";
   const initialThread = urlParams.get("thread");
   
   const isMobile = useIsMobile();
@@ -507,6 +507,7 @@ export default function CompanyDashboard() {
   const [editClientType, setEditClientType] = useState("");
   const [editTier, setEditTier] = useState("");
   const [editMonthlyCredits, setEditMonthlyCredits] = useState("");
+  const [editHubspotId, setEditHubspotId] = useState("");
 
   // Company data
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -1384,6 +1385,19 @@ export default function CompanyDashboard() {
     },
   });
 
+  useEffect(() => {
+    if (company) setEditHubspotId(company.hubspotCompanyId || "");
+  }, [company?.hubspotCompanyId]);
+
+  const saveHubspotIdMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/companies/${companyId}`, { hubspotCompanyId: editHubspotId.trim() || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: "HubSpot Company ID saved" });
+    },
+    onError: () => toast({ title: "Failed to save HubSpot Company ID", variant: "destructive" }),
+  });
+
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -2255,7 +2269,13 @@ export default function CompanyDashboard() {
             onTabChange={setActiveTab}
             title="Company Dashboard"
           />
-          <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1" data-testid="tabs-company-dashboard">
+          <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1 items-center" data-testid="tabs-company-dashboard">
+            {/* ── Overview ── */}
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Overview</span>
+            <TabsTrigger value="marketing" data-testid="tab-marketing">
+              <Megaphone className="h-4 w-4 mr-2" />
+              Marketing Hub
+            </TabsTrigger>
             <TabsTrigger value="details" data-testid="tab-details">
               <Settings className="h-4 w-4 mr-2" />
               Details
@@ -2265,6 +2285,10 @@ export default function CompanyDashboard() {
                 Pending Approval ({pendingApprovalTasks.length})
               </TabsTrigger>
             )}
+
+            {/* ── Work ── */}
+            <div className="h-5 w-px bg-border mx-0.5 self-center" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Work</span>
             <TabsTrigger value="tasks" data-testid="tab-tasks">
               <ClipboardList className="h-4 w-4 mr-2" />
               Tasks ({activeTasks.length})
@@ -2273,10 +2297,22 @@ export default function CompanyDashboard() {
               <Target className="h-4 w-4 mr-2" />
               Campaigns ({companyCampaignRequests.length})
             </TabsTrigger>
+            <TabsTrigger value="content-calendar" data-testid="tab-content-calendar">
+              <CalendarRange className="h-4 w-4 mr-2" />
+              Content Calendar
+            </TabsTrigger>
             <TabsTrigger value="calendar" data-testid="tab-calendar">
               <CalendarIcon className="h-4 w-4 mr-2" />
               Calendar
             </TabsTrigger>
+            <TabsTrigger value="cadences" data-testid="tab-cadences">
+              <Repeat className="h-4 w-4 mr-2" />
+              Cadences
+            </TabsTrigger>
+
+            {/* ── Communicate ── */}
+            <div className="h-5 w-px bg-border mx-0.5 self-center" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Communicate</span>
             <TabsTrigger value="chat" data-testid="tab-chat">
               <MessageCircle className="h-4 w-4 mr-2" />
               Chat
@@ -2293,20 +2329,20 @@ export default function CompanyDashboard() {
                 <Badge variant="destructive" className="ml-1 text-xs">{companyPendingMeetings}</Badge>
               )}
             </TabsTrigger>
+
+            {/* ── Admin ── */}
+            <div className="h-5 w-px bg-border mx-0.5 self-center" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Admin</span>
+            <TabsTrigger value="users" data-testid="tab-users">
+              <Users className="h-4 w-4 mr-2" />
+              Users ({companyUsers.length})
+            </TabsTrigger>
             <TabsTrigger value="credit-history" data-testid="tab-credit-history">
               Credit History
             </TabsTrigger>
             <TabsTrigger value="onboarding" data-testid="tab-onboarding">
               <FileEdit className="w-4 h-4 mr-1" />
               Info Hub
-            </TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">
-              <Users className="h-4 w-4 mr-2" />
-              Users ({companyUsers.length})
-            </TabsTrigger>
-            <TabsTrigger value="cadences" data-testid="tab-cadences">
-              <Repeat className="h-4 w-4 mr-2" />
-              Cadences
             </TabsTrigger>
             <TabsTrigger value="reporting" data-testid="tab-reporting">
               <BarChart3 className="h-4 w-4 mr-2" />
@@ -2315,14 +2351,6 @@ export default function CompanyDashboard() {
             <TabsTrigger value="hubspot" data-testid="tab-hubspot">
               <Link2 className="h-4 w-4 mr-2" />
               HubSpot
-            </TabsTrigger>
-            <TabsTrigger value="marketing" data-testid="tab-marketing">
-              <Megaphone className="h-4 w-4 mr-2" />
-              Marketing Hub
-            </TabsTrigger>
-            <TabsTrigger value="content-calendar" data-testid="tab-content-calendar">
-              <CalendarRange className="h-4 w-4 mr-2" />
-              Content Calendar
             </TabsTrigger>
             <TabsTrigger value="workflows" data-testid="tab-workflows">
               <Workflow className="h-4 w-4 mr-2" />
@@ -4872,6 +4900,38 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="hubspot" className="space-y-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-muted-foreground" />
+                  HubSpot Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">HubSpot Company ID</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={editHubspotId}
+                      onChange={e => setEditHubspotId(e.target.value)}
+                      placeholder="e.g. 12345678"
+                      className="font-mono text-sm"
+                      data-testid="input-hubspot-company-id"
+                      onKeyDown={e => { if (e.key === "Enter") saveHubspotIdMutation.mutate(); }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => saveHubspotIdMutation.mutate()}
+                      disabled={saveHubspotIdMutation.isPending || editHubspotId === (company?.hubspotCompanyId || "")}
+                      data-testid="button-save-hubspot-id"
+                    >
+                      {saveHubspotIdMutation.isPending ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">The HubSpot Company record ID — found in the HubSpot URL when viewing the company record.</p>
+                </div>
+              </CardContent>
+            </Card>
             <Link href={`/admin/companies/${companyId}/hubspot-onboarding`}>
               <div className="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/40 px-4 py-3 hover:bg-orange-100 dark:hover:bg-orange-950/30 transition-colors cursor-pointer">
                 <div className="flex items-center gap-3">

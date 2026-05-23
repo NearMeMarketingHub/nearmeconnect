@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   Palette, Link2, KeyRound, Lightbulb, BarChart2,
   Plus, Trash2, Eye, EyeOff, Copy, Check, Save, X,
   ExternalLink, Globe, AlertTriangle, Clock, ArrowRight,
+  ChevronDown, GripVertical, Pencil,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -607,23 +608,374 @@ function CredentialsSection({ companyId }: { companyId: string }) {
   );
 }
 
-// ─── Placeholder Sections ─────────────────────────────────────────────────────
-function IdeasPlaceholder() {
+// ─── Idea Board ───────────────────────────────────────────────────────────────
+
+function IdeaItem({ item, companyId, onUpdate, onDelete }: {
+  item: CompanyKnowledgeItem;
+  companyId: string;
+  onUpdate: (id: string, data: { title?: string; content?: string }) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingContent, setEditingContent] = useState(false);
+  const [title, setTitle] = useState(item.title);
+  const [content, setContent] = useState(item.content || "");
+  const titleRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { if (editingTitle) titleRef.current?.focus(); }, [editingTitle]);
+  useEffect(() => { if (editingContent) contentRef.current?.focus(); }, [editingContent]);
+
+  const saveTitle = () => {
+    const trimmed = title.trim();
+    if (trimmed && trimmed !== item.title) onUpdate(item.id, { title: trimmed });
+    else setTitle(item.title);
+    setEditingTitle(false);
+  };
+
+  const saveContent = () => {
+    if (content !== (item.content || "")) onUpdate(item.id, { content });
+    setEditingContent(false);
+  };
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="font-semibold">Strategies & Ideas</h3>
-        <p className="text-sm text-muted-foreground">Campaign ideas, strategy notes, and opportunities</p>
-      </div>
-      <Card>
-        <CardContent className="pt-10 pb-10 text-center">
-          <Lightbulb className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-          <p className="text-sm font-medium">Coming Soon</p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-            Strategic ideas and campaign planning tools will be available here in a future update.
+    <div className="group flex items-start gap-2 px-3 py-2.5 rounded-lg border bg-card hover:bg-muted/20 transition-colors">
+      <GripVertical className="w-3.5 h-3.5 mt-0.5 text-muted-foreground/30 shrink-0 cursor-grab" />
+      <div className="flex-1 min-w-0 space-y-1">
+        {editingTitle ? (
+          <Input
+            ref={titleRef}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); saveTitle(); }
+              if (e.key === "Escape") { setTitle(item.title); setEditingTitle(false); }
+            }}
+            className="h-7 text-sm font-medium px-1 -mx-1 border-0 border-b rounded-none shadow-none focus-visible:ring-0"
+            data-testid={`idea-title-input-${item.id}`}
+          />
+        ) : (
+          <p
+            className="text-sm font-medium cursor-text hover:text-primary transition-colors leading-snug"
+            onClick={() => setEditingTitle(true)}
+            data-testid={`idea-title-${item.id}`}
+          >
+            {item.title}
           </p>
+        )}
+        {editingContent ? (
+          <Textarea
+            ref={contentRef}
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            onBlur={saveContent}
+            onKeyDown={e => {
+              if (e.key === "Escape") { setContent(item.content || ""); setEditingContent(false); }
+            }}
+            className="text-xs text-muted-foreground min-h-[56px] resize-none border-0 border-b rounded-none shadow-none focus-visible:ring-0 px-0 py-0.5"
+            placeholder="Add notes, details, links…"
+            data-testid={`idea-content-input-${item.id}`}
+          />
+        ) : (
+          <p
+            className="text-xs text-muted-foreground whitespace-pre-wrap cursor-text hover:text-foreground/80 transition-colors leading-relaxed"
+            onClick={() => setEditingContent(true)}
+            data-testid={`idea-content-${item.id}`}
+          >
+            {item.content || <span className="italic opacity-40">+ Add notes…</span>}
+          </p>
+        )}
+      </div>
+      <button
+        onClick={() => onDelete(item.id)}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all shrink-0 mt-0.5"
+        data-testid={`button-delete-idea-${item.id}`}
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function IdeaBoard({ name, items, onAdd, onUpdate, onDelete, onRename, companyId }: {
+  name: string;
+  items: CompanyKnowledgeItem[];
+  companyId: string;
+  onAdd: (item: { title: string; content: string }) => void;
+  onUpdate: (id: string, data: { title?: string; content?: string }) => void;
+  onDelete: (id: string) => void;
+  onRename: (oldName: string, newName: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [addingItem, setAddingItem] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [boardName, setBoardName] = useState(name);
+  const newTitleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (addingItem) newTitleRef.current?.focus(); }, [addingItem]);
+
+  const handleAdd = () => {
+    if (!newTitle.trim()) return;
+    onAdd({ title: newTitle.trim(), content: newContent });
+    setNewTitle("");
+    setNewContent("");
+    setAddingItem(false);
+  };
+
+  const saveBoardName = () => {
+    const trimmed = boardName.trim();
+    if (trimmed && trimmed !== name) onRename(name, trimmed);
+    else setBoardName(name);
+    setEditingName(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-3 px-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            data-testid={`board-collapse-${name}`}
+          >
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${collapsed ? "-rotate-90" : ""}`} />
+          </button>
+          {editingName ? (
+            <Input
+              autoFocus
+              value={boardName}
+              onChange={e => setBoardName(e.target.value)}
+              onBlur={saveBoardName}
+              onKeyDown={e => {
+                if (e.key === "Enter") saveBoardName();
+                if (e.key === "Escape") { setBoardName(name); setEditingName(false); }
+              }}
+              className="h-6 text-sm font-semibold px-1 border-0 border-b rounded-none shadow-none focus-visible:ring-0 flex-1"
+            />
+          ) : (
+            <button
+              className="flex items-center gap-2 flex-1 text-left group/name"
+              onClick={() => setEditingName(true)}
+              data-testid={`board-name-${name}`}
+            >
+              <span className="font-semibold text-sm">{name}</span>
+              <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover/name:opacity-100 transition-opacity" />
+            </button>
+          )}
+          <Badge variant="secondary" className="text-xs font-mono shrink-0">{items.length}</Badge>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs gap-1 shrink-0"
+            onClick={() => { setCollapsed(false); setAddingItem(true); }}
+            data-testid={`button-add-idea-${name}`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </Button>
+        </div>
+      </CardHeader>
+      {!collapsed && (
+        <CardContent className="px-4 pb-3 space-y-1.5">
+          {items.map(item => (
+            <IdeaItem
+              key={item.id}
+              item={item}
+              companyId={companyId}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+            />
+          ))}
+          {items.length === 0 && !addingItem && (
+            <p className="text-xs text-muted-foreground italic text-center py-3 opacity-60">
+              No items yet — click Add to start
+            </p>
+          )}
+          {addingItem && (
+            <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
+              <Input
+                ref={newTitleRef}
+                placeholder="Title…"
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                className="h-7 text-sm"
+                onKeyDown={e => {
+                  if (e.key === "Enter") { e.preventDefault(); handleAdd(); }
+                  if (e.key === "Escape") { setAddingItem(false); setNewTitle(""); setNewContent(""); }
+                }}
+                data-testid="input-new-idea-title"
+              />
+              <Textarea
+                placeholder="Notes, details, links… (optional)"
+                value={newContent}
+                onChange={e => setNewContent(e.target.value)}
+                className="text-sm min-h-[52px] resize-none"
+                data-testid="input-new-idea-content"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleAdd} disabled={!newTitle.trim()} data-testid="button-save-new-idea">
+                  Add Item
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setAddingItem(false); setNewTitle(""); setNewContent(""); }}>
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
-      </Card>
+      )}
+    </Card>
+  );
+}
+
+function IdeasSection({ companyId }: { companyId: string }) {
+  const { toast } = useToast();
+  const [addingBoard, setAddingBoard] = useState(false);
+  const [newBoardName, setNewBoardName] = useState("");
+
+  const { data: allItems = [], isLoading } = useQuery<CompanyKnowledgeItem[]>({
+    queryKey: ["/api/companies", companyId, "knowledge"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/knowledge`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!companyId,
+  });
+
+  const items = useMemo(() => allItems.filter(i => i.section === "ideas"), [allItems]);
+
+  const boards = useMemo(() => {
+    const map: Record<string, CompanyKnowledgeItem[]> = {};
+    for (const item of items) {
+      const key = item.url || "General";
+      if (!map[key]) map[key] = [];
+      map[key].push(item);
+    }
+    return map;
+  }, [items]);
+
+  const boardNames = Object.keys(boards);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "knowledge"] });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { title: string; content: string; url: string }) =>
+      apiRequest("POST", `/api/companies/${companyId}/knowledge`, { section: "ideas", ...data, sortOrder: 0 }),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; title?: string; content?: string }) =>
+      apiRequest("PATCH", `/api/companies/${companyId}/knowledge/${id}`, data),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/companies/${companyId}/knowledge/${id}`),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
+  });
+
+  const renameBoardMutation = useMutation({
+    mutationFn: async ({ oldName, newName }: { oldName: string; newName: string }) => {
+      const boardItems = boards[oldName] || [];
+      await Promise.all(
+        boardItems.map(item =>
+          apiRequest("PATCH", `/api/companies/${companyId}/knowledge/${item.id}`, { url: newName })
+        )
+      );
+    },
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to rename board", variant: "destructive" }),
+  });
+
+  const addBoard = () => {
+    if (!newBoardName.trim()) return;
+    createMutation.mutate({ title: "New idea", content: "", url: newBoardName.trim() });
+    setNewBoardName("");
+    setAddingBoard(false);
+  };
+
+  if (isLoading) return (
+    <div className="space-y-4">
+      {[1, 2].map(i => <Skeleton key={i} className="h-32" />)}
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="font-semibold">Idea Board</h3>
+          <p className="text-sm text-muted-foreground">Strategy notes, campaign ideas, and opportunities — click any item to edit</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setAddingBoard(true)} data-testid="button-add-board">
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
+          Add Board
+        </Button>
+      </div>
+
+      {addingBoard && (
+        <div className="flex gap-2 p-3 border rounded-lg bg-muted/20">
+          <Input
+            autoFocus
+            placeholder="Board name (e.g. Q4 Campaign Ideas, Website Refresh…)"
+            value={newBoardName}
+            onChange={e => setNewBoardName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") addBoard();
+              if (e.key === "Escape") { setAddingBoard(false); setNewBoardName(""); }
+            }}
+            className="h-8 text-sm"
+            data-testid="input-new-board-name"
+          />
+          <Button size="sm" onClick={addBoard} disabled={!newBoardName.trim()} data-testid="button-create-board">
+            Create
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setAddingBoard(false); setNewBoardName(""); }}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
+      {boardNames.length === 0 && !addingBoard ? (
+        <Card>
+          <CardContent className="pt-10 pb-10 text-center">
+            <Lightbulb className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-sm font-medium">No boards yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+              Create boards to organize campaign ideas, strategy notes, and client opportunities.
+            </p>
+            <Button size="sm" variant="outline" className="mt-4" onClick={() => setAddingBoard(true)} data-testid="button-create-first-board">
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Create First Board
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {boardNames.map(boardName => (
+            <IdeaBoard
+              key={boardName}
+              name={boardName}
+              items={boards[boardName]}
+              companyId={companyId}
+              onAdd={({ title, content }) =>
+                createMutation.mutate({ title, content, url: boardName })
+              }
+              onUpdate={(id, data) => updateMutation.mutate({ id, ...data })}
+              onDelete={id => deleteMutation.mutate(id)}
+              onRename={(oldName, newName) => renameBoardMutation.mutate({ oldName, newName })}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -683,7 +1035,7 @@ export function MarketingHub({ companyId, onNavigateToTab }: MarketingHubProps) 
         {activeSection === "brand" && <BrandProfileSection companyId={companyId} />}
         {activeSection === "links" && <LinksSection companyId={companyId} />}
         {activeSection === "credentials" && <CredentialsSection companyId={companyId} />}
-        {activeSection === "ideas" && <IdeasPlaceholder />}
+        {activeSection === "ideas" && <IdeasSection companyId={companyId} />}
         {activeSection === "hubspot" && <HubSpotPlaceholder onNavigate={onNavigateToTab ? () => onNavigateToTab("hubspot") : undefined} />}
       </div>
     </div>
