@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,7 +17,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -35,45 +35,98 @@ import {
   Users,
   BarChart3,
   User,
-  FolderOpen,
   BookOpen,
   Package,
   Briefcase,
   Bell,
   Settings,
   LogOut,
+  ChevronDown,
+  MessageSquare,
+  Video,
+  ClipboardList,
+  Repeat,
+  Target,
+  UserPlus,
+  Shield,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
 
-const mainItems = [
-  { title: "Dashboard", href: "/admin/dashboard", icon: Home },
-  { title: "Companies", href: "/admin/companies", icon: Building2 },
-  { title: "Tasks", href: "/admin/tasks", icon: CheckCircle },
-  { title: "Content Calendar", href: "/admin/content-calendar", icon: Calendar },
-];
-
-const marketingItems = [
-  { title: "Strategy Board", href: "/admin/strategy", icon: Zap },
-  { title: "AI Brief Generator", href: "/admin/ai-brief", icon: Star },
-  { title: "Asset Library", href: "/admin/asset-library", icon: Image },
-  { title: "Workflows", href: "/admin/workflow-library", icon: Activity },
-];
-
-const adminItems = [
-  { title: "Meetings", href: "/admin/meetings", icon: Users },
-  { title: "Reporting", href: "/admin/reporting", icon: BarChart3 },
-  { title: "Users", href: "/admin/user-management", icon: User },
-  { title: "Workflow Library", href: "/admin/workflow-library", icon: FolderOpen },
-  { title: "Training", href: "/admin/training", icon: BookOpen },
-  { title: "Deliverable Types", href: "/admin/deliverables", icon: Package },
-  { title: "Campaign Types", href: "/admin/campaigns", icon: Briefcase },
-];
-
 interface UserInfo {
   isAdmin: boolean;
 }
+
+interface NavItem {
+  title: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+interface NavGroup {
+  key: string;
+  label: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    key: "clients",
+    label: "Clients",
+    items: [
+      { title: "All Companies", href: "/admin/companies", icon: Building2 },
+      { title: "Add Company",   href: "/admin/companies", icon: UserPlus },
+    ],
+  },
+  {
+    key: "work",
+    label: "Work",
+    items: [
+      { title: "All Tasks",        href: "/admin/tasks",            icon: ClipboardList },
+      { title: "Content Calendar", href: "/admin/content-calendar", icon: Calendar },
+      { title: "Cadences",         href: "/admin/cadences",         icon: Repeat },
+      { title: "Campaigns",        href: "/admin/campaigns",        icon: Target },
+    ],
+  },
+  {
+    key: "marketing",
+    label: "Marketing",
+    items: [
+      { title: "Strategy Board",     href: "/admin/strategy",       icon: Zap },
+      { title: "AI Brief Generator", href: "/admin/ai-brief",       icon: Star },
+      { title: "Asset Library",      href: "/admin/asset-library",  icon: Image },
+      { title: "Workflows Library",  href: "/admin/workflow-library", icon: Activity },
+    ],
+  },
+  {
+    key: "communicate",
+    label: "Communicate",
+    items: [
+      { title: "Messages", href: "/admin/messages", icon: MessageSquare },
+      { title: "Meetings",  href: "/admin/meetings",  icon: Video },
+    ],
+  },
+  {
+    key: "admin",
+    label: "Admin",
+    adminOnly: true,
+    items: [
+      { title: "Users",             href: "/admin/user-management", icon: User },
+      { title: "Reporting",         href: "/admin/reporting",       icon: BarChart3 },
+      { title: "Training",          href: "/admin/training",        icon: BookOpen },
+      { title: "Deliverable Types", href: "/admin/deliverables",    icon: Package },
+      { title: "Campaign Types",    href: "/admin/campaign-types",  icon: Briefcase },
+      { title: "Check-ins",         href: "/admin/check-ins",       icon: Shield },
+    ],
+  },
+];
+
+const ACCOUNT_ITEMS: NavItem[] = [
+  { title: "Notifications", href: "/admin/settings", icon: Bell },
+  { title: "Settings",      href: "/admin/settings", icon: Settings },
+];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -84,6 +137,25 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     queryKey: ["/api/me"],
   });
   const isAdmin = userInfo?.isAdmin ?? true;
+
+  // Collapsible state persisted in localStorage
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("sidebar-collapsed-groups") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleGroup = (key: string) => {
+    setCollapsed(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("sidebar-collapsed-groups", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isOpen = (key: string) => !collapsed[key];
 
   const style = {
     "--sidebar-width": "16rem",
@@ -96,11 +168,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     return path === href || path.startsWith(href + "/");
   };
 
-  const renderNavItem = (item: {
-    title: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }) => (
+  const renderItem = (item: NavItem) => (
     <SidebarMenuItem key={item.title}>
       <SidebarMenuButton asChild isActive={isActive(item.href)}>
         <Link
@@ -114,6 +182,32 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     </SidebarMenuItem>
   );
 
+  const renderGroup = (group: NavGroup) => {
+    if (group.adminOnly && !isAdmin) return null;
+    const open = isOpen(group.key);
+    return (
+      <SidebarGroup key={group.key}>
+        <button
+          onClick={() => toggleGroup(group.key)}
+          className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors rounded-sm"
+          data-testid={`sidebar-group-${group.key}`}
+        >
+          <span>{group.label}</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+          />
+        </button>
+        {open && (
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {group.items.map(renderItem)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        )}
+      </SidebarGroup>
+    );
+  };
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
@@ -126,87 +220,56 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <SidebarContent>
-            {/* MAIN — no category label */}
+            {/* Dashboard — direct link, no sub-items */}
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {mainItems.map(renderNavItem)}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={isActive("/admin/dashboard")}>
+                      <Link href="/admin/dashboard" data-testid="nav-dashboard">
+                        <Home className="w-4 h-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
 
-            {/* MARKETING */}
-            <SidebarGroup>
-              <SidebarGroupLabel
-                className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
-                data-testid="group-marketing"
-              >
-                Marketing
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {marketingItems.map(renderNavItem)}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            {/* ADMIN — only for admin users */}
-            {isAdmin && (
-              <SidebarGroup>
-                <SidebarGroupLabel
-                  className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
-                  data-testid="group-admin"
-                >
-                  Admin
-                </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {adminItems.map(renderNavItem)}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
+            {/* Collapsible groups */}
+            {NAV_GROUPS.map(renderGroup)}
           </SidebarContent>
 
           {/* ACCOUNT — pinned to bottom */}
           <div className="border-t">
             <SidebarGroup>
-              <SidebarGroupLabel
-                className="text-xs font-semibold text-muted-foreground tracking-wider uppercase"
-                data-testid="group-account"
+              <button
+                onClick={() => toggleGroup("account")}
+                className="flex items-center justify-between w-full px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors rounded-sm"
+                data-testid="sidebar-group-account"
               >
-                Account
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={isActive("/admin/settings#notifications")}>
-                      <Link href="/admin/settings" data-testid="nav-notifications">
-                        <Bell className="w-4 h-4" />
-                        <span>Notifications</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={isActive("/admin/settings")}>
-                      <Link href="/admin/settings" data-testid="nav-settings">
-                        <Settings className="w-4 h-4" />
-                        <span>Settings</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      onClick={() => logout()}
-                      data-testid="nav-logout"
-                      className="cursor-pointer"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span>Log out</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
+                <span>Account</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen("account") ? "" : "-rotate-90"}`}
+                />
+              </button>
+              {isOpen("account") && (
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {ACCOUNT_ITEMS.map(renderItem)}
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={() => logout()}
+                        data-testid="nav-logout"
+                        className="cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Log out</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              )}
             </SidebarGroup>
             <div className="px-4 py-2 border-t text-center">
               <span className="text-xs text-muted-foreground" data-testid="text-version">

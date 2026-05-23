@@ -403,13 +403,62 @@ export default function CompanyDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  // Parse URL query params
+  // Navigation structure — two-level: category → sub-tab
+  const NAV_GROUPS = [
+    { key: "overview",   label: "Overview",   subTabs: [] as { key: string; label: string }[], defaultSub: "details" },
+    { key: "work",       label: "Work",       subTabs: [
+      { key: "tasks",            label: "Tasks" },
+      { key: "campaigns",        label: "Campaigns" },
+      { key: "content-calendar", label: "Content Calendar" },
+      { key: "calendar",         label: "Calendar" },
+      { key: "cadences",         label: "Cadences" },
+    ], defaultSub: "tasks" },
+    { key: "marketing",  label: "Marketing",  subTabs: [
+      { key: "marketing",  label: "Marketing Hub" },
+      { key: "onboarding", label: "Info Hub" },
+      { key: "hubspot",    label: "HubSpot" },
+      { key: "workflows",  label: "Workflows" },
+    ], defaultSub: "marketing" },
+    { key: "communicate", label: "Communicate", subTabs: [
+      { key: "chat",     label: "Chat" },
+      { key: "meetings", label: "Meetings" },
+    ], defaultSub: "chat" },
+    { key: "admin", label: "Admin", subTabs: [
+      { key: "users",          label: "Users" },
+      { key: "credit-history", label: "Credit History" },
+      { key: "reporting",      label: "Reporting" },
+      { key: "details",        label: "Details" },
+    ], defaultSub: "users" },
+  ];
+  const TAB_TO_CATEGORY: Record<string, string> = {
+    details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
+    calendar: "work", cadences: "work", pending_approval: "work",
+    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing",
+    chat: "communicate", meetings: "communicate",
+    users: "admin", "credit-history": "admin", reporting: "admin",
+  };
+
+  // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
   const urlParams = new URLSearchParams(searchString);
-  const initialTab = urlParams.get("tab") || "marketing";
+  const urlTabParam = urlParams.get("tab");
+  const urlSubParam  = urlParams.get("sub");
   const initialThread = urlParams.get("thread");
-  
+  const _initNav = (() => {
+    const isCategory = urlTabParam ? NAV_GROUPS.some(g => g.key === urlTabParam) : false;
+    if (urlTabParam && isCategory) {
+      const group = NAV_GROUPS.find(g => g.key === urlTabParam)!;
+      const sub = urlSubParam && group.subTabs.some(s => s.key === urlSubParam) ? urlSubParam : group.defaultSub;
+      return { cat: urlTabParam, tab: sub };
+    }
+    if (urlTabParam && TAB_TO_CATEGORY[urlTabParam]) {
+      return { cat: TAB_TO_CATEGORY[urlTabParam], tab: urlTabParam };
+    }
+    return { cat: "marketing", tab: "marketing" };
+  })();
+
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(_initNav.tab);
+  const [activeCategory, setActiveCategory] = useState(_initNav.cat);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [companyTaskFilter, setCompanyTaskFilter] = useState<"all" | "pending" | "in_progress" | "review" | "approved" | "completed" | "rejected">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -1608,15 +1657,25 @@ export default function CompanyDashboard() {
     });
   };
 
-  // Update state when URL params change
+  // Update state when URL params change (supports new ?tab=category&sub=key and old ?tab=key)
   useEffect(() => {
     const params = new URLSearchParams(searchString);
-    const tabParam = params.get("tab");
+    const tabParam    = params.get("tab");
+    const subParam    = params.get("sub");
     const threadParam = params.get("thread");
-    
-    if (tabParam && tabParam !== activeTab) {
-      setActiveTab(tabParam);
+    const isCategory = tabParam ? NAV_GROUPS.some(g => g.key === tabParam) : false;
+    let newCat: string | null = null;
+    let newTab: string | null = null;
+    if (tabParam && isCategory) {
+      const group = NAV_GROUPS.find(g => g.key === tabParam)!;
+      newCat = tabParam;
+      newTab = subParam && group.subTabs.some(s => s.key === subParam) ? subParam : group.defaultSub;
+    } else if (tabParam && TAB_TO_CATEGORY[tabParam]) {
+      newCat = TAB_TO_CATEGORY[tabParam];
+      newTab = tabParam;
     }
+    if (newCat && newCat !== activeCategory) setActiveCategory(newCat);
+    if (newTab && newTab !== activeTab) setActiveTab(newTab);
     if (threadParam && threadParam !== selectedThreadId) {
       setSelectedThreadId(threadParam);
     }
@@ -2243,8 +2302,86 @@ export default function CompanyDashboard() {
           </div>
         </div>
       </header>
-      {/* Main Content with Tabs */}
-      <div className="flex-1 p-6">
+      {/* Main Content - Two-Level Navigation */}
+
+      {/* ── Level 1: Category Bar ── */}
+      <div className="hidden md:flex border-b bg-card shrink-0">
+        {NAV_GROUPS.map(group => {
+          const unreadChat = threads.reduce((t, th) => t + getUnreadCount(th.id), 0);
+          const hasDot =
+            (group.key === "work" && pendingApprovalTasks.length > 0) ||
+            (group.key === "communicate" && (unreadChat > 0 || companyPendingMeetings > 0));
+          return (
+            <button
+              key={group.key}
+              onClick={() => {
+                const newSub = group.defaultSub;
+                setActiveCategory(group.key);
+                setActiveTab(newSub);
+                setLocation(`/admin/companies/${companyId}?tab=${group.key}&sub=${newSub}`);
+              }}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                activeCategory === group.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              }`}
+              data-testid={`category-tab-${group.key}`}
+            >
+              {group.label}
+              {hasDot && <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Level 2: Sub-tab Bar ── */}
+      {(() => {
+        const currentGroup = NAV_GROUPS.find(g => g.key === activeCategory);
+        if (!currentGroup || currentGroup.subTabs.length === 0) return null;
+        const allSubTabs = [
+          ...currentGroup.subTabs,
+          ...(activeCategory === "work" && pendingApprovalTasks.length > 0
+            ? [{ key: "pending_approval", label: `Pending (${pendingApprovalTasks.length})` }]
+            : []),
+        ];
+        return (
+          <div className="hidden md:flex border-b bg-muted/20 shrink-0">
+            {allSubTabs.map(sub => {
+              const isActive = activeTab === sub.key;
+              const badge =
+                sub.key === "tasks"     ? activeTasks.length :
+                sub.key === "campaigns" ? companyCampaignRequests.length :
+                sub.key === "users"     ? companyUsers.length :
+                sub.key === "chat"      ? threads.reduce((t, th) => t + getUnreadCount(th.id), 0) :
+                sub.key === "meetings"  ? (companyPendingMeetings || 0) :
+                0;
+              return (
+                <button
+                  key={sub.key}
+                  onClick={() => {
+                    setActiveTab(sub.key);
+                    setActiveCategory(activeCategory);
+                    setLocation(`/admin/companies/${companyId}?tab=${activeCategory}&sub=${sub.key}`);
+                  }}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+                    isActive
+                      ? "border-primary text-foreground font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                  }`}
+                  data-testid={`subtab-${sub.key}`}
+                >
+                  {sub.label}
+                  {badge > 0 && (
+                    <span className="text-[10px] font-mono bg-muted rounded px-1 leading-tight">{badge}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      <div className="flex-1 overflow-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <MobileTabMenu
             tabs={[
@@ -2266,97 +2403,12 @@ export default function CompanyDashboard() {
               { value: "workflows", label: "Workflows" },
             ]}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={(tab) => {
+              setActiveTab(tab);
+              setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
+            }}
             title="Company Dashboard"
           />
-          <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1 items-center" data-testid="tabs-company-dashboard">
-            {/* ── Overview ── */}
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Overview</span>
-            <TabsTrigger value="marketing" data-testid="tab-marketing">
-              <Megaphone className="h-4 w-4 mr-2" />
-              Marketing Hub
-            </TabsTrigger>
-            <TabsTrigger value="details" data-testid="tab-details">
-              <Settings className="h-4 w-4 mr-2" />
-              Details
-            </TabsTrigger>
-            {pendingApprovalTasks.length > 0 && (
-              <TabsTrigger value="pending_approval" data-testid="tab-pending-approval" className="bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                Pending Approval ({pendingApprovalTasks.length})
-              </TabsTrigger>
-            )}
-
-            {/* ── Work ── */}
-            <div className="h-5 w-px bg-border mx-0.5 self-center" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Work</span>
-            <TabsTrigger value="tasks" data-testid="tab-tasks">
-              <ClipboardList className="h-4 w-4 mr-2" />
-              Tasks ({activeTasks.length})
-            </TabsTrigger>
-            <TabsTrigger value="campaigns" data-testid="tab-campaigns">
-              <Target className="h-4 w-4 mr-2" />
-              Campaigns ({companyCampaignRequests.length})
-            </TabsTrigger>
-            <TabsTrigger value="content-calendar" data-testid="tab-content-calendar">
-              <CalendarRange className="h-4 w-4 mr-2" />
-              Content Calendar
-            </TabsTrigger>
-            <TabsTrigger value="calendar" data-testid="tab-calendar">
-              <CalendarIcon className="h-4 w-4 mr-2" />
-              Calendar
-            </TabsTrigger>
-            <TabsTrigger value="cadences" data-testid="tab-cadences">
-              <Repeat className="h-4 w-4 mr-2" />
-              Cadences
-            </TabsTrigger>
-
-            {/* ── Communicate ── */}
-            <div className="h-5 w-px bg-border mx-0.5 self-center" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Communicate</span>
-            <TabsTrigger value="chat" data-testid="tab-chat">
-              <MessageCircle className="h-4 w-4 mr-2" />
-              Chat
-              {threads.reduce((total, t) => total + getUnreadCount(t.id), 0) > 0 && (
-                <Badge variant="destructive" className="ml-1 text-xs">
-                  {threads.reduce((total, t) => total + getUnreadCount(t.id), 0)}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="meetings" data-testid="tab-meetings">
-              <Video className="h-4 w-4 mr-2" />
-              Meetings
-              {companyPendingMeetings > 0 && (
-                <Badge variant="destructive" className="ml-1 text-xs">{companyPendingMeetings}</Badge>
-              )}
-            </TabsTrigger>
-
-            {/* ── Admin ── */}
-            <div className="h-5 w-px bg-border mx-0.5 self-center" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-1 select-none self-center">Admin</span>
-            <TabsTrigger value="users" data-testid="tab-users">
-              <Users className="h-4 w-4 mr-2" />
-              Users ({companyUsers.length})
-            </TabsTrigger>
-            <TabsTrigger value="credit-history" data-testid="tab-credit-history">
-              Credit History
-            </TabsTrigger>
-            <TabsTrigger value="onboarding" data-testid="tab-onboarding">
-              <FileEdit className="w-4 h-4 mr-1" />
-              Info Hub
-            </TabsTrigger>
-            <TabsTrigger value="reporting" data-testid="tab-reporting">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Reporting
-            </TabsTrigger>
-            <TabsTrigger value="hubspot" data-testid="tab-hubspot">
-              <Link2 className="h-4 w-4 mr-2" />
-              HubSpot
-            </TabsTrigger>
-            <TabsTrigger value="workflows" data-testid="tab-workflows">
-              <Workflow className="h-4 w-4 mr-2" />
-              Workflows
-            </TabsTrigger>
-          </TabsList>
 
           {/* Details Tab */}
           <TabsContent value="details" className="space-y-6">
@@ -4587,7 +4639,10 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="marketing" className="space-y-4">
-            {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => setActiveTab(tab)} />}
+            {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => {
+              setActiveTab(tab);
+              setActiveCategory(TAB_TO_CATEGORY[tab] || "marketing");
+            }} />}
           </TabsContent>
 
           {/* Content Calendar Tab */}
@@ -4959,8 +5014,9 @@ export default function CompanyDashboard() {
         companyId={companyId || ""}
         onNavigateToChat={(threadId) => {
           setActiveTab("chat");
+          setActiveCategory("communicate");
           setSelectedThreadId(threadId);
-          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
+          setLocation(`/admin/companies/${companyId}?tab=communicate&sub=chat&thread=${threadId}`);
         }}
       />
       {/* Campaign Detail Panel */}
