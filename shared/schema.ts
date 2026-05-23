@@ -1575,3 +1575,15 @@ export const hubspotOnboardingChecklist = pgTable("hubspot_onboarding_checklist"
 export const insertHubspotOnboardingItemSchema = createInsertSchema(hubspotOnboardingChecklist).omit({ id: true, createdAt: true });
 export type InsertHubspotOnboardingItem = z.infer<typeof insertHubspotOnboardingItemSchema>;
 export type HubspotOnboardingItem = typeof hubspotOnboardingChecklist.$inferSelect;
+
+// ── HubSpot Sync Log ──────────────────────────────────────────────────────────
+
+export const hubspotSyncLog = pgTable("hubspot_sync_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  status: text("status").notNull().default("success"),
+  details: text("details"),
+  createdAt: text("created_at").notNull(),
+});
+export type HubspotSyncLog = typeof hubspotSyncLog.$inferSelect;

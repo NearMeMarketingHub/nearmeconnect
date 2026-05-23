@@ -10,6 +10,7 @@ import {
   pullContacts,
   pullDeals,
   pullCampaigns,
+  pullWorkflows,
   refreshOAuthToken,
 } from "./sync";
 import type { HubspotConnection } from "@shared/schema";
@@ -22,8 +23,10 @@ function buildAuthUrl(companyId: string): string {
     "crm.objects.companies.read", "crm.objects.companies.write",
     "crm.objects.deals.read", "crm.objects.deals.write",
     "crm.objects.tasks.read", "crm.objects.tasks.write",
-    "content", "reports", "tickets",
+    "crm.objects.marketing_events.read",
+    "content", "social", "automation", "reports", "tickets",
     "analytics.behavioral_events.send",
+    "cms.knowledge_base.articles.read",
   ].join(" ");
 
   const state = Buffer.from(JSON.stringify({ companyId })).toString("base64url");
@@ -130,6 +133,7 @@ export function registerHubSpotOAuthRoutes(app: Express) {
         isActive: true,
       });
 
+      storage.createHubspotSyncLog({ companyId, action: "oauth_connect", status: "success", details: `Portal ${portalId} (${hubDomain}) connected` }).catch(() => {});
       (async () => { try { await syncCompanyDataToHubSpot(companyId); } catch {} })();
 
       res.redirect(`/admin/companies/${companyId}?tab=hubspot&hubspot=connected`);
@@ -164,9 +168,9 @@ export function registerHubSpotOAuthRoutes(app: Express) {
 
       const companyId = req.params.companyId as string;
       const conn = await storage.getHubspotConnection(companyId);
-      if (conn?.accessToken) {
+      if (conn?.refreshToken) {
         try {
-          const token = decryptSecret(conn.accessToken);
+          const token = decryptSecret(conn.refreshToken);
           await fetch(`https://api.hubapi.com/oauth/v1/refresh-tokens/${token}`, { method: "DELETE" });
         } catch {}
       }
@@ -177,6 +181,7 @@ export function registerHubSpotOAuthRoutes(app: Express) {
         refreshToken: null,
       });
 
+      storage.createHubspotSyncLog({ companyId, action: "oauth_disconnect", status: "success", details: "HubSpot disconnected" }).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -192,6 +197,15 @@ export function registerHubSpotOAuthRoutes(app: Express) {
       const conn = await storage.getHubspotConnection(req.params.companyId as string);
       if (!conn || !conn.isActive) return res.json({ connected: false });
 
+      // Look up connected-by user name
+      let connectedByName = "";
+      if (conn.connectedBy && conn.connectedBy !== "system") {
+        try {
+          const u = await storage.getUser(conn.connectedBy);
+          if (u) connectedByName = `${(u as any).firstName ?? ""} ${(u as any).lastName ?? ""}`.trim() || (u as any).email || conn.connectedBy;
+        } catch {}
+      }
+
       res.json({
         connected: true,
         portalId: conn.portalId,
@@ -200,6 +214,7 @@ export function registerHubSpotOAuthRoutes(app: Express) {
         connectedAt: conn.connectedAt,
         lastSyncedAt: conn.lastSyncedAt,
         hubspotCompanyId: conn.hubspotCompanyId,
+        connectedBy: connectedByName || conn.connectedBy,
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -231,7 +246,6 @@ export function registerHubSpotOAuthRoutes(app: Express) {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
       const result = await pullContacts(req.params.companyId as string);
       res.json(result);
     } catch (err: any) {
@@ -244,7 +258,6 @@ export function registerHubSpotOAuthRoutes(app: Express) {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
       const result = await pullDeals(req.params.companyId as string);
       res.json(result);
     } catch (err: any) {
@@ -257,9 +270,34 @@ export function registerHubSpotOAuthRoutes(app: Express) {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
       const result = await pullCampaigns(req.params.companyId as string);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hubspot/crm/:companyId/workflows", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const result = await pullWorkflows(req.params.companyId as string);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/hubspot/crm/:companyId/sync-log", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const logs = await storage.getHubspotSyncLog(companyId, limit);
+      res.json(logs);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -304,39 +342,107 @@ export function registerHubSpotOAuthRoutes(app: Express) {
   });
 }
 
-async function handleWebhookEvent(event: any) {
-  const { subscriptionType, propertyName, propertyValue, portalId } = event;
+async function findConnectionByPortalId(portalId: string): Promise<HubspotConnection | null> {
+  const companies = await storage.getAllCompanies();
+  const connections = await Promise.all(companies.map(c => storage.getHubspotConnection(c.id)));
+  return connections.find((c): c is HubspotConnection =>
+    c != null && c.portalId === String(portalId) && c.isActive
+  ) ?? null;
+}
 
+async function notifyAdmins(title: string, message: string, link: string) {
+  try {
+    const admins = await storage.getAllAdminUsers();
+    await Promise.all(admins.map(admin =>
+      storage.createNotification({
+        userId: admin.userId,
+        type: "info",
+        title,
+        message,
+        link,
+        createdBy: "system",
+      }).catch(() => {})
+    ));
+  } catch {}
+}
+
+async function handleWebhookEvent(event: any) {
+  const { subscriptionType, propertyName, propertyValue, portalId, objectId } = event;
+
+  // deal.propertyChange → dealstage = closedwon
   if (subscriptionType === "deal.propertyChange" && propertyName === "dealstage" && propertyValue === "closedwon") {
-    const companies = await storage.getAllCompanies();
-    const connections = await Promise.all(companies.map(c => storage.getHubspotConnection(c.id)));
-    const conn = connections.find((c): c is HubspotConnection =>
-      c != null && c.portalId === String(portalId) && c.isActive
-    );
+    const conn = await findConnectionByPortalId(portalId);
     if (!conn) return;
-    await storage.createNotification({
-      userId: "system",
-      title: "HubSpot Deal Closed Won",
-      message: `A deal moved to Closed Won in HubSpot — consider creating onboarding tasks.`,
-      type: "info",
-      link: `/admin/companies/${conn.companyId}`,
-    });
+    await notifyAdmins(
+      "HubSpot Deal Closed Won",
+      "A deal moved to Closed Won — consider creating onboarding tasks.",
+      `/admin/companies/${conn.companyId}?tab=hubspot`
+    );
+    storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_deal_closed_won", status: "success", details: `Deal ${objectId} closed won` }).catch(() => {});
   }
 
+  // contact.creation → notify team
+  if (subscriptionType === "contact.creation") {
+    const conn = await findConnectionByPortalId(portalId);
+    if (!conn) return;
+    await notifyAdmins(
+      "New HubSpot Contact",
+      "A new contact was created in HubSpot.",
+      `/admin/companies/${conn.companyId}?tab=hubspot`
+    );
+    storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_contact_created", status: "success", details: `Contact ${objectId} created` }).catch(() => {});
+  }
+
+  // contact.propertyChange → hs_lead_status = MQL/SQL
   if (subscriptionType === "contact.propertyChange" && propertyName === "hs_lead_status" &&
     ["MQL", "SQL"].includes(String(propertyValue))) {
-    const companies = await storage.getAllCompanies();
-    const connections = await Promise.all(companies.map(c => storage.getHubspotConnection(c.id)));
-    const conn = connections.find((c): c is HubspotConnection =>
-      c != null && c.portalId === String(portalId) && c.isActive
-    );
+    const conn = await findConnectionByPortalId(portalId);
     if (!conn) return;
-    await storage.createNotification({
-      userId: "system",
-      title: "New HubSpot Lead",
-      message: `A contact became ${String(propertyValue)}. Consider following up.`,
-      type: "info",
-      link: `/admin/companies/${conn.companyId}?tab=hubspot`,
-    });
+    const company = await storage.getCompany(conn.companyId);
+    const companyName = company?.name ?? "Unknown Company";
+    // Create a follow-up task
+    const members = await storage.getCompanyMembers(conn.companyId);
+    const manager = members.find((m: any) => m.role === "account_manager") || members[0];
+    if (manager) {
+      await storage.createTask({
+        companyId: conn.companyId,
+        title: `Follow up with new ${propertyValue} from HubSpot`,
+        description: `A contact became ${propertyValue} in HubSpot for ${companyName}. Review and follow up.`,
+        status: "pending",
+        priority: "high",
+        assignedTo: manager.userId,
+        type: "general",
+        createdBy: "system",
+      } as any);
+    }
+    await notifyAdmins(
+      `New HubSpot ${propertyValue} Lead`,
+      `A contact became ${propertyValue} in HubSpot for ${companyName}.`,
+      `/admin/companies/${conn.companyId}?tab=hubspot`
+    );
+    storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_lead_qualified", status: "success", details: `Contact ${objectId} → ${propertyValue}` }).catch(() => {});
+  }
+
+  // ticket.creation → mirror as support task
+  if (subscriptionType === "ticket.creation") {
+    const conn = await findConnectionByPortalId(portalId);
+    if (!conn) return;
+    const company = await storage.getCompany(conn.companyId);
+    const companyName = company?.name ?? "Unknown Company";
+    await storage.createTask({
+      companyId: conn.companyId,
+      title: `Support ticket from HubSpot (#${objectId})`,
+      description: `A new support ticket was created in HubSpot for ${companyName}. Review and respond.`,
+      status: "pending",
+      priority: "medium",
+      type: "support",
+      createdBy: "system",
+    } as any);
+    await notifyAdmins(
+      "New HubSpot Support Ticket",
+      `A support ticket was created in HubSpot for ${companyName}.`,
+      `/admin/companies/${conn.companyId}?tab=hubspot`
+    );
+    storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_ticket_created", status: "success", details: `Ticket ${objectId} mirrored as support task` }).catch(() => {});
   }
 }

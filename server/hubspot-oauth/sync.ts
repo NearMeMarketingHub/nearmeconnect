@@ -70,6 +70,7 @@ export async function syncCompanyDataToHubSpot(companyId: string) {
     if (conn?.hubspotCompanyId) {
       await client.crm.companies.basicApi.update(conn.hubspotCompanyId, { properties });
       await storage.updateHubspotConnection(companyId, { lastSyncedAt: new Date().toISOString() });
+      storage.createHubspotSyncLog({ companyId, action: "sync_company", status: "success", details: `Updated HubSpot Company ${conn.hubspotCompanyId}` }).catch(() => {});
       return { success: true, action: "updated", hubspotCompanyId: conn.hubspotCompanyId };
     }
 
@@ -94,9 +95,12 @@ export async function syncCompanyDataToHubSpot(companyId: string) {
       lastSyncedAt: new Date().toISOString(),
     });
 
-    return { success: true, action: search.results?.length ? "updated" : "created", hubspotCompanyId };
+    const action = search.results?.length ? "updated" : "created";
+    storage.createHubspotSyncLog({ companyId, action: "sync_company", status: "success", details: `${action === "created" ? "Created" : "Updated"} HubSpot Company ${hubspotCompanyId}` }).catch(() => {});
+    return { success: true, action, hubspotCompanyId };
   } catch (err: any) {
     console.error("[hubspot-oauth] syncCompanyData error:", err.message);
+    storage.createHubspotSyncLog({ companyId, action: "sync_company", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message };
   }
 }
@@ -137,11 +141,8 @@ export async function syncTasksToHubSpot(companyId: string) {
         }
 
         const created = await client.crm.objects.basicApi.create("tasks", { properties, associations });
-        // store hubspot_task_id back — fire-and-forget DB update
         (async () => {
-          try {
-            await storage.updateTaskHubspotId(task.id, created.id);
-          } catch {}
+          try { await storage.updateTaskHubspotId(task.id, created.id); } catch {}
         })();
         synced++;
       } catch (e: any) {
@@ -151,8 +152,15 @@ export async function syncTasksToHubSpot(companyId: string) {
     }
 
     await storage.updateHubspotConnection(companyId, { lastSyncedAt: new Date().toISOString() });
+    storage.createHubspotSyncLog({
+      companyId,
+      action: "sync_tasks",
+      status: failed > 0 && synced === 0 ? "error" : "success",
+      details: `Synced ${synced} tasks${failed > 0 ? `, ${failed} failed` : ""}`,
+    }).catch(() => {});
     return { success: true, synced, failed, errors };
   } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "sync_tasks", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message };
   }
 }
@@ -163,35 +171,39 @@ export async function pullContacts(companyId: string) {
     const client = await getOAuthClient(companyId);
     const conn = await storage.getHubspotConnection(companyId);
 
+    let contacts: any[];
     if (!conn?.hubspotCompanyId) {
-      // Just return all contacts in portal (up to 50)
       const resp = await client.crm.contacts.basicApi.getPage(
         50, undefined,
         ["email", "firstname", "lastname", "hs_lead_status", "phone", "createdate"],
       );
-      return { success: true, contacts: resp.results.map(mapContact) };
+      contacts = resp.results.map(mapContact);
+    } else {
+      const assoc = await client.crm.associations.v4.basicApi.getPage(
+        "company", conn.hubspotCompanyId, "contact", undefined, 50,
+      );
+      if (!assoc.results?.length) {
+        storage.createHubspotSyncLog({ companyId, action: "pull_contacts", status: "success", details: "0 contacts" }).catch(() => {});
+        return { success: true, contacts: [] };
+      }
+      const contactIds = assoc.results.map((a: any) => a.toObjectId);
+      const fetched = await Promise.all(
+        contactIds.slice(0, 50).map(async (id: string) => {
+          try {
+            const c = await client.crm.contacts.basicApi.getById(id, [
+              "email", "firstname", "lastname", "hs_lead_status", "phone", "createdate",
+            ]);
+            return mapContact(c);
+          } catch { return null; }
+        }),
+      );
+      contacts = fetched.filter(Boolean) as any[];
     }
 
-    // Get contacts associated with this company
-    const assoc = await client.crm.associations.v4.basicApi.getPage(
-      "company", conn.hubspotCompanyId, "contact", undefined, 50,
-    );
-    if (!assoc.results?.length) return { success: true, contacts: [] };
-
-    const contactIds = assoc.results.map((a: any) => a.toObjectId);
-    const contacts = await Promise.all(
-      contactIds.slice(0, 50).map(async (id: string) => {
-        try {
-          const c = await client.crm.contacts.basicApi.getById(id, [
-            "email", "firstname", "lastname", "hs_lead_status", "phone", "createdate",
-          ]);
-          return mapContact(c);
-        } catch { return null; }
-      }),
-    );
-
-    return { success: true, contacts: contacts.filter(Boolean) };
+    storage.createHubspotSyncLog({ companyId, action: "pull_contacts", status: "success", details: `${contacts.length} contacts` }).catch(() => {});
+    return { success: true, contacts };
   } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "pull_contacts", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message, contacts: [] };
   }
 }
@@ -214,33 +226,39 @@ export async function pullDeals(companyId: string) {
     const client = await getOAuthClient(companyId);
     const conn = await storage.getHubspotConnection(companyId);
 
+    let deals: any[];
     if (!conn?.hubspotCompanyId) {
       const resp = await client.crm.deals.basicApi.getPage(
         50, undefined,
         ["dealname", "dealstage", "amount", "closedate", "pipeline"],
       );
-      return { success: true, deals: resp.results.map(mapDeal) };
+      deals = resp.results.map(mapDeal);
+    } else {
+      const assoc = await client.crm.associations.v4.basicApi.getPage(
+        "company", conn.hubspotCompanyId, "deal", undefined, 50,
+      );
+      if (!assoc.results?.length) {
+        storage.createHubspotSyncLog({ companyId, action: "pull_deals", status: "success", details: "0 deals" }).catch(() => {});
+        return { success: true, deals: [] };
+      }
+      const dealIds = assoc.results.map((a: any) => a.toObjectId);
+      const fetched = await Promise.all(
+        dealIds.slice(0, 50).map(async (id: string) => {
+          try {
+            const d = await client.crm.deals.basicApi.getById(id, [
+              "dealname", "dealstage", "amount", "closedate", "pipeline",
+            ]);
+            return mapDeal(d);
+          } catch { return null; }
+        }),
+      );
+      deals = fetched.filter(Boolean) as any[];
     }
 
-    const assoc = await client.crm.associations.v4.basicApi.getPage(
-      "company", conn.hubspotCompanyId, "deal", undefined, 50,
-    );
-    if (!assoc.results?.length) return { success: true, deals: [] };
-
-    const dealIds = assoc.results.map((a: any) => a.toObjectId);
-    const deals = await Promise.all(
-      dealIds.slice(0, 50).map(async (id: string) => {
-        try {
-          const d = await client.crm.deals.basicApi.getById(id, [
-            "dealname", "dealstage", "amount", "closedate", "pipeline",
-          ]);
-          return mapDeal(d);
-        } catch { return null; }
-      }),
-    );
-
-    return { success: true, deals: deals.filter(Boolean) };
+    storage.createHubspotSyncLog({ companyId, action: "pull_deals", status: "success", details: `${deals.length} deals` }).catch(() => {});
+    return { success: true, deals };
   } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "pull_deals", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message, deals: [] };
   }
 }
@@ -260,7 +278,6 @@ function mapDeal(d: any) {
 export async function pullCampaigns(companyId: string) {
   try {
     const client = await getOAuthClient(companyId);
-    // HubSpot marketing emails
     const resp = await (client as any).apiRequest({
       method: "GET",
       path: "/marketing/v3/emails",
@@ -278,19 +295,65 @@ export async function pullCampaigns(companyId: string) {
         sent: e.stats?.counters?.sent ?? null,
       },
     }));
+    storage.createHubspotSyncLog({ companyId, action: "pull_campaigns", status: "success", details: `${emails.length} campaigns` }).catch(() => {});
     return { success: true, campaigns: emails };
   } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "pull_campaigns", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message, campaigns: [] };
   }
 }
 
-// Push a content calendar item to HubSpot Social
-export async function pushToHubSpotSocial(calendarItemId: string) {
+// Pull active HubSpot workflows / automations
+export async function pullWorkflows(companyId: string) {
   try {
-    const client = await getOAuthClient(""); // caller must resolve companyId first
-    void client; // placeholder — full social push requires channel IDs per company
-    return { success: false, error: "Social push requires channel configuration — set up HubSpot Social channels first." };
+    const client = await getOAuthClient(companyId);
+    const resp = await (client as any).apiRequest({
+      method: "GET",
+      path: "/automation/v3/workflows",
+      qs: { limit: 30 },
+    });
+    const body = await resp.json?.() ?? {};
+    const workflows = (body.workflows || []).map((w: any) => ({
+      id: w.id,
+      name: w.name || "Untitled Workflow",
+      type: w.type || "",
+      enabled: w.enabled ?? false,
+      insertedAt: w.insertedAt || "",
+      updatedAt: w.updatedAt || "",
+      enrolledCount: w.enrollmentCount ?? w.metrics?.currentlyEnrolled ?? 0,
+    }));
+    storage.createHubspotSyncLog({ companyId, action: "pull_workflows", status: "success", details: `${workflows.length} workflows` }).catch(() => {});
+    return { success: true, workflows };
   } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "pull_workflows", status: "error", details: err.message }).catch(() => {});
+    return { success: false, error: err.message, workflows: [] };
+  }
+}
+
+// Push a content calendar item to HubSpot Social
+// Note: full social push requires per-company social channel IDs configured in HubSpot.
+// This function schedules a post via the HubSpot Social API if channelId is known.
+export async function pushToHubSpotSocial(companyId: string, post: {
+  message: string;
+  channelId: string;
+  publishDate?: string;
+}) {
+  try {
+    const client = await getOAuthClient(companyId);
+    const resp = await (client as any).apiRequest({
+      method: "POST",
+      path: "/marketing/v3/social/posts",
+      body: {
+        channelId: post.channelId,
+        content: { body: post.message },
+        publishDate: post.publishDate || new Date().toISOString(),
+      },
+    });
+    const body = await resp.json?.() ?? {};
+    storage.createHubspotSyncLog({ companyId, action: "push_social", status: "success", details: `Post scheduled on channel ${post.channelId}` }).catch(() => {});
+    return { success: true, postId: body.id };
+  } catch (err: any) {
+    storage.createHubspotSyncLog({ companyId, action: "push_social", status: "error", details: err.message }).catch(() => {});
     return { success: false, error: err.message };
   }
 }

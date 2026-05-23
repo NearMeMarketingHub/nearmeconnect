@@ -30,6 +30,7 @@ import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { HubspotPanel } from "@/components/hubspot-panel";
+import { ContentCalendarView } from "@/components/content-calendar-view";
 import {
   ArrowLeft,
   Plus,
@@ -94,6 +95,7 @@ import {
   LayoutGrid,
   Kanban,
   Megaphone,
+  CalendarRange,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -2243,6 +2245,7 @@ export default function CompanyDashboard() {
               { value: "reporting", label: "Reporting" },
               { value: "hubspot", label: "HubSpot" },
               { value: "marketing", label: "Marketing Hub" },
+              { value: "content-calendar", label: "Content Calendar" },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -2312,6 +2315,10 @@ export default function CompanyDashboard() {
             <TabsTrigger value="marketing" data-testid="tab-marketing">
               <Megaphone className="h-4 w-4 mr-2" />
               Marketing Hub
+            </TabsTrigger>
+            <TabsTrigger value="content-calendar" data-testid="tab-content-calendar">
+              <CalendarRange className="h-4 w-4 mr-2" />
+              Content Calendar
             </TabsTrigger>
           </TabsList>
 
@@ -4545,6 +4552,16 @@ export default function CompanyDashboard() {
 
           <TabsContent value="marketing" className="space-y-4">
             {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => setActiveTab(tab)} />}
+          </TabsContent>
+
+          {/* Content Calendar Tab */}
+          <TabsContent value="content-calendar" className="h-[calc(100vh-220px)] min-h-0 flex flex-col">
+            {companyId && (
+              <ContentCalendarView
+                companyId={companyId}
+                companies={company ? [company] : []}
+              />
+            )}
           </TabsContent>
 
           {/* Cadences Tab */}

@@ -177,6 +177,8 @@ import {
   type InsertContentCalendarActivity,
   hubspotOnboardingChecklist,
   type HubspotOnboardingItem,
+  hubspotSyncLog,
+  type HubspotSyncLog,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -513,6 +515,10 @@ export interface IStorage {
   getHubspotOnboardingChecklist(companyId: string): Promise<HubspotOnboardingItem[]>;
   seedHubspotOnboardingChecklist(companyId: string): Promise<void>;
   updateHubspotOnboardingItem(id: string, data: Partial<HubspotOnboardingItem>): Promise<HubspotOnboardingItem | undefined>;
+
+  // HubSpot Sync Log
+  createHubspotSyncLog(data: { companyId: string; action: string; status: string; details?: string }): Promise<HubspotSyncLog>;
+  getHubspotSyncLog(companyId: string, limit?: number): Promise<HubspotSyncLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2872,6 +2878,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(hubspotOnboardingChecklist.id, id))
       .returning();
     return row;
+  }
+
+  // ── HubSpot Sync Log ──────────────────────────────────────────────────────
+
+  async createHubspotSyncLog(data: { companyId: string; action: string; status: string; details?: string }): Promise<HubspotSyncLog> {
+    const [row] = await db.insert(hubspotSyncLog).values({
+      ...data,
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async getHubspotSyncLog(companyId: string, limit = 50): Promise<HubspotSyncLog[]> {
+    return db.select().from(hubspotSyncLog)
+      .where(eq(hubspotSyncLog.companyId, companyId))
+      .orderBy(desc(hubspotSyncLog.createdAt))
+      .limit(limit);
   }
 }
 

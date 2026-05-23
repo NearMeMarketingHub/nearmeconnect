@@ -125,7 +125,13 @@ export function ContentItemModal({
   }, [open, item?.id, initialDate, initialCompanyId]);
 
   const { data: pillars = [] } = useQuery<ContentPillar[]>({
-    queryKey: [`/api/companies/${companyId}/content-pillars`],
+    queryKey: ["/api/content-pillars", companyId],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const res = await fetch(`/api/content-pillars?companyId=${companyId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!companyId,
   });
 

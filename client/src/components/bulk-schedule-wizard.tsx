@@ -56,7 +56,13 @@ export function BulkScheduleWizard({ open, onOpenChange, companyId: initialCompa
   const [slots, setSlots] = useState<Slot[]>([]);
 
   const { data: pillars = [] } = useQuery<ContentPillar[]>({
-    queryKey: [`/api/companies/${selectedCompanyId}/content-pillars`],
+    queryKey: ["/api/content-pillars", selectedCompanyId],
+    queryFn: async () => {
+      if (!selectedCompanyId) return [];
+      const res = await fetch(`/api/content-pillars?companyId=${selectedCompanyId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
     enabled: !!selectedCompanyId && step >= 4,
   });
 
