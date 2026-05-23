@@ -399,14 +399,14 @@ export interface IStorage {
   createChatMention(mention: InsertChatMention): Promise<ChatMention>;
 
   // Notepads
-  getNotepads(companyId: string): Promise<Notepad[]>;
+  getNotepads(companyId: string, isAdmin?: boolean): Promise<Notepad[]>;
   getNotepad(id: string): Promise<Notepad | undefined>;
   createNotepad(data: InsertNotepad): Promise<Notepad>;
   updateNotepad(id: string, data: Partial<InsertNotepad>): Promise<Notepad | undefined>;
   deleteNotepad(id: string): Promise<void>;
 
   // Message Board
-  getMessageBoardPosts(companyId: string): Promise<MessageBoardPost[]>;
+  getMessageBoardPosts(companyId: string, isAdmin?: boolean): Promise<MessageBoardPost[]>;
   getMessageBoardPost(id: string): Promise<MessageBoardPost | undefined>;
   createMessageBoardPost(data: InsertMessageBoardPost): Promise<MessageBoardPost>;
   updateMessageBoardPost(id: string, data: Partial<InsertMessageBoardPost>): Promise<MessageBoardPost | undefined>;
@@ -3192,8 +3192,11 @@ export class DatabaseStorage implements IStorage {
 
   // ── Notepads ────────────────────────────────────────────────────────────────
 
-  async getNotepads(companyId: string): Promise<Notepad[]> {
-    return db.select().from(notepads).where(eq(notepads.companyId, companyId)).orderBy(notepads.createdAt);
+  async getNotepads(companyId: string, isAdmin = true): Promise<Notepad[]> {
+    const condition = isAdmin
+      ? eq(notepads.companyId, companyId)
+      : and(eq(notepads.companyId, companyId), eq(notepads.isInternal, false));
+    return db.select().from(notepads).where(condition).orderBy(notepads.createdAt);
   }
 
   async getNotepad(id: string): Promise<Notepad | undefined> {
@@ -3219,8 +3222,11 @@ export class DatabaseStorage implements IStorage {
 
   // ── Message Board ────────────────────────────────────────────────────────────
 
-  async getMessageBoardPosts(companyId: string): Promise<MessageBoardPost[]> {
-    return db.select().from(messageBoardPosts).where(eq(messageBoardPosts.companyId, companyId)).orderBy(messageBoardPosts.createdAt);
+  async getMessageBoardPosts(companyId: string, isAdmin = true): Promise<MessageBoardPost[]> {
+    const condition = isAdmin
+      ? eq(messageBoardPosts.companyId, companyId)
+      : and(eq(messageBoardPosts.companyId, companyId), eq(messageBoardPosts.isInternal, false));
+    return db.select().from(messageBoardPosts).where(condition).orderBy(messageBoardPosts.createdAt);
   }
 
   async getMessageBoardPost(id: string): Promise<MessageBoardPost | undefined> {

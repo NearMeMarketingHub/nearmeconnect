@@ -8,20 +8,31 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { RichTextEditor } from "@/components/rich-text-editor";
-import { Plus, Pin, Megaphone, ChevronLeft, MessageSquare, Trash2, Pencil } from "lucide-react";
+import { Plus, Pin, Megaphone, ChevronLeft, MessageSquare, Trash2, Lock, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import type { MessageBoardPost, MessageBoardReply } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 const POST_CATEGORIES = [
-  { value: "general", label: "General" },
-  { value: "announcement", label: "Announcement" },
-  { value: "update", label: "Update" },
-  { value: "question", label: "Question" },
-  { value: "feedback", label: "Feedback" },
+  { value: "general", label: "General", color: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+  { value: "announcement", label: "Announcement", color: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" },
+  { value: "client-update", label: "Client Update", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+  { value: "approval-discussion", label: "Approval Discussion", color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" },
+  { value: "campaign-decision", label: "Campaign Decision", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+  { value: "internal-update", label: "Internal Update", color: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" },
+  // legacy
+  { value: "update", label: "Update", color: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" },
+  { value: "question", label: "Question", color: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" },
+  { value: "feedback", label: "Feedback", color: "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300" },
 ];
+
+function categoryInfo(val?: string | null) {
+  return POST_CATEGORIES.find(c => c.value === val) ?? POST_CATEGORIES[0];
+}
 
 function timeAgo(ts?: string | null) {
   if (!ts) return "";
@@ -46,7 +57,11 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
   const [newPostTitle, setNewPostTitle] = useState("");
   const [newPostBody, setNewPostBody] = useState("");
   const [newPostCategory, setNewPostCategory] = useState("general");
+  const [newPostInternal, setNewPostInternal] = useState(false);
+  const [newPostLinkedCampaignId, setNewPostLinkedCampaignId] = useState("");
+  const [newPostLinkedTaskId, setNewPostLinkedTaskId] = useState("");
   const [replyBody, setReplyBody] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const { data: posts = [] } = useQuery<MessageBoardPost[]>({
     queryKey: ["/api/companies", companyId, "message-board"],
@@ -63,6 +78,12 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
     enabled: !!viewingPostId,
   });
 
+  const { data: campaigns = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", companyId, "campaign-requests"],
+    queryFn: async () => { const r = await fetch(`/api/companies/${companyId}/campaign-requests`); return r.json(); },
+    enabled: isAdmin === true,
+  });
+
   const createPostMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", `/api/companies/${companyId}/message-board`, data),
     onSuccess: async (r) => {
@@ -70,6 +91,7 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
       queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "message-board"] });
       setNewPostOpen(false);
       setNewPostTitle(""); setNewPostBody(""); setNewPostCategory("general");
+      setNewPostInternal(false); setNewPostLinkedCampaignId(""); setNewPostLinkedTaskId("");
       setViewingPostId(post.id);
     },
   });
@@ -105,25 +127,28 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
   });
 
   const viewingPost = posts.find(p => p.id === viewingPostId) ?? null;
-  const pinned = posts.filter(p => p.isPinned || p.isAnnouncement);
-  const regular = posts.filter(p => !p.isPinned && !p.isAnnouncement);
+
+  const filteredPosts = categoryFilter === "all" ? posts : posts.filter(p => p.category === categoryFilter);
+  const pinned = filteredPosts.filter(p => p.isPinned || p.isAnnouncement);
+  const regular = filteredPosts.filter(p => !p.isPinned && !p.isAnnouncement);
   const sortedPosts = [...pinned, ...regular];
 
   if (viewingPost) {
+    const catInfo = categoryInfo(viewingPost.category);
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" className="gap-2" onClick={() => setViewingPostId(null)} data-testid="button-back-board">
           <ChevronLeft className="h-4 w-4" /> Back to Board
         </Button>
 
-        {/* Post */}
         <div className="border rounded-lg p-5 space-y-4">
           <div className="flex items-start justify-between gap-2">
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="text-xs">{viewingPost.category ?? "general"}</Badge>
+                <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", catInfo.color)}>{catInfo.label}</span>
                 {viewingPost.isPinned && <Badge className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300"><Pin className="h-3 w-3 mr-1" />Pinned</Badge>}
                 {viewingPost.isAnnouncement && <Badge className="text-xs bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"><Megaphone className="h-3 w-3 mr-1" />Announcement</Badge>}
+                {(viewingPost as any).isInternal && <Badge className="text-xs bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"><Lock className="h-3 w-3 mr-1" />Internal</Badge>}
               </div>
               <h2 className="text-xl font-bold">{viewingPost.title}</h2>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -132,6 +157,17 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
                 <span>·</span>
                 <span>{timeAgo(viewingPost.createdAt)}</span>
               </div>
+              {/* Link badges */}
+              {((viewingPost as any).linkedCampaignId || (viewingPost as any).linkedTaskId) && (
+                <div className="flex gap-1.5 pt-1 flex-wrap">
+                  {(viewingPost as any).linkedCampaignId && (
+                    <Badge variant="outline" className="text-xs gap-1"><Link2 className="h-2.5 w-2.5" />Campaign linked</Badge>
+                  )}
+                  {(viewingPost as any).linkedTaskId && (
+                    <Badge variant="outline" className="text-xs gap-1"><Link2 className="h-2.5 w-2.5" />Task linked</Badge>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {isAdmin && (
@@ -185,18 +221,9 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
               )}
             </div>
           ))}
-
-          {/* Reply box */}
           <div className="border rounded-lg p-4 space-y-2 bg-muted/20">
             <p className="text-sm font-medium">Write a reply...</p>
-            <Textarea
-              placeholder="Share your thoughts..."
-              value={replyBody}
-              onChange={e => setReplyBody(e.target.value)}
-              className="resize-none"
-              rows={3}
-              data-testid="textarea-reply"
-            />
+            <Textarea placeholder="Share your thoughts..." value={replyBody} onChange={e => setReplyBody(e.target.value)} className="resize-none" rows={3} data-testid="textarea-reply" />
             <Button size="sm" onClick={() => createReplyMutation.mutate({ body: replyBody, postedBy: currentUserId, postedByName: currentUserName, companyId })}
               disabled={!replyBody.trim() || createReplyMutation.isPending} data-testid="button-post-reply">
               Post Reply
@@ -210,8 +237,21 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Message Board</h3>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Message Board</h3>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-7 w-40 text-xs" data-testid="select-board-category-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {POST_CATEGORIES.filter(c => !["update","question","feedback"].includes(c.value)).map(c => (
+                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Dialog open={newPostOpen} onOpenChange={setNewPostOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2" data-testid="button-new-post"><Plus className="h-4 w-4" />New Post</Button>
@@ -222,12 +262,52 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
               <Input placeholder="Title" value={newPostTitle} onChange={e => setNewPostTitle(e.target.value)} data-testid="input-post-title" />
               <Select value={newPostCategory} onValueChange={setNewPostCategory}>
                 <SelectTrigger data-testid="select-post-category"><SelectValue /></SelectTrigger>
-                <SelectContent>{POST_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {POST_CATEGORIES.filter(c => !["update","question","feedback"].includes(c.value)).map(c => (
+                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
               <RichTextEditor value={newPostBody} onChange={setNewPostBody} placeholder="What's on your mind?" minHeight={150} />
+              {/* Link to Campaign */}
+              {campaigns.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-28 shrink-0">Link to Campaign</Label>
+                  <Select value={newPostLinkedCampaignId || "__none__"} onValueChange={v => setNewPostLinkedCampaignId(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-xs flex-1" data-testid="select-post-linked-campaign">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {campaigns.map((c: any) => (
+                        <SelectItem key={c.id} value={c.id}>{c.title || c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {/* Link to Task */}
+              <div className="flex items-center gap-2">
+                <Label className="text-xs w-28 shrink-0">Link to Task ID</Label>
+                <Input value={newPostLinkedTaskId} onChange={e => setNewPostLinkedTaskId(e.target.value)} placeholder="Paste task ID..." className="h-8 text-xs flex-1" data-testid="input-post-linked-task" />
+              </div>
+              {/* Internal only (admin) */}
+              {isAdmin && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Lock className={cn("h-3.5 w-3.5", newPostInternal ? "text-red-500" : "text-muted-foreground")} />
+                  <Label className="text-xs cursor-pointer flex-1">Internal only (not visible to clients)</Label>
+                  <Switch checked={newPostInternal} onCheckedChange={setNewPostInternal} data-testid="switch-post-internal" />
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setNewPostOpen(false)}>Cancel</Button>
-                <Button onClick={() => createPostMutation.mutate({ title: newPostTitle, body: newPostBody, category: newPostCategory, postedBy: currentUserId, postedByName: currentUserName, companyId })}
+                <Button onClick={() => createPostMutation.mutate({
+                  title: newPostTitle, body: newPostBody, category: newPostCategory,
+                  postedBy: currentUserId, postedByName: currentUserName, companyId,
+                  isInternal: newPostInternal,
+                  linkedCampaignId: newPostLinkedCampaignId || null,
+                  linkedTaskId: newPostLinkedTaskId || null,
+                })}
                   disabled={!newPostTitle.trim() || !newPostBody.trim() || createPostMutation.isPending} data-testid="button-submit-post">
                   Post
                 </Button>
@@ -245,37 +325,45 @@ export function MessageBoardPanel({ companyId, currentUserId, currentUserName, i
         </div>
       )}
       <div className="space-y-3">
-        {sortedPosts.map(post => (
-          <button
-            key={post.id}
-            onClick={() => setViewingPostId(post.id)}
-            data-testid={`post-card-${post.id}`}
-            className={cn(
-              "w-full text-left border rounded-lg p-4 hover:bg-muted/40 transition-colors space-y-2",
-              post.isAnnouncement && "border-l-4 border-l-orange-500"
-            )}>
-            <div className="flex items-start gap-2">
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="secondary" className="text-xs">{post.category ?? "general"}</Badge>
-                  {post.isPinned && <span className="text-xs text-orange-500 flex items-center gap-0.5"><Pin className="h-3 w-3" />Pinned</span>}
-                  {post.isAnnouncement && <span className="text-xs text-red-500 flex items-center gap-0.5"><Megaphone className="h-3 w-3" />Announcement</span>}
+        {sortedPosts.map(post => {
+          const catInfo = categoryInfo(post.category);
+          return (
+            <button
+              key={post.id}
+              onClick={() => setViewingPostId(post.id)}
+              data-testid={`post-card-${post.id}`}
+              className={cn(
+                "w-full text-left border rounded-lg p-4 hover:bg-muted/40 transition-colors space-y-2",
+                post.isAnnouncement && "border-l-4 border-l-orange-500",
+                (post as any).isInternal && "border-dashed"
+              )}>
+              <div className="flex items-start gap-2">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", catInfo.color)}>{catInfo.label}</span>
+                    {post.isPinned && <span className="text-xs text-orange-500 flex items-center gap-0.5"><Pin className="h-3 w-3" />Pinned</span>}
+                    {post.isAnnouncement && <span className="text-xs text-red-500 flex items-center gap-0.5"><Megaphone className="h-3 w-3" />Announcement</span>}
+                    {(post as any).isInternal && <span className="text-xs text-red-500 flex items-center gap-0.5"><Lock className="h-3 w-3" />Internal</span>}
+                    {((post as any).linkedCampaignId || (post as any).linkedTaskId) && (
+                      <span className="text-xs text-blue-500 flex items-center gap-0.5"><Link2 className="h-3 w-3" />Linked</span>
+                    )}
+                  </div>
+                  <p className="font-semibold text-sm">{post.title}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2" dangerouslySetInnerHTML={{ __html: post.body.replace(/<[^>]+>/g, " ").slice(0, 150) }} />
                 </div>
-                <p className="font-semibold text-sm">{post.title}</p>
-                <p className="text-xs text-muted-foreground line-clamp-2" dangerouslySetInnerHTML={{ __html: post.body.replace(/<[^>]+>/g, " ").slice(0, 150) }} />
+                <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 mt-1">
+                  <MessageSquare className="h-3.5 w-3.5" />{post.replyCount}
+                </span>
               </div>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 mt-1">
-                <MessageSquare className="h-3.5 w-3.5" />{post.replyCount}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Avatar name={post.postedByName} size={5} />
-              <span>{post.postedByName}</span>
-              <span>·</span>
-              <span>{timeAgo(post.createdAt)}</span>
-            </div>
-          </button>
-        ))}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Avatar name={post.postedByName} size={5} />
+                <span>{post.postedByName}</span>
+                <span>·</span>
+                <span>{timeAgo(post.createdAt)}</span>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

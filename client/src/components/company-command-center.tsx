@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Megaphone,
   Pause,
+  Pin,
   Settings2,
   Sparkles,
   Target,
@@ -1130,6 +1131,103 @@ function RecentActivityCard({
   );
 }
 
+// ── 10. Pinned Notes ──────────────────────────────────────────────────────────
+function PinnedNotesCard({
+  companyId,
+  onNavigate,
+}: {
+  companyId: string;
+  onNavigate: (tab: string) => void;
+}) {
+  const { data: notes = [] } = useQuery<Array<{ id: string; title: string; category: string | null; isPinned: boolean; updatedAt: string | null; createdAt: string }>>({
+    queryKey: ["/api/companies", companyId, "notepads"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/notepads`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const pinned = notes.filter(n => n.isPinned).slice(0, 3);
+  const recent = notes.filter(n => !n.isPinned).slice(0, 3);
+  const shown = pinned.length > 0 ? pinned : recent;
+
+  const CATEGORY_COLORS: Record<string, string> = {
+    "general": "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    "campaign-idea": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+    "campaign-brief": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    "meeting-notes": "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+    "client-call-recap": "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+    "decision": "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300",
+    "risk-blocker": "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300",
+    "internal-note": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  };
+
+  function catColor(cat: string | null) {
+    return CATEGORY_COLORS[cat ?? "general"] ?? CATEGORY_COLORS["general"];
+  }
+  function catLabel(cat: string | null) {
+    return (cat ?? "general").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+  function timeAgo(ts?: string | null) {
+    if (!ts) return "";
+    try {
+      const diff = Date.now() - new Date(ts).getTime();
+      const days = Math.floor(diff / 86400000);
+      if (days === 0) return "today";
+      if (days === 1) return "yesterday";
+      return `${days}d ago`;
+    } catch { return ""; }
+  }
+
+  return (
+    <Card data-testid="card-pinned-notes">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Pin className="h-4 w-4 text-muted-foreground" />
+            {pinned.length > 0 ? "Pinned Notes" : "Recent Notes"}
+          </CardTitle>
+          <Button size="sm" variant="ghost" className="text-xs h-6 px-2" onClick={() => onNavigate("notes")} data-testid="button-notes-view-all">
+            View All <ChevronRight className="h-3 w-3" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {shown.length === 0 ? (
+          <EmptyState icon={FileText} text="No notes yet. Add a note from the Notes tab." />
+        ) : (
+          <div className="space-y-2">
+            {shown.map(note => (
+              <div
+                key={note.id}
+                className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => onNavigate("notes")}
+                data-testid={`item-note-${note.id}`}
+              >
+                {note.isPinned && <Pin className="h-3.5 w-3.5 text-orange-500 shrink-0 mt-0.5" />}
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <p className="text-sm truncate font-medium">{note.title}</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${catColor(note.category)}`}>
+                      {catLabel(note.category)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{timeAgo(note.updatedAt ?? note.createdAt)}</span>
+                  </div>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              </div>
+            ))}
+          </div>
+        )}
+        {notes.length > 3 && (
+          <p className="text-xs text-muted-foreground mt-2 text-center">+{notes.length - 3} more notes</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export interface CompanyCommandCenterProps {
@@ -1228,6 +1326,9 @@ export function CompanyCommandCenter({
         <BrandVoiceCard brandProfile={brandProfile} onNavigate={onNavigate} />
         <RecentActivityCard tasks={tasks} threads={threads} contentItems={contentItems} onNavigate={onNavigate} />
       </div>
+
+      {/* Row 6: Pinned Notes */}
+      <PinnedNotesCard companyId={companyId} onNavigate={onNavigate} />
     </div>
   );
 }

@@ -123,6 +123,24 @@ async function migrateCampaignWorkspaceColumns() {
       created_at text NOT NULL,
       updated_at text
     )`,
+    // Notepad enrichment
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false",
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS linked_campaign_id varchar",
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS linked_task_id varchar",
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS linked_content_item_id varchar",
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS linked_meeting_id varchar",
+    "ALTER TABLE notepads ADD COLUMN IF NOT EXISTS linked_resource_id varchar",
+    // Meeting recap fields
+    "ALTER TABLE meeting_requests ADD COLUMN IF NOT EXISTS decisions text",
+    "ALTER TABLE meeting_requests ADD COLUMN IF NOT EXISTS blockers text",
+    "ALTER TABLE meeting_requests ADD COLUMN IF NOT EXISTS next_steps text",
+    "ALTER TABLE meeting_requests ADD COLUMN IF NOT EXISTS linked_campaign_id varchar",
+    "ALTER TABLE meeting_requests ADD COLUMN IF NOT EXISTS linked_task_id varchar",
+    // Message board enrichment
+    "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false",
+    "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_campaign_id varchar",
+    "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_task_id varchar",
+    "ALTER TABLE message_board_posts ADD COLUMN IF NOT EXISTS linked_content_item_id varchar",
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

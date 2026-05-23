@@ -6307,7 +6307,7 @@ export async function registerRoutes(
       }
 
       const updateData: Record<string, any> = {};
-      const allowedFields = ["status", "teamsLink", "outlookMeetingLink", "adminNotes", "notes", "creditsDeducted", "approvedBy", "approvedAt", "proposedDate", "proposedTime", "creditCost", "duration", "rejectionReason", "rejectedAt", "completedAt"];
+      const allowedFields = ["status", "teamsLink", "outlookMeetingLink", "adminNotes", "notes", "decisions", "blockers", "nextSteps", "linkedCampaignId", "linkedTaskId", "creditsDeducted", "approvedBy", "approvedAt", "proposedDate", "proposedTime", "creditCost", "duration", "rejectionReason", "rejectedAt", "completedAt"];
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field];
@@ -6438,6 +6438,37 @@ export async function registerRoutes(
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch meeting request" });
     }
+  });
+
+  // Generate a recap note from a completed meeting
+  app.post("/api/meeting-requests/:id/recap-note", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const meeting = await storage.getMeetingRequest(req.params.id as string);
+      if (!meeting) return res.status(404).json({ error: "Meeting not found" });
+      const user = await storage.getUser(userId);
+      const userName = user ? `${user.firstName} ${user.lastName}`.trim() : "Admin";
+      const parts: string[] = [];
+      if (meeting.notes) parts.push(`<h3>Meeting Notes</h3><p>${meeting.notes.replace(/\n/g, "<br/>")}</p>`);
+      if ((meeting as any).decisions) parts.push(`<h3>Decisions</h3><p>${(meeting as any).decisions.replace(/\n/g, "<br/>")}</p>`);
+      if ((meeting as any).blockers) parts.push(`<h3>Blockers</h3><p>${(meeting as any).blockers.replace(/\n/g, "<br/>")}</p>`);
+      if ((meeting as any).nextSteps) parts.push(`<h3>Next Steps</h3><p>${(meeting as any).nextSteps.replace(/\n/g, "<br/>")}</p>`);
+      const note = await storage.createNotepad({
+        companyId: meeting.companyId,
+        title: `Meeting Recap: ${meeting.title}`,
+        content: parts.join("") || "<p>No notes recorded for this meeting.</p>",
+        category: "meeting-notes",
+        isPinned: false,
+        isInternal: false,
+        linkedMeetingId: meeting.id,
+        createdBy: userId,
+        createdByName: userName,
+      } as any);
+      broadcastInvalidation([`/api/companies/${meeting.companyId}/notepads`]);
+      res.json(note);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // Get company members with user details (for document assignment)
@@ -11788,7 +11819,8 @@ export async function registerRoutes(
 
   app.get("/api/companies/:companyId/notepads", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const notes = await storage.getNotepads(req.params.companyId as string);
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      const notes = await storage.getNotepads(req.params.companyId as string, isAdmin);
       res.json(notes);
     } catch { res.status(500).json({ error: "Failed to fetch notepads" }); }
   });
@@ -11822,7 +11854,8 @@ export async function registerRoutes(
 
   app.get("/api/companies/:companyId/message-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const posts = await storage.getMessageBoardPosts(req.params.companyId as string);
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      const posts = await storage.getMessageBoardPosts(req.params.companyId as string, isAdmin);
       res.json(posts);
     } catch { res.status(500).json({ error: "Failed to fetch posts" }); }
   });
