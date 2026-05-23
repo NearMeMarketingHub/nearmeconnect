@@ -1,0 +1,120 @@
+Add webhook signature verification to the HubSpot webhook endpoint.
+
+The route POST /api/hubspot/webhooks must:
+
+1. Verify the request is genuinely from HubSpot before processing:
+
+const crypto = require('crypto')
+
+function verifyHubSpotWebhook(req) {
+  const signature = req.headers['x-hubspot-signature-v3'] 
+    || req.headers['x-hubspot-signature']
+  
+  if (!signature) return false
+  
+  const secret = process.env.HUBSPOT_WEBHOOK_SECRET
+  const requestBody = JSON.stringify(req.body)
+  
+  const hash = crypto
+    .createHmac('sha256', secret)
+    .update(requestBody)
+    .digest('hex')
+  
+  return hash === signature
+}
+
+2. Handle these event types from the webhook payload:
+
+router.post('/api/hubspot/webhooks', express.raw({type: 'application/json'}), async (req, res) => {
+  
+  // Always respond 200 immediately (HubSpot requires fast response)
+  res.status(200).send('OK')
+  
+  if (!verifyHubSpotWebhook(req)) {
+    console.warn('Invalid HubSpot webhook signature')
+    return
+  }
+  
+  const events = Array.isArray(req.body) ? req.body : [req.body]
+  
+  for (const event of events) {
+    const { subscriptionType, objectId, portalId, propertyName, propertyValue } = event
+    
+    // Find which company this portal belongs to
+    const connection = await db.query(
+      'SELECT company_id FROM hubspot_connections WHERE portal_id = $1',
+      [String(portalId)]
+    )
+    if (!connection.rows.length) continue
+    const companyId = connection.rows[0].company_id
+    
+    switch(subscriptionType) {
+      
+      case 'deal.propertyChange':
+        if (propertyName === 'dealstage' && propertyValue === 'closedwon') {
+          // Deal closed — create onboarding tasks + send notification
+          await createNotification(companyId, {
+            type: 'deal_closed',
+            title: 'Deal Closed Won',
+            message: 'A deal was closed in HubSpot. Onboarding tasks ready.',
+            link: `/companies/${companyId}?tab=work&sub=tasks`
+          })
+        }
+        break
+        
+      case 'contact.creation':
+        await createNotification(companyId, {
+          type: 'new_contact',
+          title: 'New Contact in HubSpot',
+          message: `New contact added (ID: ${objectId})`,
+          link: `/companies/${companyId}?tab=marketing&sub=hubspot`
+        })
+        break
+        
+      case 'contact.propertyChange':
+        if (propertyName === 'hs_lead_status' && 
+            ['MQL','SQL'].includes(propertyValue)) {
+          // Hot lead — create a follow-up task
+          await db.query(`
+            INSERT INTO tasks 
+              (company_id, title, description, status, priority, 
+               task_ownership, created_by, created_at)
+            VALUES ($1, $2, $3, 'pending', 'high', 'agency', 'system', $4)
+          `, [
+            companyId,
+            `Follow up with new ${propertyValue} lead`,
+            `Contact ID ${objectId} just became ${propertyValue} in HubSpot`,
+            new Date().toISOString()
+          ])
+        }
+        break
+        
+      case 'ticket.creation':
+        await createNotification(companyId, {
+          type: 'new_ticket',
+          title: 'New Support Ticket',
+          message: `Ticket #${objectId} created in HubSpot`,
+          link: `/companies/${companyId}?tab=communicate`
+        })
+        break
+    }
+  }
+})
+
+3. The createNotification helper inserts to the existing notifications table:
+
+async function createNotification(companyId, { type, title, message, link }) {
+  // Get all admin users for this company
+  const members = await db.query(`
+    SELECT user_id FROM company_members 
+    WHERE company_id = $1 AND role IN ('admin', 'owner')
+  `, [companyId])
+  
+  for (const member of members.rows) {
+    await db.query(`
+      INSERT INTO notifications 
+        (user_id, type, title, message, link, is_read, created_at)
+      VALUES ($1, $2, $3, $4, $5, false, $6)
+    `, [member.user_id, type, title, message, link, new Date().toISOString()])
+  }
+}

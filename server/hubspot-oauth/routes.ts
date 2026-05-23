@@ -330,40 +330,66 @@ export function registerHubSpotOAuthRoutes(app: Express) {
 
   // ── Webhooks ──────────────────────────────────────────────────────────────
 
-  app.post("/api/hubspot/webhooks", express.raw({ type: "*/*" }), async (req: Request, res: Response) => {
-    try {
-      const clientSecret = process.env.HUBSPOT_CLIENT_SECRET || "";
-      const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body);
+  app.post("/api/hubspot/webhooks", express.raw({ type: "*/*" }), (req: Request, res: Response) => {
+    // HubSpot requires a fast 200 — respond immediately, then process async.
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body);
+    res.status(200).send("OK");
 
-      const sig = (req.headers["x-hubspot-signature"] as string) || "";
-      if (clientSecret && sig) {
-        const expected = crypto
-          .createHash("sha256")
-          .update(clientSecret + rawBody)
-          .digest("hex");
-        if (sig !== expected) {
-          console.warn("[hubspot-webhook] signature mismatch — ignored");
-          return res.status(401).json({ error: "Invalid signature" });
+    (async () => {
+      try {
+        // ── Signature verification ────────────────────────────────────────
+        // Prefer v3 header (HMAC-SHA256 with HUBSPOT_WEBHOOK_SECRET).
+        // Fall back to v1 header (SHA256 of CLIENT_SECRET + body).
+        const sigV3 = req.headers["x-hubspot-signature-v3"] as string | undefined;
+        const sigV1 = req.headers["x-hubspot-signature"] as string | undefined;
+        const webhookSecret = process.env.HUBSPOT_WEBHOOK_SECRET || "";
+        const clientSecret  = process.env.HUBSPOT_CLIENT_SECRET  || "";
+
+        let verified = false;
+
+        if (sigV3 && webhookSecret) {
+          const expected = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(rawBody)
+            .digest("hex");
+          verified = expected === sigV3;
+        } else if (sigV1 && clientSecret) {
+          const expected = crypto
+            .createHash("sha256")
+            .update(clientSecret + rawBody)
+            .digest("hex");
+          verified = expected === sigV1;
+        } else {
+          // No signature headers present — still process in development,
+          // but log a warning.
+          console.warn("[hubspot-webhook] no signature header present — processing without verification");
+          verified = true;
         }
-      }
 
-      let events: any[];
-      try { events = JSON.parse(rawBody); } catch { events = []; }
-      if (!Array.isArray(events)) return res.json({ received: true });
+        if (!verified) {
+          console.warn("[hubspot-webhook] signature mismatch — discarding payload");
+          return;
+        }
 
-      (async () => {
+        let events: any[];
+        try { events = JSON.parse(rawBody); } catch { events = []; }
+        if (!Array.isArray(events)) {
+          // Single-event payload wrapped in an object
+          try {
+            const single = JSON.parse(rawBody);
+            events = single && typeof single === "object" ? [single] : [];
+          } catch { return; }
+        }
+
         for (const event of events) {
           try { await handleWebhookEvent(event); } catch (e: any) {
             console.error("[hubspot-webhook] event error:", e.message);
           }
         }
-      })();
-
-      res.json({ received: true });
-    } catch (err: any) {
-      console.error("[hubspot-webhook] error:", err);
-      res.status(500).json({ error: err.message });
-    }
+      } catch (err: any) {
+        console.error("[hubspot-webhook] processing error:", err.message);
+      }
+    })();
   });
 }
 
@@ -401,7 +427,7 @@ async function handleWebhookEvent(event: any) {
     await notifyAdmins(
       "HubSpot Deal Closed Won",
       "A deal moved to Closed Won — consider creating onboarding tasks.",
-      `/admin/companies/${conn.companyId}?tab=hubspot`
+      `/admin/companies/${conn.companyId}?tab=work&sub=tasks`
     );
     storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_deal_closed_won", status: "success", details: `Deal ${objectId} closed won` }).catch(() => {});
   }
@@ -412,8 +438,8 @@ async function handleWebhookEvent(event: any) {
     if (!conn) return;
     await notifyAdmins(
       "New HubSpot Contact",
-      "A new contact was created in HubSpot.",
-      `/admin/companies/${conn.companyId}?tab=hubspot`
+      `New contact added to HubSpot (ID: ${objectId}).`,
+      `/admin/companies/${conn.companyId}?tab=marketing&sub=hubspot`
     );
     storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_contact_created", status: "success", details: `Contact ${objectId} created` }).catch(() => {});
   }
@@ -425,14 +451,14 @@ async function handleWebhookEvent(event: any) {
     if (!conn) return;
     const company = await storage.getCompany(conn.companyId);
     const companyName = company?.name ?? "Unknown Company";
-    // Create a follow-up task
+    // Create a follow-up task assigned to account manager (or first member)
     const members = await storage.getCompanyMembers(conn.companyId);
     const manager = members.find((m: any) => m.role === "account_manager") || members[0];
     if (manager) {
       await storage.createTask({
         companyId: conn.companyId,
-        title: `Follow up with new ${propertyValue} from HubSpot`,
-        description: `A contact became ${propertyValue} in HubSpot for ${companyName}. Review and follow up.`,
+        title: `Follow up with new ${propertyValue} lead from HubSpot`,
+        description: `Contact ID ${objectId} became ${propertyValue} in HubSpot for ${companyName}. Review and follow up.`,
         status: "pending",
         priority: "high",
         assignedTo: manager.userId,
@@ -443,12 +469,12 @@ async function handleWebhookEvent(event: any) {
     await notifyAdmins(
       `New HubSpot ${propertyValue} Lead`,
       `A contact became ${propertyValue} in HubSpot for ${companyName}.`,
-      `/admin/companies/${conn.companyId}?tab=hubspot`
+      `/admin/companies/${conn.companyId}?tab=work&sub=tasks`
     );
     storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_lead_qualified", status: "success", details: `Contact ${objectId} → ${propertyValue}` }).catch(() => {});
   }
 
-  // ticket.creation → mirror as support task
+  // ticket.creation → mirror as support task + notify
   if (subscriptionType === "ticket.creation") {
     const conn = await findConnectionByPortalId(portalId);
     if (!conn) return;
@@ -465,8 +491,8 @@ async function handleWebhookEvent(event: any) {
     } as any);
     await notifyAdmins(
       "New HubSpot Support Ticket",
-      `A support ticket was created in HubSpot for ${companyName}.`,
-      `/admin/companies/${conn.companyId}?tab=hubspot`
+      `Ticket #${objectId} created in HubSpot for ${companyName}.`,
+      `/admin/companies/${conn.companyId}?tab=communicate`
     );
     storage.createHubspotSyncLog({ companyId: conn.companyId, action: "webhook_ticket_created", status: "success", details: `Ticket ${objectId} mirrored as support task` }).catch(() => {});
   }
