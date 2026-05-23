@@ -1576,6 +1576,23 @@ export const insertHubspotOnboardingItemSchema = createInsertSchema(hubspotOnboa
 export type InsertHubspotOnboardingItem = z.infer<typeof insertHubspotOnboardingItemSchema>;
 export type HubspotOnboardingItem = typeof hubspotOnboardingChecklist.$inferSelect;
 
+// ── Report Presets ────────────────────────────────────────────────────────────
+
+export const reportPresets = pgTable("report_presets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  reportType: text("report_type").notNull(), // 'tasks' | 'content' | 'companies' | 'credits' | 'hubspot'
+  filters: text("filters").notNull(), // JSON-encoded filter config
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  scheduledFrequency: text("scheduled_frequency"), // 'weekly' | 'monthly' | null
+  scheduledEmails: text("scheduled_emails"), // comma-separated email list
+  scheduledNextRun: text("scheduled_next_run"),
+});
+export const insertReportPresetSchema = createInsertSchema(reportPresets).omit({ id: true, createdAt: true });
+export type InsertReportPreset = z.infer<typeof insertReportPresetSchema>;
+export type ReportPreset = typeof reportPresets.$inferSelect;
+
 // ── HubSpot Sync Log ──────────────────────────────────────────────────────────
 
 export const hubspotSyncLog = pgTable("hubspot_sync_log", {

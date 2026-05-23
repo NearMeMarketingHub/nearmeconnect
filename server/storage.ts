@@ -179,6 +179,9 @@ import {
   type HubspotOnboardingItem,
   hubspotSyncLog,
   type HubspotSyncLog,
+  reportPresets,
+  type ReportPreset,
+  type InsertReportPreset,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -520,6 +523,11 @@ export interface IStorage {
   // HubSpot Sync Log
   createHubspotSyncLog(data: { companyId: string; action: string; status: string; details?: string }): Promise<HubspotSyncLog>;
   getHubspotSyncLog(companyId: string, limit?: number): Promise<HubspotSyncLog[]>;
+
+  getReportPresets(createdBy?: string): Promise<ReportPreset[]>;
+  createReportPreset(data: InsertReportPreset): Promise<ReportPreset>;
+  updateReportPreset(id: string, data: Partial<ReportPreset>): Promise<ReportPreset | undefined>;
+  deleteReportPreset(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2900,6 +2908,30 @@ export class DatabaseStorage implements IStorage {
       .where(eq(hubspotSyncLog.companyId, companyId))
       .orderBy(desc(hubspotSyncLog.createdAt))
       .limit(limit);
+  }
+
+  async getReportPresets(createdBy?: string): Promise<ReportPreset[]> {
+    if (createdBy) {
+      return db.select().from(reportPresets).where(eq(reportPresets.createdBy, createdBy)).orderBy(desc(reportPresets.createdAt));
+    }
+    return db.select().from(reportPresets).orderBy(desc(reportPresets.createdAt));
+  }
+
+  async createReportPreset(data: InsertReportPreset): Promise<ReportPreset> {
+    const [preset] = await db.insert(reportPresets).values({
+      ...data,
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return preset;
+  }
+
+  async updateReportPreset(id: string, data: Partial<ReportPreset>): Promise<ReportPreset | undefined> {
+    const [preset] = await db.update(reportPresets).set(data).where(eq(reportPresets.id, id)).returning();
+    return preset;
+  }
+
+  async deleteReportPreset(id: string): Promise<void> {
+    await db.delete(reportPresets).where(eq(reportPresets.id, id));
   }
 }
 

@@ -10609,6 +10609,383 @@ export async function registerRoutes(
     }
   });
 
+  // ── Report Builder ────────────────────────────────────────────────────────
+
+  // Helper: parse date range from query params
+  function parseReportDateRange(from?: string, to?: string, preset?: string): { start: Date; end: Date } {
+    const now = new Date();
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    let start: Date;
+    if (from && to && preset === "custom") {
+      start = new Date(from + "T00:00:00");
+      const customEnd = new Date(to + "T23:59:59");
+      return { start, end: customEnd };
+    }
+    switch (preset) {
+      case "today":
+        start = new Date(now); start.setHours(0, 0, 0, 0); break;
+      case "week":
+        start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0); break;
+      case "month":
+        start = new Date(now.getFullYear(), now.getMonth(), 1); break;
+      case "last_month":
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end.setFullYear(now.getFullYear(), now.getMonth(), 0); end.setHours(23, 59, 59, 999); break;
+      case "quarter":
+        const q = Math.floor(now.getMonth() / 3);
+        start = new Date(now.getFullYear(), q * 3, 1); break;
+      default:
+        start = new Date(now); start.setDate(now.getDate() - 30); start.setHours(0, 0, 0, 0);
+    }
+    return { start, end };
+  }
+
+  app.get("/api/admin/reports/tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+
+      const { from, to, preset = "month", companies: companiesParam, assignedTo: assignedParam, statuses: statusParam, categories: categoriesParam } = req.query as Record<string, string>;
+      const { start, end } = parseReportDateRange(from, to, preset);
+      const startStr = start.toISOString();
+      const endStr = end.toISOString();
+
+      const [allTasks, adminUsers, allCompanies, allCategories] = await Promise.all([
+        storage.getAllTasks(),
+        storage.getAllAdminUsers(),
+        storage.getAllCompanies(),
+        storage.getAllTaskCategories(),
+      ]);
+
+      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
+      const assigneeFilter = assignedParam ? assignedParam.split(",").filter(Boolean) : [];
+      const statusFilter = statusParam ? statusParam.split(",").filter(Boolean) : [];
+      const categoryFilter = categoriesParam ? categoriesParam.split(",").filter(Boolean) : [];
+
+      let tasks = allTasks.filter(t => {
+        if (!t.createdAt || t.createdAt < startStr || t.createdAt > endStr) return false;
+        if (companyFilter.length && !companyFilter.includes(t.companyId)) return false;
+        if (assigneeFilter.length && !assigneeFilter.includes(t.assignedTo || "")) return false;
+        if (statusFilter.length && !statusFilter.includes(t.status)) return false;
+        if (categoryFilter.length && !categoryFilter.includes(t.categoryId || "")) return false;
+        return true;
+      });
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
+      const categoryMap = new Map(allCategories.map(c => [c.id, c]));
+      const adminMap = new Map(adminUsers.map(a => [a.userId, [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email]));
+
+      const completed = tasks.filter(t => t.status === "completed");
+      const overdue = tasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today);
+
+      // On-time vs late completion
+      let onTime = 0, late = 0;
+      for (const t of completed) {
+        if (!t.dueDate || !t.completedAt) { onTime++; continue; }
+        const due = new Date(t.dueDate + "T23:59:59");
+        const done = new Date(t.completedAt);
+        if (done <= due) onTime++; else late++;
+      }
+
+      // Avg completion hours
+      const withTimes = completed.filter(t => t.createdAt && t.completedAt);
+      const avgCompletionHours = withTimes.length > 0
+        ? withTimes.reduce((s, t) => s + (new Date(t.completedAt!).getTime() - new Date(t.createdAt).getTime()) / 3600000, 0) / withTimes.length
+        : null;
+
+      // Credit consumption
+      const creditConsumption = completed.reduce((s, t) => s + parseFloat(String(t.creditCost)), 0);
+
+      // By assignee
+      const byAssignee: Record<string, { name: string; assigned: number; completed: number }> = {};
+      for (const t of tasks) {
+        const uid = t.assignedTo || "unassigned";
+        if (!byAssignee[uid]) byAssignee[uid] = { name: uid === "unassigned" ? "Unassigned" : (adminMap.get(uid) || uid), assigned: 0, completed: 0 };
+        byAssignee[uid].assigned++;
+        if (t.status === "completed") byAssignee[uid].completed++;
+      }
+
+      // By company
+      const byCompany: Record<string, { name: string; total: number; completed: number; overdue: number }> = {};
+      for (const t of tasks) {
+        const cid = t.companyId;
+        if (!byCompany[cid]) byCompany[cid] = { name: companyMap.get(cid)?.name || cid, total: 0, completed: 0, overdue: 0 };
+        byCompany[cid].total++;
+        if (t.status === "completed") byCompany[cid].completed++;
+        if (!["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today) byCompany[cid].overdue++;
+      }
+
+      // By category
+      const byCategory: Record<string, { name: string; count: number }> = {};
+      for (const t of tasks) {
+        const catId = t.categoryId || "none";
+        const catName = catId === "none" ? "Uncategorized" : (categoryMap.get(catId)?.name || catId);
+        if (!byCategory[catId]) byCategory[catId] = { name: catName, count: 0 };
+        byCategory[catId].count++;
+      }
+
+      // Weekly time series
+      const weeklyMap: Record<string, number> = {};
+      for (const t of tasks) {
+        const d = new Date(t.createdAt);
+        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay()); weekStart.setHours(0, 0, 0, 0);
+        const key = weekStart.toISOString().split("T")[0];
+        weeklyMap[key] = (weeklyMap[key] || 0) + 1;
+      }
+      const weeklyTimeSeries = Object.entries(weeklyMap).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => ({ week, count }));
+
+      res.json({
+        total: tasks.length,
+        completed: completed.length,
+        overdue: overdue.length,
+        onTime,
+        late,
+        avgCompletionHours,
+        creditConsumption: Math.round(creditConsumption * 10) / 10,
+        overdueRate: tasks.length > 0 ? Math.round((overdue.length / tasks.length) * 100) : 0,
+        byAssignee: Object.values(byAssignee).sort((a, b) => b.assigned - a.assigned),
+        byCompany: Object.values(byCompany).sort((a, b) => b.total - a.total),
+        byCategory: Object.values(byCategory).sort((a, b) => b.count - a.count),
+        weeklyTimeSeries,
+        dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] },
+      });
+    } catch (e) {
+      console.error("Tasks report error:", e);
+      res.status(500).json({ error: "Failed to generate tasks report" });
+    }
+  });
+
+  app.get("/api/admin/reports/content", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+
+      const { from, to, preset = "month", companies: companiesParam, platforms: platformsParam, statuses: statusParam } = req.query as Record<string, string>;
+      const { start, end } = parseReportDateRange(from, to, preset);
+      const startStr = start.toISOString().split("T")[0];
+      const endStr = end.toISOString().split("T")[0];
+
+      const [allItems, allCompanies, allPillars] = await Promise.all([
+        storage.getContentCalendarItems({}),
+        storage.getAllCompanies(),
+        storage.getContentPillars(),
+      ]);
+
+      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
+      const platformFilter = platformsParam ? platformsParam.split(",").filter(Boolean) : [];
+      const statusFilter = statusParam ? statusParam.split(",").filter(Boolean) : [];
+
+      const items = allItems.filter(i => {
+        const d = (i.scheduledDate || i.createdAt || "").substring(0, 10);
+        if (d < startStr || d > endStr) return false;
+        if (companyFilter.length && !companyFilter.includes(i.companyId)) return false;
+        if (platformFilter.length && !platformFilter.includes(i.platform)) return false;
+        if (statusFilter.length && !statusFilter.includes(i.status)) return false;
+        return true;
+      });
+
+      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
+      const pillarMap = new Map(allPillars.map(p => [p.id, p]));
+
+      const byStatus: Record<string, number> = {};
+      const byPlatform: Record<string, number> = {};
+      const byPillar: Record<string, { name: string; count: number }> = {};
+      const gbpByType: Record<string, number> = {};
+
+      for (const item of items) {
+        byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+        byPlatform[item.platform] = (byPlatform[item.platform] || 0) + 1;
+        const pillarId = item.pillarId || "none";
+        const pillarName = pillarId === "none" ? "No Pillar" : (pillarMap.get(pillarId)?.name || pillarId);
+        if (!byPillar[pillarId]) byPillar[pillarId] = { name: pillarName, count: 0 };
+        byPillar[pillarId].count++;
+        if (item.platform === "google_business" && item.gbpPostType) {
+          gbpByType[item.gbpPostType] = (gbpByType[item.gbpPostType] || 0) + 1;
+        }
+      }
+
+      // Posts per day/week average
+      const dayRange = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+      const avgPerDay = Math.round((items.length / dayRange) * 10) / 10;
+      const avgPerWeek = Math.round((items.length / (dayRange / 7)) * 10) / 10;
+
+      res.json({
+        total: items.length,
+        byStatus,
+        byPlatform,
+        byPillar: Object.values(byPillar).sort((a, b) => b.count - a.count),
+        gbpByType,
+        avgPerDay,
+        avgPerWeek,
+        dateRange: { from: startStr, to: endStr },
+      });
+    } catch (e) {
+      console.error("Content report error:", e);
+      res.status(500).json({ error: "Failed to generate content report" });
+    }
+  });
+
+  app.get("/api/admin/reports/companies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+
+      const { from, to, preset = "month" } = req.query as Record<string, string>;
+      const { start, end } = parseReportDateRange(from, to, preset);
+      const startStr = start.toISOString();
+      const endStr = end.toISOString();
+
+      const [allCompanies, allTasks, allTransactions] = await Promise.all([
+        storage.getAllCompanies(),
+        storage.getAllTasks(),
+        storage.getAllCreditTransactions(),
+      ]);
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+
+      const scorecard = allCompanies.map(company => {
+        const tasks = allTasks.filter(t => t.companyId === company.id && t.createdAt >= startStr && t.createdAt <= endStr);
+        const completed = tasks.filter(t => t.status === "completed").length;
+        const overdue = tasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today).length;
+        const txns = allTransactions.filter(t => t.companyId === company.id && t.createdAt >= startStr && t.createdAt <= endStr);
+        const creditsUsed = txns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+
+        return {
+          id: company.id,
+          name: company.name,
+          subscriptionTier: company.subscriptionTier,
+          onboardingComplete: company.onboardingComplete,
+          hubspotConnected: !!company.hubspotCompanyId,
+          tasksCreated: tasks.length,
+          completed,
+          overdue,
+          creditsUsed: Math.round(creditsUsed * 10) / 10,
+        };
+      }).sort((a, b) => b.tasksCreated - a.tasksCreated);
+
+      res.json({ scorecard, dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] } });
+    } catch (e) {
+      console.error("Companies report error:", e);
+      res.status(500).json({ error: "Failed to generate companies report" });
+    }
+  });
+
+  app.get("/api/admin/reports/credits", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+
+      const { from, to, preset = "month", companies: companiesParam } = req.query as Record<string, string>;
+      const { start, end } = parseReportDateRange(from, to, preset);
+      const startStr = start.toISOString();
+      const endStr = end.toISOString();
+
+      const [allTransactions, allCompanies] = await Promise.all([
+        storage.getAllCreditTransactions(),
+        storage.getAllCompanies(),
+      ]);
+
+      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
+      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
+
+      const txns = allTransactions.filter(t => {
+        if (t.createdAt < startStr || t.createdAt > endStr) return false;
+        if (companyFilter.length && !companyFilter.includes(t.companyId)) return false;
+        return true;
+      });
+
+      const totalDebited = txns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
+      const totalCredited = txns.filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
+
+      const byType: Record<string, number> = {};
+      const byCompany: Record<string, { name: string; debited: number; credited: number; count: number }> = {};
+
+      for (const t of txns) {
+        byType[t.type] = (byType[t.type] || 0) + Math.abs(parseFloat(t.amount));
+        const cid = t.companyId;
+        if (!byCompany[cid]) byCompany[cid] = { name: companyMap.get(cid)?.name || cid, debited: 0, credited: 0, count: 0 };
+        byCompany[cid].count++;
+        if (parseFloat(t.amount) < 0) byCompany[cid].debited += Math.abs(parseFloat(t.amount));
+        else byCompany[cid].credited += parseFloat(t.amount);
+      }
+
+      const weeklyMap: Record<string, { debited: number; credited: number }> = {};
+      for (const t of txns) {
+        const d = new Date(t.createdAt);
+        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay()); weekStart.setHours(0, 0, 0, 0);
+        const key = weekStart.toISOString().split("T")[0];
+        if (!weeklyMap[key]) weeklyMap[key] = { debited: 0, credited: 0 };
+        if (parseFloat(t.amount) < 0) weeklyMap[key].debited += Math.abs(parseFloat(t.amount));
+        else weeklyMap[key].credited += parseFloat(t.amount);
+      }
+      const weeklyTimeSeries = Object.entries(weeklyMap).sort(([a], [b]) => a.localeCompare(b)).map(([week, v]) => ({ week, ...v }));
+
+      res.json({
+        total: txns.length,
+        totalDebited: Math.round(totalDebited * 10) / 10,
+        totalCredited: Math.round(totalCredited * 10) / 10,
+        net: Math.round((totalCredited - totalDebited) * 10) / 10,
+        byType: Object.entries(byType).map(([type, amount]) => ({ type, amount: Math.round(amount * 10) / 10 })).sort((a, b) => b.amount - a.amount),
+        byCompany: Object.values(byCompany).sort((a, b) => b.debited - a.debited),
+        weeklyTimeSeries,
+        dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] },
+      });
+    } catch (e) {
+      console.error("Credits report error:", e);
+      res.status(500).json({ error: "Failed to generate credits report" });
+    }
+  });
+
+  // Report Presets CRUD
+  app.get("/api/admin/report-presets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const presets = await storage.getReportPresets();
+      res.json(presets);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to get report presets" });
+    }
+  });
+
+  app.post("/api/admin/report-presets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const { name, reportType, filters, scheduledFrequency, scheduledEmails } = req.body;
+      if (!name || !reportType || !filters) return res.status(400).json({ error: "name, reportType, and filters are required" });
+      const preset = await storage.createReportPreset({ name, reportType, filters: JSON.stringify(filters), createdBy: currentUserId, scheduledFrequency: scheduledFrequency || null, scheduledEmails: scheduledEmails || null, scheduledNextRun: null });
+      res.json(preset);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create report preset" });
+    }
+  });
+
+  app.patch("/api/admin/report-presets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      const preset = await storage.updateReportPreset(String(req.params.id), req.body);
+      if (!preset) return res.status(404).json({ error: "Preset not found" });
+      res.json(preset);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update report preset" });
+    }
+  });
+
+  app.delete("/api/admin/report-presets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteReportPreset(String(req.params.id));
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete report preset" });
+    }
+  });
+
   // ── Content Calendar ──────────────────────────────────────────────────────
 
   // Content Pillars
