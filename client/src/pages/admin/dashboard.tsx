@@ -29,6 +29,7 @@ import {
   Wifi,
   WifiOff,
   TrendingUp,
+  ArrowRight,
 } from "lucide-react";
 import type { Company, Task } from "@shared/schema";
 
@@ -406,57 +407,62 @@ export default function AdminDashboard() {
         {/* ── Section 4: Alert Cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Link href="/admin/tasks?filter=overdue" data-testid="alert-overdue">
-            <Card className={`cursor-pointer hover:shadow-md transition-shadow ${overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}>
+            <Card className={`cursor-pointer hover:shadow-md hover:border-primary/30 transition-all ${overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}>
               <CardContent className="p-3 flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className={`text-xl font-bold font-mono ${overdueCount > 0 ? "text-destructive" : "text-muted-foreground"}`}>{tasksLoading ? "…" : overdueCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Overdue Tasks</p>
                 </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/tasks?filter=today" data-testid="alert-due-today">
-            <Card className={`cursor-pointer hover:shadow-md transition-shadow ${dueTodayCount > 0 ? "border-orange-400/40 bg-orange-50 dark:bg-orange-950/20" : ""}`}>
+          <Link href="/admin/tasks?filter=due_today" data-testid="alert-due-today">
+            <Card className={`cursor-pointer hover:shadow-md hover:border-primary/30 transition-all ${dueTodayCount > 0 ? "border-orange-400/40 bg-orange-50 dark:bg-orange-950/20" : ""}`}>
               <CardContent className="p-3 flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-yellow-400 flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className={`text-xl font-bold font-mono ${dueTodayCount > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>{tasksLoading ? "…" : dueTodayCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Due Today</p>
                 </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/tasks?status=review" data-testid="alert-awaiting-client">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+          <Link href="/admin/tasks?filter=awaiting_client" data-testid="alert-awaiting-client">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all">
               <CardContent className="p-3 flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-orange-400 flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : awaitingClientCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Awaiting Client</p>
                 </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/tasks?status=approved" data-testid="alert-pending-approval">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+          <Link href="/admin/tasks?filter=pending_approval" data-testid="alert-pending-approval">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all">
               <CardContent className="p-3 flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : pendingApprovalCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Pending Approval</p>
                 </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
               </CardContent>
             </Card>
           </Link>
-          <Link href="/admin/tasks" data-testid="alert-no-pillar">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+          <Link href="/admin/tasks?filter=no_category" data-testid="alert-no-pillar">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all">
               <CardContent className="p-3 flex items-center gap-2">
                 <span className="w-4 h-4 rounded-full bg-gray-800 dark:bg-gray-200 flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : noPillarCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">No Category</p>
                 </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
               </CardContent>
             </Card>
           </Link>
@@ -464,50 +470,62 @@ export default function AdminDashboard() {
 
         {/* ── Quick Stats ── */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Companies</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {companiesLoading ? <Skeleton className="h-8 w-16" /> : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-companies">{companies?.length || 0}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-              <ListTodo className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-pending">{pendingTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-in-progress">{inProgressTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Urgent</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
-                <div className="text-2xl font-bold font-mono text-destructive" data-testid="stat-urgent">{urgentTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
+          <Link href="/admin/companies" data-testid="stat-card-companies">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all h-full">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Companies</CardTitle>
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="flex items-end justify-between">
+                {companiesLoading ? <Skeleton className="h-8 w-16" /> : (
+                  <div className="text-2xl font-bold font-mono" data-testid="stat-companies">{companies?.length || 0}</div>
+                )}
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40 mb-0.5" />
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/tasks?filter=pending" data-testid="stat-card-pending">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all h-full">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
+                <ListTodo className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="flex items-end justify-between">
+                {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
+                  <div className="text-2xl font-bold font-mono" data-testid="stat-pending">{pendingTasks.length}</div>
+                )}
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40 mb-0.5" />
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/tasks?filter=in_progress" data-testid="stat-card-in-progress">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all h-full">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="flex items-end justify-between">
+                {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
+                  <div className="text-2xl font-bold font-mono" data-testid="stat-in-progress">{inProgressTasks.length}</div>
+                )}
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40 mb-0.5" />
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/admin/tasks?filter=urgent" data-testid="stat-card-urgent">
+            <Card className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all h-full">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Urgent</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+              </CardHeader>
+              <CardContent className="flex items-end justify-between">
+                {tasksLoading ? <Skeleton className="h-8 w-16" /> : (
+                  <div className="text-2xl font-bold font-mono text-destructive" data-testid="stat-urgent">{urgentTasks.length}</div>
+                )}
+                <ArrowRight className="h-4 w-4 text-muted-foreground/40 mb-0.5" />
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* ── Main Tabs ── */}

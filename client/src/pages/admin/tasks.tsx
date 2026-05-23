@@ -29,10 +29,23 @@ import {
   List,
   LayoutGrid,
   Kanban,
+  ArrowRight,
+  X,
 } from "lucide-react";
+
+const QUICK_FILTER_LABELS: Record<string, string> = {
+  overdue:         "Overdue Tasks",
+  due_today:       "Due Today",
+  awaiting_client: "Awaiting Client",
+  pending_approval:"Pending Approval",
+  no_category:     "No Category",
+  pending:         "Pending Tasks",
+  in_progress:     "In Progress Tasks",
+  urgent:          "Urgent Tasks",
+};
 import { TaskBoardView } from "@/components/task-board-view";
 import { TaskGroupedView } from "@/components/task-grouped-view";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Company, Task, CampaignRequest } from "@shared/schema";
@@ -59,6 +72,11 @@ export default function AdminTasks() {
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignRequest | null>(null);
   const TASKS_PER_PAGE = 10;
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const activeQuickFilter = (() => {
+    const p = new URLSearchParams(searchString).get("filter");
+    return p && p in QUICK_FILTER_LABELS ? p : null;
+  })();
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -212,7 +230,42 @@ export default function AdminTasks() {
 
   const filteredTasks = useMemo(() => {
     if (!allTasks) return [];
-    
+
+    // Quick filter from dashboard KPI cards — bypasses month window, shows all matching tasks
+    if (activeQuickFilter) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      let tasks = allTasks.filter(t => {
+        if (t.status === "cadence_parent") return false;
+        if (activeQuickFilter === "overdue") {
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+          return d < today;
+        }
+        if (activeQuickFilter === "due_today") {
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+          return d.getTime() === today.getTime();
+        }
+        if (activeQuickFilter === "awaiting_client") return t.status === "review";
+        if (activeQuickFilter === "pending_approval") return t.approvalStatus === "pending_approval" || t.status === "approved";
+        if (activeQuickFilter === "no_category") return !(t as any).categoryId && !["completed", "rejected", "cancelled"].includes(t.status);
+        if (activeQuickFilter === "pending") return t.status === "pending";
+        if (activeQuickFilter === "in_progress") return t.status === "in_progress";
+        if (activeQuickFilter === "urgent") return (t.priority === "urgent" || t.priority === "high") && t.status !== "completed";
+        return true;
+      });
+      if (assignmentFilter === "assigned_to_me" && user) tasks = tasks.filter(t => t.assignedTo === user.id);
+      if (selectedCompany !== "all") tasks = tasks.filter(t => t.companyId === selectedCompany);
+      tasks.sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
+      });
+      return tasks;
+    }
+
+    // Normal filtering (with month window)
     let tasks = allTasks.filter(t => t.status !== "cadence_parent");
     
     if (assignmentFilter === "assigned_to_me" && user) {
@@ -255,7 +308,7 @@ export default function AdminTasks() {
     });
     
     return tasks;
-  }, [allTasks, selectedCompany, statusFilter, taskMonthDate, assignmentFilter, user]);
+  }, [allTasks, selectedCompany, statusFilter, taskMonthDate, assignmentFilter, user, activeQuickFilter]);
 
   // Reset page when filters change
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
@@ -437,11 +490,28 @@ export default function AdminTasks() {
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
+        {/* Quick-filter banner */}
+        {activeQuickFilter && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-lg text-sm" data-testid="filter-banner">
+            <span className="font-medium text-primary">{QUICK_FILTER_LABELS[activeQuickFilter]}</span>
+            <span className="text-muted-foreground">— {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}</span>
+            <Link
+              href="/admin/tasks"
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-clear-filter"
+            >
+              <X className="h-3 w-3" />
+              Clear filter
+            </Link>
+          </div>
+        )}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">All Tasks</h1>
+            <h1 className="text-2xl font-semibold">
+              {activeQuickFilter ? QUICK_FILTER_LABELS[activeQuickFilter] : "All Tasks"}
+            </h1>
             <p className="text-muted-foreground">
-              Manage and track all tasks across companies
+              {activeQuickFilter ? `${filteredTasks.length} task${filteredTasks.length !== 1 ? "s" : ""} matched` : "Manage and track all tasks across companies"}
             </p>
           </div>
           <div className="flex items-center gap-3">
