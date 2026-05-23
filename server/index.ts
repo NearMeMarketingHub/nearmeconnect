@@ -376,4 +376,8 @@ async function seedDatabase() {
   // Monthly report scheduler - sends reports on 1st of each month at 8 AM ET
   const { setupMonthlyReportScheduler } = await import("./monthly-report");
   await setupMonthlyReportScheduler();
+
+  // HubSpot OAuth scheduler - nightly sync + token refresh every 6 hours
+  const { setupHubSpotScheduler } = await import("./hubspot-scheduler");
+  await setupHubSpotScheduler();
 })();

@@ -1,0 +1,73 @@
+3. Run the Database Migration
+After Replit writes the migration file, you need to run it manually against your live database:
+bash
+
+# In Replit Shell tab:
+psql $DATABASE_URL -f migrations/marketing_hub_migration.sql
+Then verify all 9 new tables exist:
+
+bash
+
+psql $DATABASE_URL -c "\dt" | grep -E "brand_profiles|content_pillars|content_calendar|content_assets|ai_prompt|hubspot_connections|hubspot_onboarding|hubspot_workflow|company_workflows"
+🌱 4. Seed the Workflow Library
+The 100 HubSpot workflows need to be seeded into the database. Tell Replit:
+
+"Create a seed script at scripts/seed-workflows.js that inserts all 100 workflow templates from Prompt 10 into the hubspot_workflow_templates table. Include a check so it only runs if the table is empty (idempotent). Then run it."
+Then execute:
+
+bash
+
+node scripts/seed-workflows.js
+Same for AI prompt templates — tell Replit:
+
+"Create scripts/seed-ai-templates.js with starter templates for each content_goal type and run it."
+🔑 5. Register Your App With Each Client's HubSpot
+For each existing client company in your portal:
+Go to that company's profile page
+Click "Connect HubSpot" button
+You'll be redirected to HubSpot to authorize — log in as that client's HubSpot admin (or use your agency's access)
+Grant the permissions
+Connection saves to hubspot_connections table automatically
+Click "Sync Now" to pull their initial data
+💡 You can do this for your own Near Me Marketing HubSpot first as a test before doing it for clients.
+
+🗂️ 6. Backfill Existing Task Data
+After implementation, run these one-time cleanup queries:
+
+sql
+
+-- Populate assigned_to_name on all existing tasks that have it blank
+UPDATE public.tasks t
+SET assigned_to_name = u.first_name || ' ' || u.last_name
+FROM public.users u
+WHERE t.assigned_to = u.id
+AND (t.assigned_to_name IS NULL OR t.assigned_to_name = '');
+
+-- Confirm how many tasks got updated
+SELECT COUNT(*) FROM public.tasks WHERE assigned_to_name IS NOT NULL;
+Tell Replit to add this as a migration script too so it runs once on deploy.
+
+🧭 7. Navigation Updates
+Tell Replit after everything is built:
+
+"Add the following routes to the main sidebar navigation. Only show them to users with admin or agency roles:
+Content Calendar → /content-calendar
+Strategy Board → visible per-company as a tab
+Workflows → /admin/workflow-library
+AI Brief → visible per-company
+Reports → /reports with the new custom date range version
+HubSpot Onboarding → visible per-company as a tab"
+🔒 8. Update Role Permissions
+Your existing custom_roles table controls what views users can access. Tell Replit:
+"Update the allowed_views array for existing role types to include the new views:
+Admin role: add 'content-calendar', 'workflow-library', 'ai-brief', 'strategy', 'reports', 'hubspot-onboarding', 'admin-dashboard'
+Team member role: add 'content-calendar', 'ai-brief', 'strategy'
+Client role: add 'content-calendar' (read-only), 'strategy' (read-only)"
+⏰ 9. Set Up Scheduled Jobs
+HubSpot sync and reports need to run on a schedule. Tell Replit:
+
+"Set up the following cron jobs using node-cron or your existing scheduler:
+Every night at 2am: run syncAllHubSpotConnections() to refresh all company data
+Every Sunday at 6am: run weeklyKPIEmailJob() to send weekly summaries
+1st of each month at 7am: run monthlyReportJob() for all active companies
+Every 6 hours: refresh any HubSpot OAuth tokens expiring within 24 hours"

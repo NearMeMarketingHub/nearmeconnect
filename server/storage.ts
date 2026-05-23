@@ -502,6 +502,7 @@ export interface IStorage {
 
   // HubSpot OAuth connections
   getHubspotConnection(companyId: string): Promise<HubspotConnection | undefined>;
+  getAllActiveHubspotConnections(): Promise<HubspotConnection[]>;
   upsertHubspotConnection(data: Omit<HubspotConnection, "id">): Promise<HubspotConnection>;
   updateHubspotConnection(companyId: string, data: Partial<HubspotConnection>): Promise<void>;
   updateTaskHubspotId(taskId: string, hubspotTaskId: string): Promise<void>;
@@ -2773,6 +2774,11 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return conn;
+  }
+
+  async getAllActiveHubspotConnections(): Promise<HubspotConnection[]> {
+    return db.select().from(hubspotConnections)
+      .where(eq(hubspotConnections.isActive, true));
   }
 
   async updateHubspotConnection(companyId: string, data: Partial<HubspotConnection>): Promise<void> {
