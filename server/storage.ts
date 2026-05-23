@@ -190,6 +190,24 @@ import {
   companyWorkflows,
   type CompanyWorkflow,
   type InsertCompanyWorkflow,
+  notepads,
+  type Notepad,
+  type InsertNotepad,
+  messageBoardPosts,
+  type MessageBoardPost,
+  type InsertMessageBoardPost,
+  messageBoardReplies,
+  type MessageBoardReply,
+  type InsertMessageBoardReply,
+  checkinQuestions,
+  type CheckinQuestion,
+  type InsertCheckinQuestion,
+  checkinResponses,
+  type CheckinResponse,
+  type InsertCheckinResponse,
+  hillCharts,
+  type HillChart,
+  type InsertHillChart,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -374,6 +392,41 @@ export interface IStorage {
   // Chat Mentions
   getChatMentions(messageId: string): Promise<ChatMention[]>;
   createChatMention(mention: InsertChatMention): Promise<ChatMention>;
+
+  // Notepads
+  getNotepads(companyId: string): Promise<Notepad[]>;
+  getNotepad(id: string): Promise<Notepad | undefined>;
+  createNotepad(data: InsertNotepad): Promise<Notepad>;
+  updateNotepad(id: string, data: Partial<InsertNotepad>): Promise<Notepad | undefined>;
+  deleteNotepad(id: string): Promise<void>;
+
+  // Message Board
+  getMessageBoardPosts(companyId: string): Promise<MessageBoardPost[]>;
+  getMessageBoardPost(id: string): Promise<MessageBoardPost | undefined>;
+  createMessageBoardPost(data: InsertMessageBoardPost): Promise<MessageBoardPost>;
+  updateMessageBoardPost(id: string, data: Partial<InsertMessageBoardPost>): Promise<MessageBoardPost | undefined>;
+  deleteMessageBoardPost(id: string): Promise<void>;
+  getMessageBoardReplies(postId: string): Promise<MessageBoardReply[]>;
+  createMessageBoardReply(data: InsertMessageBoardReply): Promise<MessageBoardReply>;
+  deleteMessageBoardReply(id: string): Promise<void>;
+  incrementReplyCount(postId: string): Promise<void>;
+
+  // Check-ins
+  getCheckinQuestions(): Promise<CheckinQuestion[]>;
+  getCheckinQuestion(id: string): Promise<CheckinQuestion | undefined>;
+  createCheckinQuestion(data: InsertCheckinQuestion): Promise<CheckinQuestion>;
+  updateCheckinQuestion(id: string, data: Partial<InsertCheckinQuestion>): Promise<CheckinQuestion | undefined>;
+  deleteCheckinQuestion(id: string): Promise<void>;
+  getCheckinResponses(questionId: string): Promise<CheckinResponse[]>;
+  createCheckinResponse(data: InsertCheckinResponse): Promise<CheckinResponse>;
+  getUserCheckinResponse(questionId: string, responderId: string): Promise<CheckinResponse | undefined>;
+
+  // Hill Charts
+  getHillCharts(companyId: string): Promise<HillChart[]>;
+  getHillChart(id: string): Promise<HillChart | undefined>;
+  createHillChart(data: InsertHillChart): Promise<HillChart>;
+  updateHillChart(id: string, data: Partial<InsertHillChart>): Promise<HillChart | undefined>;
+  deleteHillChart(id: string): Promise<void>;
 
   // Sandbox methods
   createCompanyWithId(id: string, company: InsertCompany): Promise<Company>;
@@ -3047,6 +3100,153 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompanyWorkflow(id: string): Promise<void> {
     await db.delete(companyWorkflows).where(eq(companyWorkflows.id, id));
+  }
+
+  // ── Notepads ────────────────────────────────────────────────────────────────
+
+  async getNotepads(companyId: string): Promise<Notepad[]> {
+    return db.select().from(notepads).where(eq(notepads.companyId, companyId)).orderBy(notepads.createdAt);
+  }
+
+  async getNotepad(id: string): Promise<Notepad | undefined> {
+    const [row] = await db.select().from(notepads).where(eq(notepads.id, id));
+    return row;
+  }
+
+  async createNotepad(data: InsertNotepad): Promise<Notepad> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(notepads).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateNotepad(id: string, data: Partial<InsertNotepad>): Promise<Notepad | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(notepads).set({ ...data, updatedAt: now }).where(eq(notepads.id, id)).returning();
+    return row;
+  }
+
+  async deleteNotepad(id: string): Promise<void> {
+    await db.delete(notepads).where(eq(notepads.id, id));
+  }
+
+  // ── Message Board ────────────────────────────────────────────────────────────
+
+  async getMessageBoardPosts(companyId: string): Promise<MessageBoardPost[]> {
+    return db.select().from(messageBoardPosts).where(eq(messageBoardPosts.companyId, companyId)).orderBy(messageBoardPosts.createdAt);
+  }
+
+  async getMessageBoardPost(id: string): Promise<MessageBoardPost | undefined> {
+    const [row] = await db.select().from(messageBoardPosts).where(eq(messageBoardPosts.id, id));
+    return row;
+  }
+
+  async createMessageBoardPost(data: InsertMessageBoardPost): Promise<MessageBoardPost> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(messageBoardPosts).values({ ...data, replyCount: 0, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateMessageBoardPost(id: string, data: Partial<InsertMessageBoardPost>): Promise<MessageBoardPost | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(messageBoardPosts).set({ ...data, updatedAt: now }).where(eq(messageBoardPosts.id, id)).returning();
+    return row;
+  }
+
+  async deleteMessageBoardPost(id: string): Promise<void> {
+    await db.delete(messageBoardReplies).where(eq(messageBoardReplies.postId, id));
+    await db.delete(messageBoardPosts).where(eq(messageBoardPosts.id, id));
+  }
+
+  async getMessageBoardReplies(postId: string): Promise<MessageBoardReply[]> {
+    return db.select().from(messageBoardReplies).where(eq(messageBoardReplies.postId, postId)).orderBy(messageBoardReplies.createdAt);
+  }
+
+  async createMessageBoardReply(data: InsertMessageBoardReply): Promise<MessageBoardReply> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(messageBoardReplies).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async deleteMessageBoardReply(id: string): Promise<void> {
+    await db.delete(messageBoardReplies).where(eq(messageBoardReplies.id, id));
+  }
+
+  async incrementReplyCount(postId: string): Promise<void> {
+    const [post] = await db.select().from(messageBoardPosts).where(eq(messageBoardPosts.id, postId));
+    if (post) {
+      await db.update(messageBoardPosts).set({ replyCount: (post.replyCount ?? 0) + 1 }).where(eq(messageBoardPosts.id, postId));
+    }
+  }
+
+  // ── Check-ins ────────────────────────────────────────────────────────────────
+
+  async getCheckinQuestions(): Promise<CheckinQuestion[]> {
+    return db.select().from(checkinQuestions).orderBy(checkinQuestions.createdAt);
+  }
+
+  async getCheckinQuestion(id: string): Promise<CheckinQuestion | undefined> {
+    const [row] = await db.select().from(checkinQuestions).where(eq(checkinQuestions.id, id));
+    return row;
+  }
+
+  async createCheckinQuestion(data: InsertCheckinQuestion): Promise<CheckinQuestion> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(checkinQuestions).values({ ...data, createdAt: now }).returning();
+    return row;
+  }
+
+  async updateCheckinQuestion(id: string, data: Partial<InsertCheckinQuestion>): Promise<CheckinQuestion | undefined> {
+    const [row] = await db.update(checkinQuestions).set(data).where(eq(checkinQuestions.id, id)).returning();
+    return row;
+  }
+
+  async deleteCheckinQuestion(id: string): Promise<void> {
+    await db.delete(checkinResponses).where(eq(checkinResponses.questionId, id));
+    await db.delete(checkinQuestions).where(eq(checkinQuestions.id, id));
+  }
+
+  async getCheckinResponses(questionId: string): Promise<CheckinResponse[]> {
+    return db.select().from(checkinResponses).where(eq(checkinResponses.questionId, questionId)).orderBy(checkinResponses.respondedAt);
+  }
+
+  async createCheckinResponse(data: InsertCheckinResponse): Promise<CheckinResponse> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(checkinResponses).values({ ...data, createdAt: now }).returning();
+    return row;
+  }
+
+  async getUserCheckinResponse(questionId: string, responderId: string): Promise<CheckinResponse | undefined> {
+    const [row] = await db.select().from(checkinResponses)
+      .where(eq(checkinResponses.questionId, questionId))
+      .orderBy(checkinResponses.respondedAt);
+    return row?.responderId === responderId ? row : undefined;
+  }
+
+  // ── Hill Charts ──────────────────────────────────────────────────────────────
+
+  async getHillCharts(companyId: string): Promise<HillChart[]> {
+    return db.select().from(hillCharts).where(eq(hillCharts.companyId, companyId)).orderBy(hillCharts.createdAt);
+  }
+
+  async getHillChart(id: string): Promise<HillChart | undefined> {
+    const [row] = await db.select().from(hillCharts).where(eq(hillCharts.id, id));
+    return row;
+  }
+
+  async createHillChart(data: InsertHillChart): Promise<HillChart> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(hillCharts).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateHillChart(id: string, data: Partial<InsertHillChart>): Promise<HillChart | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(hillCharts).set({ ...data, updatedAt: now }).where(eq(hillCharts.id, id)).returning();
+    return row;
+  }
+
+  async deleteHillChart(id: string): Promise<void> {
+    await db.delete(hillCharts).where(eq(hillCharts.id, id));
   }
 }
 

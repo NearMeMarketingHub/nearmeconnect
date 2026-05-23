@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -11444,5 +11444,237 @@ export async function registerRoutes(
     } catch (e) { res.status(500).json({ error: "Failed to remove workflow assignment" }); }
   });
 
+  // ── Notepads ──────────────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/notepads", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const notes = await storage.getNotepads(req.params.companyId as string);
+      res.json(notes);
+    } catch { res.status(500).json({ error: "Failed to fetch notepads" }); }
+  });
+
+  app.post("/api/companies/:companyId/notepads", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const data = insertNotepadSchema.parse({ ...req.body, companyId: req.params.companyId as string });
+      const note = await storage.createNotepad(data);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
+      res.json(note);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.patch("/api/companies/:companyId/notepads/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const note = await storage.updateNotepad(req.params.id as string, req.body);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
+      res.json(note);
+    } catch { res.status(500).json({ error: "Failed to update notepad" }); }
+  });
+
+  app.delete("/api/companies/:companyId/notepads/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      await storage.deleteNotepad(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete notepad" }); }
+  });
+
+  // ── Message Board ──────────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/message-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const posts = await storage.getMessageBoardPosts(req.params.companyId as string);
+      res.json(posts);
+    } catch { res.status(500).json({ error: "Failed to fetch posts" }); }
+  });
+
+  app.post("/api/companies/:companyId/message-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const data = insertMessageBoardPostSchema.parse({ ...req.body, companyId });
+      const post = await storage.createMessageBoardPost(data);
+      // Notify all company members
+      const members = await storage.getCompanyMembers(companyId);
+      for (const m of members) {
+        if (m.userId !== post.postedBy) {
+          await createAndBroadcastNotification({
+            userId: m.userId, type: "message_board",
+            title: "New Board Post",
+            message: `${post.postedByName} posted: ${post.title}`,
+            link: `/admin/companies/${companyId}?tab=communicate&sub=board&post=${post.id}`,
+          });
+        }
+      }
+      broadcastInvalidation([`/api/companies/${companyId}/message-board`]);
+      res.json(post);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.patch("/api/companies/:companyId/message-board/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const post = await storage.updateMessageBoardPost(req.params.id as string, req.body);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
+      res.json(post);
+    } catch { res.status(500).json({ error: "Failed to update post" }); }
+  });
+
+  app.delete("/api/companies/:companyId/message-board/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      await storage.deleteMessageBoardPost(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete post" }); }
+  });
+
+  app.get("/api/companies/:companyId/message-board/:postId/replies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const replies = await storage.getMessageBoardReplies(req.params.postId as string);
+      res.json(replies);
+    } catch { res.status(500).json({ error: "Failed to fetch replies" }); }
+  });
+
+  app.post("/api/companies/:companyId/message-board/:postId/replies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const postId = req.params.postId as string;
+      const data = insertMessageBoardReplySchema.parse({ ...req.body, postId, companyId });
+      const reply = await storage.createMessageBoardReply(data);
+      await storage.incrementReplyCount(postId);
+      // Notify post author + previous repliers
+      const post = await storage.getMessageBoardPost(postId);
+      const prevReplies = await storage.getMessageBoardReplies(postId);
+      const notifySet = new Set<string>();
+      if (post && post.postedBy !== reply.postedBy) notifySet.add(post.postedBy);
+      prevReplies.forEach(r => { if (r.postedBy !== reply.postedBy && r.id !== reply.id) notifySet.add(r.postedBy); });
+      for (const uid of notifySet) {
+        await createAndBroadcastNotification({
+          userId: uid, type: "message_board",
+          title: "New Reply",
+          message: `${reply.postedByName} replied to "${post?.title ?? "a post"}"`,
+          link: `/admin/companies/${companyId}?tab=communicate&sub=board&post=${postId}`,
+        });
+      }
+      broadcastInvalidation([`/api/companies/${companyId}/message-board`, `/api/companies/${companyId}/message-board/${postId}/replies`]);
+      res.json(reply);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.delete("/api/companies/:companyId/message-board/replies/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      await storage.deleteMessageBoardReply(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete reply" }); }
+  });
+
+  // ── Check-ins ──────────────────────────────────────────────────────────────
+
+  app.get("/api/check-ins", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Seed defaults if table empty
+      const existing = await storage.getCheckinQuestions();
+      if (existing.length === 0) {
+        const adminId = req.user!.id;
+        const now = new Date().toISOString();
+        const defaults = [
+          { question: "What did you complete for clients this week?", frequency: "weekly", scheduledDays: ["Friday"], scheduledTime: "09:00", recipientType: "all_agency" },
+          { question: "Any blockers or things you need help with?", frequency: "weekly", scheduledDays: ["Monday"], scheduledTime: "09:00", recipientType: "all_agency" },
+          { question: "What content is ready to publish this week?", frequency: "weekly", scheduledDays: ["Monday"], scheduledTime: "09:00", recipientType: "all_agency" },
+        ];
+        for (const d of defaults) await storage.createCheckinQuestion({ ...d, isActive: true, createdBy: adminId, createdAt: now } as any);
+      }
+      const questions = await storage.getCheckinQuestions();
+      res.json(questions);
+    } catch { res.status(500).json({ error: "Failed to fetch check-ins" }); }
+  });
+
+  app.post("/api/check-ins", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const data = { ...req.body, createdBy: req.user!.id };
+      const q = await storage.createCheckinQuestion(data);
+      broadcastInvalidation(["/api/check-ins"]);
+      res.json(q);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.patch("/api/check-ins/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const q = await storage.updateCheckinQuestion(req.params.id as string, req.body);
+      broadcastInvalidation(["/api/check-ins"]);
+      res.json(q);
+    } catch { res.status(500).json({ error: "Failed to update check-in" }); }
+  });
+
+  app.delete("/api/check-ins/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      await storage.deleteCheckinQuestion(req.params.id as string);
+      broadcastInvalidation(["/api/check-ins"]);
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete check-in" }); }
+  });
+
+  app.get("/api/check-ins/:id/responses", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const responses = await storage.getCheckinResponses(req.params.id as string);
+      res.json(responses);
+    } catch { res.status(500).json({ error: "Failed to fetch responses" }); }
+  });
+
+  app.post("/api/check-ins/:id/respond", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const now = new Date().toISOString();
+      const data = {
+        questionId: req.params.id as string,
+        responderId: req.user!.id,
+        responderName: req.body.responderName ?? "Unknown",
+        response: req.body.response,
+        sentAt: req.body.sentAt ?? now,
+        respondedAt: now,
+        createdAt: now,
+      };
+      const resp = await storage.createCheckinResponse(data as any);
+      broadcastInvalidation([`/api/check-ins/${req.params.id}/responses`]);
+      res.json(resp);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  // ── Hill Charts ────────────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/hill-charts", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const charts = await storage.getHillCharts(req.params.companyId as string);
+      res.json(charts);
+    } catch { res.status(500).json({ error: "Failed to fetch hill charts" }); }
+  });
+
+  app.post("/api/companies/:companyId/hill-charts", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const data = { ...req.body, companyId, createdBy: req.user!.id };
+      const chart = await storage.createHillChart(data);
+      broadcastInvalidation([`/api/companies/${companyId}/hill-charts`]);
+      res.json(chart);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.patch("/api/companies/:companyId/hill-charts/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const chart = await storage.updateHillChart(req.params.id as string, req.body);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/hill-charts`]);
+      res.json(chart);
+    } catch { res.status(500).json({ error: "Failed to update hill chart" }); }
+  });
+
+  app.delete("/api/companies/:companyId/hill-charts/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      await storage.deleteHillChart(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${req.params.companyId}/hill-charts`]);
+      res.json({ ok: true });
+    } catch { res.status(500).json({ error: "Failed to delete hill chart" }); }
+  });
+
   return httpServer;
 }
+

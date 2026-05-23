@@ -1672,3 +1672,109 @@ export const companyWorkflows = pgTable("company_workflows", {
 export const insertCompanyWorkflowSchema = createInsertSchema(companyWorkflows).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertCompanyWorkflow = z.infer<typeof insertCompanyWorkflowSchema>;
 export type CompanyWorkflow = typeof companyWorkflows.$inferSelect;
+
+// ── Notepads ──────────────────────────────────────────────────────────────────
+
+export const notepads = pgTable("notepads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull().default("Untitled Note"),
+  content: text("content"),
+  category: text("category").default("general"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  lastEditedBy: varchar("last_edited_by"),
+  lastEditedByName: text("last_edited_by_name"),
+  createdBy: varchar("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertNotepadSchema = createInsertSchema(notepads).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNotepad = z.infer<typeof insertNotepadSchema>;
+export type Notepad = typeof notepads.$inferSelect;
+
+// ── Message Board ─────────────────────────────────────────────────────────────
+
+export const messageBoardPosts = pgTable("message_board_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  category: text("category").default("general"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  isAnnouncement: boolean("is_announcement").notNull().default(false),
+  replyCount: integer("reply_count").notNull().default(0),
+  postedBy: varchar("posted_by").notNull(),
+  postedByName: text("posted_by_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertMessageBoardPostSchema = createInsertSchema(messageBoardPosts).omit({ id: true, createdAt: true, updatedAt: true, replyCount: true });
+export type InsertMessageBoardPost = z.infer<typeof insertMessageBoardPostSchema>;
+export type MessageBoardPost = typeof messageBoardPosts.$inferSelect;
+
+export const messageBoardReplies = pgTable("message_board_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  body: text("body").notNull(),
+  postedBy: varchar("posted_by").notNull(),
+  postedByName: text("posted_by_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertMessageBoardReplySchema = createInsertSchema(messageBoardReplies).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMessageBoardReply = z.infer<typeof insertMessageBoardReplySchema>;
+export type MessageBoardReply = typeof messageBoardReplies.$inferSelect;
+
+// ── Check-in Questions & Responses ────────────────────────────────────────────
+
+export const checkinQuestions = pgTable("checkin_questions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id"),
+  question: text("question").notNull(),
+  frequency: text("frequency").notNull(),
+  scheduledDays: text("scheduled_days").array(),
+  scheduledTime: text("scheduled_time").default("09:00"),
+  recipientIds: text("recipient_ids").array(),
+  recipientType: text("recipient_type").default("all_agency"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  nextSendAt: text("next_send_at"),
+  lastSentAt: text("last_sent_at"),
+  createdAt: text("created_at").notNull(),
+});
+export const insertCheckinQuestionSchema = createInsertSchema(checkinQuestions).omit({ id: true, createdAt: true });
+export type InsertCheckinQuestion = z.infer<typeof insertCheckinQuestionSchema>;
+export type CheckinQuestion = typeof checkinQuestions.$inferSelect;
+
+export const checkinResponses = pgTable("checkin_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull(),
+  companyId: varchar("company_id"),
+  responderId: varchar("responder_id").notNull(),
+  responderName: text("responder_name").notNull(),
+  response: text("response").notNull(),
+  sentAt: text("sent_at").notNull(),
+  respondedAt: text("responded_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+export const insertCheckinResponseSchema = createInsertSchema(checkinResponses).omit({ id: true, createdAt: true });
+export type InsertCheckinResponse = z.infer<typeof insertCheckinResponseSchema>;
+export type CheckinResponse = typeof checkinResponses.$inferSelect;
+
+// ── Hill Charts ───────────────────────────────────────────────────────────────
+
+export const hillCharts = pgTable("hill_charts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  items: text("items").notNull().default("[]"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertHillChartSchema = createInsertSchema(hillCharts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHillChart = z.infer<typeof insertHillChartSchema>;
+export type HillChart = typeof hillCharts.$inferSelect;

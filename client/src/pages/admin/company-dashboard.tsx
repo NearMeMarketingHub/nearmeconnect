@@ -111,6 +111,9 @@ import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import { MarketingHub } from "@/components/marketing-hub";
 import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
+import { NotepadPanel } from "@/components/notepad-panel";
+import { MessageBoardPanel } from "@/components/message-board-panel";
+import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -412,16 +415,19 @@ export default function CompanyDashboard() {
       { key: "content-calendar", label: "Content Calendar" },
       { key: "calendar",         label: "Calendar" },
       { key: "cadences",         label: "Cadences" },
+      { key: "hill-chart",       label: "Hill Chart" },
     ], defaultSub: "tasks" },
     { key: "marketing",  label: "Marketing",  subTabs: [
       { key: "marketing",  label: "Marketing Hub" },
       { key: "onboarding", label: "Info Hub" },
       { key: "hubspot",    label: "HubSpot" },
       { key: "workflows",  label: "Workflows" },
+      { key: "notes",      label: "Notes" },
     ], defaultSub: "marketing" },
     { key: "communicate", label: "Communicate", subTabs: [
       { key: "chat",     label: "Chat" },
       { key: "meetings", label: "Meetings" },
+      { key: "board",    label: "Board" },
     ], defaultSub: "chat" },
     { key: "admin", label: "Admin", subTabs: [
       { key: "users",          label: "Users" },
@@ -433,8 +439,9 @@ export default function CompanyDashboard() {
   const TAB_TO_CATEGORY: Record<string, string> = {
     details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
     calendar: "work", cadences: "work", pending_approval: "work",
-    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing",
-    chat: "communicate", meetings: "communicate",
+    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing",
+    chat: "communicate", meetings: "communicate", board: "communicate",
+    "hill-chart": "work",
     users: "admin", "credit-history": "admin", reporting: "admin",
   };
 
@@ -443,6 +450,7 @@ export default function CompanyDashboard() {
   const urlTabParam = urlParams.get("tab");
   const urlSubParam  = urlParams.get("sub");
   const initialThread = urlParams.get("thread");
+  const initialPost = urlParams.get("post");
   const _initNav = (() => {
     const isCategory = urlTabParam ? NAV_GROUPS.some(g => g.key === urlTabParam) : false;
     if (urlTabParam && isCategory) {
@@ -3467,6 +3475,19 @@ export default function CompanyDashboard() {
             </div>
           </TabsContent>
 
+          {/* Board Tab */}
+          <TabsContent value="board" className="space-y-4">
+            {companyId && user && (
+              <MessageBoardPanel
+                companyId={companyId}
+                currentUserId={user.id}
+                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+                isAdmin={true}
+                initialPostId={initialPost}
+              />
+            )}
+          </TabsContent>
+
           {/* Chat Tab */}
           <TabsContent value="chat" className="space-y-4">
             {(() => {
@@ -4670,6 +4691,17 @@ export default function CompanyDashboard() {
             {companyId && <CompanyWorkflowsPanel companyId={companyId} />}
           </TabsContent>
 
+          {/* Notes Tab */}
+          <TabsContent value="notes" className="min-h-0">
+            {companyId && user && (
+              <NotepadPanel
+                companyId={companyId}
+                currentUserId={user.id}
+                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+              />
+            )}
+          </TabsContent>
+
           {/* Cadences Tab */}
           <TabsContent value="cadences" className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4738,6 +4770,16 @@ export default function CompanyDashboard() {
                   </Card>
                 ))}
               </div>
+            )}
+          </TabsContent>
+
+          {/* Hill Chart Tab */}
+          <TabsContent value="hill-chart" className="min-h-0">
+            {companyId && user && (
+              <HillChartPanel
+                companyId={companyId}
+                currentUserId={user.id}
+              />
             )}
           </TabsContent>
 

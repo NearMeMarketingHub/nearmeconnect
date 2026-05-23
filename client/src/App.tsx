@@ -48,6 +48,7 @@ import HubspotOnboarding from "@/pages/admin/hubspot-onboarding";
 import AiBriefPage from "@/pages/admin/ai-brief";
 import AdminAiTemplates from "@/pages/admin/ai-templates";
 import WorkflowLibraryPage from "@/pages/admin/workflow-library";
+import AdminCheckIns from "@/pages/admin/check-ins";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -191,6 +192,7 @@ function AppContent() {
         <Route path="/admin/ai-brief">{() => <ErrorBoundary showNav><AiBriefPage /></ErrorBoundary>}</Route>
         <Route path="/admin/ai-templates">{() => <ErrorBoundary showNav><AdminAiTemplates /></ErrorBoundary>}</Route>
         <Route path="/admin/workflow-library">{() => <ErrorBoundary showNav><WorkflowLibraryPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/check-ins">{() => <ErrorBoundary showNav><AdminCheckIns /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
