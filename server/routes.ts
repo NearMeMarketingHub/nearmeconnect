@@ -10401,6 +10401,214 @@ export async function registerRoutes(
     }
   });
 
+  // ── Admin Dashboard Aggregations ──────────────────────────────────────────
+
+  app.get("/api/admin/workload", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(currentUserId);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [allTasks, adminUsers, companies] = await Promise.all([
+        storage.getAllTasks(),
+        storage.getAllAdminUsers(),
+        storage.getAllCompanies(),
+      ]);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const activeTasks = allTasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status));
+      const companyMap = new Map(companies.map(c => [c.id, c]));
+
+      const workload = adminUsers.map(admin => {
+        const myTasks = activeTasks.filter(t => t.assignedTo === admin.userId);
+        let pending = 0, inProgress = 0, overdue = 0, dueToday = 0, creditValue = 0;
+        for (const t of myTasks) {
+          if (t.status === "pending") pending++;
+          if (t.status === "in_progress") inProgress++;
+          creditValue += parseFloat(String(t.creditCost)) || 0;
+          if (t.dueDate) {
+            const due = new Date(t.dueDate + "T00:00:00");
+            due.setHours(0, 0, 0, 0);
+            if (due < today) overdue++;
+            else if (due.getTime() === today.getTime()) dueToday++;
+          }
+        }
+        return {
+          userId: admin.userId,
+          name: [admin.firstName, admin.lastName].filter(Boolean).join(" ") || admin.email,
+          email: admin.email,
+          stats: { total: myTasks.length, pending, inProgress, overdue, dueToday, creditValue: Math.round(creditValue * 10) / 10 },
+          tasks: myTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            companyId: t.companyId,
+            companyName: companyMap.get(t.companyId)?.name || "Unknown",
+            status: t.status,
+            priority: t.priority,
+            dueDate: t.dueDate,
+            categoryId: t.categoryId,
+            creditCost: t.creditCost,
+          })),
+        };
+      }).filter(p => p.stats.total > 0);
+
+      res.json(workload);
+    } catch (error) {
+      console.error("Failed to get workload:", error);
+      res.status(500).json({ error: "Failed to get workload" });
+    }
+  });
+
+  app.get("/api/admin/tasks-by-category", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(currentUserId);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [allTasks, allCategories, companies, adminUsers] = await Promise.all([
+        storage.getAllTasks(),
+        storage.getAllTaskCategories(),
+        storage.getAllCompanies(),
+        storage.getAllAdminUsers(),
+      ]);
+
+      const activeTasks = allTasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status));
+      const companyMap = new Map(companies.map(c => [c.id, c]));
+      const categoryMap = new Map(allCategories.map(c => [c.id, c]));
+      const adminMap = new Map(adminUsers.map(a => [a.userId, [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email]));
+
+      const byName = new Map<string, { categoryName: string; color: string | null; tasks: any[]; assignees: Set<string> }>();
+
+      for (const task of activeTasks) {
+        const cat = task.categoryId ? categoryMap.get(task.categoryId) : null;
+        const catName = cat?.name || "Uncategorized";
+        const catColor = cat?.color || null;
+        if (!byName.has(catName)) byName.set(catName, { categoryName: catName, color: catColor, tasks: [], assignees: new Set() });
+        const group = byName.get(catName)!;
+        group.tasks.push({
+          id: task.id,
+          title: task.title,
+          companyId: task.companyId,
+          companyName: companyMap.get(task.companyId)?.name || "Unknown",
+          status: task.status,
+          priority: task.priority,
+          dueDate: task.dueDate,
+        });
+        if (task.assignedTo) group.assignees.add(adminMap.get(task.assignedTo) || task.assignedTo);
+      }
+
+      const result = [...byName.values()].map(g => ({
+        categoryName: g.categoryName,
+        color: g.color,
+        taskCount: g.tasks.length,
+        assignees: [...g.assignees],
+        tasks: g.tasks,
+      })).sort((a, b) => b.taskCount - a.taskCount);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to get tasks by category:", error);
+      res.status(500).json({ error: "Failed to get tasks by category" });
+    }
+  });
+
+  app.get("/api/admin/company-health", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(currentUserId);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [companies, allTasks] = await Promise.all([
+        storage.getAllCompanies(),
+        storage.getAllTasks(),
+      ]);
+
+      const now = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+
+      const tasksByCompany = new Map<string, typeof allTasks>();
+      for (const t of allTasks) {
+        if (!tasksByCompany.has(t.companyId)) tasksByCompany.set(t.companyId, []);
+        tasksByCompany.get(t.companyId)!.push(t);
+      }
+
+      const health = companies.map(company => {
+        const tasks = tasksByCompany.get(company.id) || [];
+        const thisMonthTasks = tasks.filter(t => {
+          const d = new Date(t.createdAt);
+          return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
+        });
+        const completed = thisMonthTasks.filter(t => t.status === "completed").length;
+        const overdue = tasks.filter(t => {
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const due = new Date(t.dueDate + "T00:00:00");
+          due.setHours(0, 0, 0, 0);
+          return due < today;
+        }).length;
+        const sortedTasks = [...tasks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const lastActivity = sortedTasks[0]?.createdAt || null;
+
+        return {
+          id: company.id,
+          name: company.name,
+          subscriptionTier: company.subscriptionTier,
+          onboardingComplete: company.onboardingComplete,
+          hubspotConnected: !!company.hubspotCompanyId,
+          tasksThisMonth: thisMonthTasks.length,
+          completed,
+          overdue,
+          lastActivity,
+          credits: company.credits,
+        };
+      });
+
+      res.json(health);
+    } catch (error) {
+      console.error("Failed to get company health:", error);
+      res.status(500).json({ error: "Failed to get company health" });
+    }
+  });
+
+  app.get("/api/admin/content-production-status", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(currentUserId);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const now = new Date();
+      const items = await storage.getContentCalendarItems({ month: now.getMonth() + 1, year: now.getFullYear() });
+
+      const platforms = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "other"];
+      const statuses = ["draft", "in_review", "approved", "scheduled", "published"];
+
+      const matrix: Record<string, Record<string, number>> = {};
+      for (const p of platforms) {
+        matrix[p] = {};
+        for (const s of statuses) matrix[p][s] = 0;
+      }
+      for (const item of items) {
+        if (matrix[item.platform] && statuses.includes(item.status)) {
+          matrix[item.platform][item.status]++;
+        }
+      }
+
+      const byStatus: Record<string, number> = {};
+      for (const s of statuses) byStatus[s] = 0;
+      for (const item of items) {
+        if (statuses.includes(item.status)) byStatus[item.status]++;
+      }
+
+      res.json({ matrix, byStatus, total: items.length, platforms, statuses });
+    } catch (error) {
+      console.error("Failed to get content production status:", error);
+      res.status(500).json({ error: "Failed to get content production status" });
+    }
+  });
+
   // ── Content Calendar ──────────────────────────────────────────────────────
 
   // Content Pillars

@@ -1,0 +1,83 @@
+Build an enhanced Admin Dashboard that gives project managers and admins 
+a full cross-client view of all work, organized by person AND by category.
+This addresses the need to batch same-type work across clients efficiently.
+
+=== ROUTE: /admin/dashboard (enhance existing admin area) ===
+
+=== SECTION 1: WORKLOAD BY PERSON ===
+Card grid showing each team member who has assigned tasks:
+  Each person card shows:
+    - Name + avatar
+    - Total tasks assigned
+    - Breakdown: X pending, Y in progress, Z overdue
+    - Tasks due today (highlighted)
+    - Credit value of their queue
+    - "View All Tasks" button → filtered list view
+  
+  Click a person card → expands to show their full task list:
+    Grouped by company (with company badge)
+    Or grouped by category
+    Tasks show: title, company, due date, status, priority
+    Account manager can change assignment or due date inline
+
+=== SECTION 2: WORK BATCHED BY TYPE/CATEGORY ===
+This is the "lump tasks together" view for efficient batching.
+Shows tasks grouped by CATEGORY across all companies:
+
+  E.g., "Content Writing" category → shows ALL content writing tasks 
+  across ALL active clients in one list.
+  
+  This allows the assigned writer to see: 
+    "I need to write content for Client A, B, and C this week" 
+    without switching between company views.
+
+Layout: tabs or accordion by category (from task_categories JOIN tasks):
+  Each category section shows:
+    - Category name + icon + color badge
+    - Total tasks in this category
+    - Assigned person(s) working on this category
+    - Compact task list:
+        Company | Task title | Due date | Status | Pillar
+    - "Start Working Session" button → filters the board view 
+      to show ONLY this category across ALL companies for the current user
+
+=== SECTION 3: CONTENT PRODUCTION STATUS (cross-client) ===
+A production pipeline view for all content work:
+  Filter to show only tasks WHERE category = content-related categories
+  OR content_calendar_items WHERE assigned_to = current user
+  
+  Shows: 
+    How many content pieces are in Draft / In Review / Approved / Scheduled 
+    across all clients for the current month
+  
+  Grouped by platform (GBP, Facebook, Instagram, etc.)
+  Clicking a number opens the filtered content calendar
+
+=== SECTION 4: OUTSTANDING & OVERDUE SUMMARY ===
+Alert-style cards at top of admin dashboard:
+  🔴 Overdue Tasks: X tasks past due date (click to see list)
+  🟡 Due Today: X tasks due today
+  🟠 Awaiting Client: X tasks in "Waiting on Client" status
+  🔵 Pending Approval: X content items awaiting approval
+  ⚫ No Pillar Assigned: X tasks not linked to any content strategy pillar
+
+Each card is clickable and opens a filtered view of those specific tasks.
+
+=== SECTION 5: COMPANY HEALTH OVERVIEW ===
+Table showing all active companies with marketing health indicators:
+  Company | Tasks This Month | Completed | Overdue | Content Scheduled | 
+  HubSpot Connected | Onboarding % | Last Activity
+  
+  Color code rows: 
+    Red = has overdue tasks OR onboarding < 50%
+    Yellow = onboarding < 100% but on track
+    Green = fully onboarded + no overdue tasks
+  
+  Click company row → goes to company detail page
+
+=== SECTION 6: MY TASKS WIDGET (for non-admin team members) ===
+When a non-admin user views the dashboard, show:
+  - Their tasks only (from task_assignees WHERE user_id = current user)
+  - Same board/list/summary toggle as main task page
+  - Grouped by company OR by due date OR by category (their choice)
+  - "Tasks for Today" highlighted section at top

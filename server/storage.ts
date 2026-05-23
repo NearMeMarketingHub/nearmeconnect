@@ -229,6 +229,7 @@ export interface IStorage {
   markAdminInvitationUsed(token: string, userId: string): Promise<void>;
   deleteAdminInvitation(id: string): Promise<void>;
 
+  getAllTaskCategories(): Promise<TaskCategory[]>;
   getTaskCategories(companyId: string): Promise<TaskCategory[]>;
   getTaskCategory(id: string): Promise<TaskCategory | undefined>;
   createTaskCategory(category: InsertTaskCategory): Promise<TaskCategory>;
@@ -730,6 +731,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAdminInvitation(id: string): Promise<void> {
     await db.delete(adminInvitations).where(eq(adminInvitations.id, id));
+  }
+
+  async getAllTaskCategories(): Promise<TaskCategory[]> {
+    return await db.select().from(taskCategories).orderBy(taskCategories.companyId, taskCategories.sortOrder);
   }
 
   async getTaskCategories(companyId: string): Promise<TaskCategory[]> {
