@@ -161,8 +161,20 @@ import {
   companyKnowledgeItems,
   hubspotConnections,
   brandProfiles,
+  contentPillars,
+  contentAssets,
+  contentCalendarItems,
+  contentCalendarActivity,
   type HubspotConnection,
   type BrandProfile,
+  type ContentPillar,
+  type InsertContentPillar,
+  type ContentAsset,
+  type InsertContentAsset,
+  type ContentCalendarItem,
+  type InsertContentCalendarItem,
+  type ContentCalendarActivity,
+  type InsertContentCalendarActivity,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -476,6 +488,23 @@ export interface IStorage {
   upsertHubspotConnection(data: Omit<HubspotConnection, "id">): Promise<HubspotConnection>;
   updateHubspotConnection(companyId: string, data: Partial<HubspotConnection>): Promise<void>;
   updateTaskHubspotId(taskId: string, hubspotTaskId: string): Promise<void>;
+
+  // Content Calendar
+  getContentPillars(companyId?: string): Promise<ContentPillar[]>;
+  createContentPillar(data: InsertContentPillar): Promise<ContentPillar>;
+  updateContentPillar(id: string, data: Partial<ContentPillar>): Promise<ContentPillar | undefined>;
+  deleteContentPillar(id: string): Promise<void>;
+  getContentAssets(companyId?: string, pillarId?: string): Promise<ContentAsset[]>;
+  createContentAsset(data: InsertContentAsset): Promise<ContentAsset>;
+  deleteContentAsset(id: string): Promise<void>;
+  getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string }): Promise<ContentCalendarItem[]>;
+  getContentCalendarItem(id: string): Promise<ContentCalendarItem | undefined>;
+  createContentCalendarItem(data: InsertContentCalendarItem): Promise<ContentCalendarItem>;
+  updateContentCalendarItem(id: string, data: Partial<ContentCalendarItem>): Promise<ContentCalendarItem | undefined>;
+  deleteContentCalendarItem(id: string): Promise<void>;
+  bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]>;
+  getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]>;
+  createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2704,6 +2733,105 @@ export class DatabaseStorage implements IStorage {
 
   async updateTaskHubspotId(taskId: string, hubspotTaskId: string): Promise<void> {
     await db.update(tasks).set({ hubspotTaskId } as any).where(eq(tasks.id, taskId));
+  }
+
+  // ── Content Calendar ──────────────────────────────────────────────────────
+
+  async getContentPillars(companyId?: string): Promise<ContentPillar[]> {
+    const q = db.select().from(contentPillars).orderBy(contentPillars.sortOrder, contentPillars.name);
+    if (companyId) return q.where(eq(contentPillars.companyId, companyId));
+    return q;
+  }
+
+  async createContentPillar(data: InsertContentPillar): Promise<ContentPillar> {
+    const [row] = await db.insert(contentPillars).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
+  }
+
+  async updateContentPillar(id: string, data: Partial<ContentPillar>): Promise<ContentPillar | undefined> {
+    const [row] = await db.update(contentPillars).set(data).where(eq(contentPillars.id, id)).returning();
+    return row;
+  }
+
+  async deleteContentPillar(id: string): Promise<void> {
+    await db.delete(contentPillars).where(eq(contentPillars.id, id));
+  }
+
+  async getContentAssets(companyId?: string, pillarId?: string): Promise<ContentAsset[]> {
+    const conditions: any[] = [];
+    if (companyId) conditions.push(eq(contentAssets.companyId, companyId));
+    if (pillarId) conditions.push(eq(contentAssets.pillarId, pillarId));
+    const q = db.select().from(contentAssets).orderBy(desc(contentAssets.createdAt));
+    if (conditions.length) return q.where(and(...conditions));
+    return q;
+  }
+
+  async createContentAsset(data: InsertContentAsset): Promise<ContentAsset> {
+    const [row] = await db.insert(contentAssets).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
+  }
+
+  async deleteContentAsset(id: string): Promise<void> {
+    await db.delete(contentAssets).where(eq(contentAssets.id, id));
+  }
+
+  async getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string }): Promise<ContentCalendarItem[]> {
+    const conditions = [];
+    if (filters.companyId) conditions.push(eq(contentCalendarItems.companyId, filters.companyId));
+    if (filters.platform) conditions.push(eq(contentCalendarItems.platform, filters.platform as any));
+    if (filters.status) conditions.push(eq(contentCalendarItems.status, filters.status as any));
+    if (filters.month !== undefined && filters.year !== undefined) {
+      const prefix = `${filters.year}-${String(filters.month).padStart(2, "0")}-`;
+      conditions.push(sql`${contentCalendarItems.scheduledDate} LIKE ${prefix + "%"}`);
+    }
+    const q = db.select().from(contentCalendarItems);
+    if (conditions.length > 0) {
+      return q.where(and(...conditions)).orderBy(contentCalendarItems.scheduledDate, contentCalendarItems.scheduledTime);
+    }
+    return q.orderBy(contentCalendarItems.scheduledDate, contentCalendarItems.scheduledTime);
+  }
+
+  async getContentCalendarItem(id: string): Promise<ContentCalendarItem | undefined> {
+    const [row] = await db.select().from(contentCalendarItems).where(eq(contentCalendarItems.id, id));
+    return row;
+  }
+
+  async createContentCalendarItem(data: InsertContentCalendarItem): Promise<ContentCalendarItem> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(contentCalendarItems).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateContentCalendarItem(id: string, data: Partial<ContentCalendarItem>): Promise<ContentCalendarItem | undefined> {
+    const [row] = await db.update(contentCalendarItems)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(contentCalendarItems.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteContentCalendarItem(id: string): Promise<void> {
+    await db.delete(contentCalendarItems).where(eq(contentCalendarItems.id, id));
+  }
+
+  async bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]> {
+    if (items.length === 0) return [];
+    const now = new Date().toISOString();
+    const rows = await db.insert(contentCalendarItems)
+      .values(items.map(item => ({ ...item, createdAt: now, updatedAt: now })))
+      .returning();
+    return rows;
+  }
+
+  async getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]> {
+    return db.select().from(contentCalendarActivity)
+      .where(eq(contentCalendarActivity.calendarItemId, calendarItemId))
+      .orderBy(desc(contentCalendarActivity.createdAt));
+  }
+
+  async createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity> {
+    const [row] = await db.insert(contentCalendarActivity).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
   }
 }
 

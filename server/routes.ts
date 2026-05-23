@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -10399,6 +10399,137 @@ export async function registerRoutes(
       console.error("Failed to send admin password reset:", error);
       res.status(500).json({ error: "Failed to send password reset email" });
     }
+  });
+
+  // ── Content Calendar ──────────────────────────────────────────────────────
+
+  // Content Pillars
+  app.get("/api/content-pillars", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const companyId = req.query.companyId as string | undefined;
+    const pillars = await storage.getContentPillars(companyId);
+    res.json(pillars);
+  });
+
+  app.post("/api/content-pillars", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const parsed = insertContentPillarSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const pillar = await storage.createContentPillar(parsed.data);
+    res.status(201).json(pillar);
+  });
+
+  app.patch("/api/content-pillars/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const pillar = await storage.updateContentPillar(req.params.id as string, req.body);
+    if (!pillar) return res.status(404).json({ error: "Not found" });
+    res.json(pillar);
+  });
+
+  app.delete("/api/content-pillars/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    await storage.deleteContentPillar(req.params.id as string);
+    res.status(204).end();
+  });
+
+  // Content Assets
+  app.get("/api/content-assets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const companyId = req.query.companyId as string | undefined;
+    const assets = await storage.getContentAssets(companyId);
+    res.json(assets);
+  });
+
+  app.post("/api/content-assets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const parsed = insertContentAssetSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const asset = await storage.createContentAsset(parsed.data);
+    res.status(201).json(asset);
+  });
+
+  app.delete("/api/content-assets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    await storage.deleteContentAsset(req.params.id as string);
+    res.status(204).end();
+  });
+
+  // Content Calendar Items — bulk must come before :id routes
+  app.post("/api/content-calendar/bulk", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const { items } = req.body as { items: any[] };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items array required" });
+    }
+    const created = await Promise.all(
+      items.map((item) => storage.createContentCalendarItem({ ...item, createdBy: userId }))
+    );
+    res.status(201).json(created);
+  });
+
+  app.get("/api/content-calendar", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const companyId = req.query.companyId as string | undefined;
+    const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+    const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+    const platform = req.query.platform as string | undefined;
+    const status = req.query.status as string | undefined;
+    const items = await storage.getContentCalendarItems({ companyId, month, year, platform, status });
+    res.json(items);
+  });
+
+  app.get("/api/content-calendar/:id/activity", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const activity = await storage.getContentCalendarActivity(req.params.id as string);
+    res.json(activity);
+  });
+
+  app.get("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const item = await storage.getContentCalendarItem(req.params.id as string);
+    if (!item) return res.status(404).json({ error: "Not found" });
+    res.json(item);
+  });
+
+  app.post("/api/content-calendar", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const parsed = insertContentCalendarItemSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    const item = await storage.createContentCalendarItem({ ...parsed.data, createdBy: userId });
+    res.status(201).json(item);
+  });
+
+  app.patch("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const id = req.params.id as string;
+    const item = await storage.updateContentCalendarItem(id, req.body);
+    if (!item) return res.status(404).json({ error: "Not found" });
+    await storage.createContentCalendarActivity({
+      calendarItemId: id,
+      userId,
+      action: "updated",
+      toValue: JSON.stringify(req.body),
+    });
+    res.json(item);
+  });
+
+  app.delete("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    await storage.deleteContentCalendarItem(req.params.id as string);
+    res.status(204).end();
   });
 
   return httpServer;

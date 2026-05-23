@@ -1448,3 +1448,109 @@ export const insertBrandProfileSchema = createInsertSchema(brandProfiles).omit({
 });
 export type InsertBrandProfile = z.infer<typeof insertBrandProfileSchema>;
 export type BrandProfile = typeof brandProfiles.$inferSelect;
+
+// ── Content Calendar ─────────────────────────────────────────────────────────
+
+export const contentPlatformEnum = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "other"] as const;
+export type ContentPlatform = typeof contentPlatformEnum[number];
+
+export const contentTypeEnum = ["post", "story", "reel", "article", "newsletter", "ad", "event", "offer", "product"] as const;
+export type ContentType = typeof contentTypeEnum[number];
+
+export const contentStatusEnum = ["draft", "in_review", "approved", "scheduled", "published", "archived"] as const;
+export type ContentStatus = typeof contentStatusEnum[number];
+
+export const gbpPostTypeEnum = ["whats_new", "event", "offer", "product"] as const;
+export type GbpPostType = typeof gbpPostTypeEnum[number];
+
+export const contentPillars = pgTable("content_pillars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color").notNull().default("#6366f1"),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertContentPillarSchema = createInsertSchema(contentPillars).omit({ id: true, createdAt: true });
+export type InsertContentPillar = z.infer<typeof insertContentPillarSchema>;
+export type ContentPillar = typeof contentPillars.$inferSelect;
+
+export const contentAssets = pgTable("content_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  pillarId: varchar("pillar_id"),
+  name: text("name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileType: text("file_type"),
+  thumbnailUrl: text("thumbnail_url"),
+  createdBy: varchar("created_by"),
+  createdAt: text("created_at").notNull(),
+});
+export const insertContentAssetSchema = createInsertSchema(contentAssets).omit({ id: true, createdAt: true });
+export type InsertContentAsset = z.infer<typeof insertContentAssetSchema>;
+export type ContentAsset = typeof contentAssets.$inferSelect;
+
+export const contentCalendarItems = pgTable("content_calendar_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  platform: text("platform").$type<ContentPlatform>().notNull(),
+  contentType: text("content_type").$type<ContentType>().notNull().default("post"),
+  pillarId: varchar("pillar_id"),
+  assignedTo: varchar("assigned_to"),
+  title: text("title").notNull(),
+  bodyContent: text("body_content"),
+  hashtags: text("hashtags"),
+  ctaText: text("cta_text"),
+  ctaUrl: text("cta_url"),
+  scheduledDate: text("scheduled_date"),
+  scheduledTime: text("scheduled_time"),
+  status: text("status").$type<ContentStatus>().notNull().default("draft"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: text("approved_at"),
+  publishedAt: text("published_at"),
+  hubspotPostId: text("hubspot_post_id"),
+  hubspotCampaignId: text("hubspot_campaign_id"),
+  mediaUrls: text("media_urls"),
+  gbpPostType: text("gbp_post_type").$type<GbpPostType>(),
+  gbpEventTitle: text("gbp_event_title"),
+  gbpEventStart: text("gbp_event_start"),
+  gbpEventEnd: text("gbp_event_end"),
+  gbpOfferTitle: text("gbp_offer_title"),
+  gbpOfferStart: text("gbp_offer_start"),
+  gbpOfferEnd: text("gbp_offer_end"),
+  gbpOfferCoupon: text("gbp_offer_coupon"),
+  gbpOfferTerms: text("gbp_offer_terms"),
+  gbpRedeemUrl: text("gbp_redeem_url"),
+  gbpProductName: text("gbp_product_name"),
+  gbpProductPrice: text("gbp_product_price"),
+  gbpProductDescription: text("gbp_product_description"),
+  linkedTaskId: varchar("linked_task_id"),
+  createdBy: varchar("created_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertContentCalendarItemSchema = createInsertSchema(contentCalendarItems).omit({
+  id: true, createdAt: true, updatedAt: true,
+}).extend({
+  platform: z.enum(contentPlatformEnum),
+  contentType: z.enum(contentTypeEnum).optional(),
+  status: z.enum(contentStatusEnum).optional(),
+  gbpPostType: z.enum(gbpPostTypeEnum).optional().nullable(),
+});
+export type InsertContentCalendarItem = z.infer<typeof insertContentCalendarItemSchema>;
+export type ContentCalendarItem = typeof contentCalendarItems.$inferSelect;
+
+export const contentCalendarActivity = pgTable("content_calendar_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarItemId: varchar("calendar_item_id").notNull().references(() => contentCalendarItems.id, { onDelete: "cascade" }),
+  userId: varchar("user_id"),
+  action: text("action").notNull(),
+  fromValue: text("from_value"),
+  toValue: text("to_value"),
+  createdAt: text("created_at").notNull(),
+});
+export const insertContentCalendarActivitySchema = createInsertSchema(contentCalendarActivity).omit({ id: true, createdAt: true });
+export type InsertContentCalendarActivity = z.infer<typeof insertContentCalendarActivitySchema>;
+export type ContentCalendarActivity = typeof contentCalendarActivity.$inferSelect;

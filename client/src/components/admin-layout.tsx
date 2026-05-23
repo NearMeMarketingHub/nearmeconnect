@@ -28,7 +28,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Building2, LogOut, Tag, Calendar, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers } from "lucide-react";
+import { LayoutDashboard, Building2, LogOut, Tag, Calendar, CalendarRange, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
@@ -49,6 +49,7 @@ const servicesItems = [
 
 const communicationItems = [
   { title: "Calendar", href: "/admin/calendar", icon: Calendar },
+  { title: "Content Calendar", href: "/admin/content-calendar", icon: CalendarRange },
   { title: "Chat", href: "/admin/chat", icon: MessageCircle },
   { title: "Media Submissions", href: "/admin/media-submissions", icon: Upload },
 ];

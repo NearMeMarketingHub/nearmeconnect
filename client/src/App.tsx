@@ -43,6 +43,7 @@ import AdminUserManagement from "@/pages/admin/user-management";
 import AdminCustomRoles from "@/pages/admin/custom-roles";
 import AdminSubscriptionTiers from "@/pages/admin/subscription-tiers";
 import CompanyDashboard from "@/pages/admin/company-dashboard";
+import AdminContentCalendar from "@/pages/admin/content-calendar";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -180,6 +181,7 @@ function AppContent() {
         <Route path="/admin/user-management">{() => <ErrorBoundary showNav><AdminUserManagement /></ErrorBoundary>}</Route>
         <Route path="/admin/custom-roles">{() => <ErrorBoundary showNav><AdminCustomRoles /></ErrorBoundary>}</Route>
         <Route path="/admin/subscription-tiers">{() => <ErrorBoundary showNav><AdminSubscriptionTiers /></ErrorBoundary>}</Route>
+        <Route path="/admin/content-calendar">{() => <ErrorBoundary showNav><AdminContentCalendar /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
