@@ -408,7 +408,7 @@ export default function AdminDashboard() {
           <Link href="/admin/tasks?filter=overdue" data-testid="alert-overdue">
             <Card className={`cursor-pointer hover:shadow-md transition-shadow ${overdueCount > 0 ? "border-destructive/40 bg-destructive/5" : ""}`}>
               <CardContent className="p-3 flex items-center gap-2">
-                <span className="text-lg">🔴</span>
+                <span className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0" />
                 <div>
                   <p className={`text-xl font-bold font-mono ${overdueCount > 0 ? "text-destructive" : "text-muted-foreground"}`}>{tasksLoading ? "…" : overdueCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Overdue Tasks</p>
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
           <Link href="/admin/tasks?filter=today" data-testid="alert-due-today">
             <Card className={`cursor-pointer hover:shadow-md transition-shadow ${dueTodayCount > 0 ? "border-orange-400/40 bg-orange-50 dark:bg-orange-950/20" : ""}`}>
               <CardContent className="p-3 flex items-center gap-2">
-                <span className="text-lg">🟡</span>
+                <span className="w-4 h-4 rounded-full bg-yellow-400 flex-shrink-0" />
                 <div>
                   <p className={`text-xl font-bold font-mono ${dueTodayCount > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}>{tasksLoading ? "…" : dueTodayCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Due Today</p>
@@ -430,7 +430,7 @@ export default function AdminDashboard() {
           <Link href="/admin/tasks?status=review" data-testid="alert-awaiting-client">
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardContent className="p-3 flex items-center gap-2">
-                <span className="text-lg">🟠</span>
+                <span className="w-4 h-4 rounded-full bg-orange-400 flex-shrink-0" />
                 <div>
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : awaitingClientCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Awaiting Client</p>
@@ -441,7 +441,7 @@ export default function AdminDashboard() {
           <Link href="/admin/tasks?status=approved" data-testid="alert-pending-approval">
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardContent className="p-3 flex items-center gap-2">
-                <span className="text-lg">🔵</span>
+                <span className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0" />
                 <div>
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : pendingApprovalCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Pending Approval</p>
@@ -452,7 +452,7 @@ export default function AdminDashboard() {
           <Link href="/admin/tasks" data-testid="alert-no-pillar">
             <Card className="cursor-pointer hover:shadow-md transition-shadow">
               <CardContent className="p-3 flex items-center gap-2">
-                <span className="text-lg">⚫</span>
+                <span className="w-4 h-4 rounded-full bg-gray-800 dark:bg-gray-200 flex-shrink-0" />
                 <div>
                   <p className="text-xl font-bold font-mono text-muted-foreground">{tasksLoading ? "…" : noPillarCount}</p>
                   <p className="text-[11px] text-muted-foreground leading-tight">No Category</p>
