@@ -11396,5 +11396,53 @@ export async function registerRoutes(
     res.json(item);
   });
 
+  // ── Workflow Library ──────────────────────────────────────────────────────
+
+  app.get("/api/admin/workflow-library", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const { category, hub, complexity, search } = req.query as Record<string, string>;
+      const templates = await storage.getWorkflowTemplates({ category, hub, complexity, search });
+      res.json(templates);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch workflow templates" }); }
+  });
+
+  app.post("/api/admin/workflow-library/assign", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const { templateId, companyIds } = req.body as { templateId: string; companyIds: string[] };
+      if (!templateId || !Array.isArray(companyIds) || companyIds.length === 0)
+        return res.status(400).json({ error: "templateId and companyIds required" });
+      const result = await storage.assignWorkflowsToCompanies(templateId, companyIds, req.user!.id);
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: "Failed to assign workflows" }); }
+  });
+
+  app.get("/api/admin/workflow-library/companies/:companyId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const rows = await storage.getCompanyWorkflows(String(req.params.companyId));
+      res.json(rows);
+    } catch (e) { res.status(500).json({ error: "Failed to fetch company workflows" }); }
+  });
+
+  app.patch("/api/admin/workflow-library/companies/:companyId/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      const { status, hubspotWorkflowId, notes } = req.body as { status?: string; hubspotWorkflowId?: string; notes?: string };
+      const row = await storage.updateCompanyWorkflow(String(req.params.id), { status: status as any, hubspotWorkflowId, notes });
+      if (!row) return res.status(404).json({ error: "Not found" });
+      res.json(row);
+    } catch (e) { res.status(500).json({ error: "Failed to update company workflow" }); }
+  });
+
+  app.delete("/api/admin/workflow-library/companies/:companyId/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
+      await storage.deleteCompanyWorkflow(String(req.params.id));
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: "Failed to remove workflow assignment" }); }
+  });
+
   return httpServer;
 }

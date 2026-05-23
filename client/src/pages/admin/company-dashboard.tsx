@@ -96,6 +96,7 @@ import {
   Kanban,
   Megaphone,
   CalendarRange,
+  Workflow,
   Sparkles,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -109,6 +110,7 @@ import { TaskBoardView } from "@/components/task-board-view";
 import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import { MarketingHub } from "@/components/marketing-hub";
+import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -2247,6 +2249,7 @@ export default function CompanyDashboard() {
               { value: "hubspot", label: "HubSpot" },
               { value: "marketing", label: "Marketing Hub" },
               { value: "content-calendar", label: "Content Calendar" },
+              { value: "workflows", label: "Workflows" },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -2320,6 +2323,10 @@ export default function CompanyDashboard() {
             <TabsTrigger value="content-calendar" data-testid="tab-content-calendar">
               <CalendarRange className="h-4 w-4 mr-2" />
               Content Calendar
+            </TabsTrigger>
+            <TabsTrigger value="workflows" data-testid="tab-workflows">
+              <Workflow className="h-4 w-4 mr-2" />
+              Workflows
             </TabsTrigger>
           </TabsList>
 
@@ -4573,6 +4580,11 @@ export default function CompanyDashboard() {
                 />
               </>
             )}
+          </TabsContent>
+
+          {/* Workflows Tab */}
+          <TabsContent value="workflows" className="min-h-0">
+            {companyId && <CompanyWorkflowsPanel companyId={companyId} />}
           </TabsContent>
 
           {/* Cadences Tab */}

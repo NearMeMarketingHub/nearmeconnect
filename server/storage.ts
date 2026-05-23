@@ -185,6 +185,11 @@ import {
   aiPromptTemplates,
   type AiPromptTemplate,
   type InsertAiPromptTemplate,
+  hubspotWorkflowTemplates,
+  type HubspotWorkflowTemplate,
+  companyWorkflows,
+  type CompanyWorkflow,
+  type InsertCompanyWorkflow,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -538,6 +543,14 @@ export interface IStorage {
   createAiPromptTemplate(data: InsertAiPromptTemplate): Promise<AiPromptTemplate>;
   updateAiPromptTemplate(id: string, data: Partial<InsertAiPromptTemplate>): Promise<AiPromptTemplate | undefined>;
   deleteAiPromptTemplate(id: string): Promise<void>;
+
+  // Workflow Library
+  getWorkflowTemplates(filters?: { category?: string; hub?: string; complexity?: string; search?: string }): Promise<HubspotWorkflowTemplate[]>;
+  getWorkflowTemplate(id: string): Promise<HubspotWorkflowTemplate | undefined>;
+  assignWorkflowsToCompanies(templateId: string, companyIds: string[], assignedBy?: string): Promise<CompanyWorkflow[]>;
+  getCompanyWorkflows(companyId: string): Promise<(CompanyWorkflow & { template: HubspotWorkflowTemplate })[]>;
+  updateCompanyWorkflow(id: string, data: Partial<Pick<InsertCompanyWorkflow, 'status' | 'hubspotWorkflowId' | 'notes'>>): Promise<CompanyWorkflow | undefined>;
+  deleteCompanyWorkflow(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2975,6 +2988,59 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAiPromptTemplate(id: string): Promise<void> {
     await db.delete(aiPromptTemplates).where(eq(aiPromptTemplates.id, id));
+  }
+
+  // ── Workflow Library ──────────────────────────────────────────────────────
+  async getWorkflowTemplates(filters?: { category?: string; hub?: string; complexity?: string; search?: string }): Promise<HubspotWorkflowTemplate[]> {
+    let q = db.select().from(hubspotWorkflowTemplates).$dynamic();
+    const conds = [];
+    if (filters?.category) conds.push(eq(hubspotWorkflowTemplates.category, filters.category));
+    if (filters?.complexity) conds.push(eq(hubspotWorkflowTemplates.complexity, filters.complexity as any));
+    if (filters?.hub) conds.push(sql`${hubspotWorkflowTemplates.hub} ilike ${'%' + filters.hub + '%'}`);
+    if (filters?.search) conds.push(sql`${hubspotWorkflowTemplates.name} ilike ${'%' + filters.search + '%'}`);
+    if (conds.length) q = q.where(and(...conds));
+    return q.orderBy(hubspotWorkflowTemplates.sortOrder);
+  }
+
+  async getWorkflowTemplate(id: string): Promise<HubspotWorkflowTemplate | undefined> {
+    const [row] = await db.select().from(hubspotWorkflowTemplates).where(eq(hubspotWorkflowTemplates.id, id));
+    return row;
+  }
+
+  async assignWorkflowsToCompanies(templateId: string, companyIds: string[], assignedBy?: string): Promise<CompanyWorkflow[]> {
+    const now = new Date().toISOString();
+    const results: CompanyWorkflow[] = [];
+    for (const companyId of companyIds) {
+      const [existing] = await db.select().from(companyWorkflows).where(
+        and(eq(companyWorkflows.templateId, templateId), eq(companyWorkflows.companyId, companyId))
+      );
+      if (existing) { results.push(existing); continue; }
+      const [row] = await db.insert(companyWorkflows).values({ companyId, templateId, status: 'planned', assignedBy, createdAt: now }).returning();
+      results.push(row);
+    }
+    return results;
+  }
+
+  async getCompanyWorkflows(companyId: string): Promise<(CompanyWorkflow & { template: HubspotWorkflowTemplate })[]> {
+    const rows = await db
+      .select({ cw: companyWorkflows, t: hubspotWorkflowTemplates })
+      .from(companyWorkflows)
+      .innerJoin(hubspotWorkflowTemplates, eq(companyWorkflows.templateId, hubspotWorkflowTemplates.id))
+      .where(eq(companyWorkflows.companyId, companyId))
+      .orderBy(hubspotWorkflowTemplates.sortOrder);
+    return rows.map(r => ({ ...r.cw, template: r.t }));
+  }
+
+  async updateCompanyWorkflow(id: string, data: Partial<Pick<InsertCompanyWorkflow, 'status' | 'hubspotWorkflowId' | 'notes'>>): Promise<CompanyWorkflow | undefined> {
+    const [row] = await db.update(companyWorkflows)
+      .set({ status: data.status as any, hubspotWorkflowId: data.hubspotWorkflowId, notes: data.notes, updatedAt: new Date().toISOString() })
+      .where(eq(companyWorkflows.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteCompanyWorkflow(id: string): Promise<void> {
+    await db.delete(companyWorkflows).where(eq(companyWorkflows.id, id));
   }
 }
 

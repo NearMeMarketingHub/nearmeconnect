@@ -1632,3 +1632,42 @@ export const aiPromptTemplates = pgTable("ai_prompt_templates", {
 export const insertAiPromptTemplateSchema = createInsertSchema(aiPromptTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertAiPromptTemplate = z.infer<typeof insertAiPromptTemplateSchema>;
 export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;
+
+// ── Workflow Library ──────────────────────────────────────────────────────────
+
+export const workflowComplexityEnum = ["easy", "medium", "advanced"] as const;
+export type WorkflowComplexity = typeof workflowComplexityEnum[number];
+
+export const hubspotWorkflowTemplates = pgTable("hubspot_workflow_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  triggerEvent: text("trigger_event").notNull(),
+  hub: text("hub").notNull(),
+  businessImpact: text("business_impact"),
+  complexity: text("complexity").$type<WorkflowComplexity>().notNull().default("medium"),
+  isQuickWin: boolean("is_quick_win").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertHubspotWorkflowTemplateSchema = createInsertSchema(hubspotWorkflowTemplates).omit({ id: true, createdAt: true });
+export type InsertHubspotWorkflowTemplate = z.infer<typeof insertHubspotWorkflowTemplateSchema>;
+export type HubspotWorkflowTemplate = typeof hubspotWorkflowTemplates.$inferSelect;
+
+export const companyWorkflowStatusEnum = ["planned", "building", "active"] as const;
+export type CompanyWorkflowStatus = typeof companyWorkflowStatusEnum[number];
+
+export const companyWorkflows = pgTable("company_workflows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").notNull().references(() => hubspotWorkflowTemplates.id, { onDelete: "cascade" }),
+  status: text("status").$type<CompanyWorkflowStatus>().notNull().default("planned"),
+  hubspotWorkflowId: text("hubspot_workflow_id"),
+  notes: text("notes"),
+  assignedBy: varchar("assigned_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertCompanyWorkflowSchema = createInsertSchema(companyWorkflows).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCompanyWorkflow = z.infer<typeof insertCompanyWorkflowSchema>;
+export type CompanyWorkflow = typeof companyWorkflows.$inferSelect;
