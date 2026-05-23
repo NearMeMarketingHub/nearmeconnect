@@ -858,12 +858,21 @@ function ClientApprovalsCard({
 
 // ── 8. Resources & Links ──────────────────────────────────────────────────────
 function ResourcesCard({
+  companyId,
   knowledgeItems,
   onNavigate,
 }: {
+  companyId: string;
   knowledgeItems: CompanyKnowledgeItem[];
   onNavigate: (tab: string) => void;
 }) {
+  const { data: clientResources = [] } = useQuery<Array<{ id: string; title: string; resourceType: string; status: string; url: string | null }>>({
+    queryKey: [`/api/companies/${companyId}/resources`],
+  });
+
+  const keyResources = clientResources.filter(r => ["sharepoint_main_folder", "brand_kit", "logo_creative_assets"].includes(r.resourceType)).slice(0, 4);
+  const missingCount = clientResources.filter(r => r.status === "missing" || r.status === "needs_update").length;
+
   const grouped = knowledgeItems.reduce<Record<string, CompanyKnowledgeItem[]>>((acc, item) => {
     const key = item.section ?? "other";
     if (!acc[key]) acc[key] = [];
@@ -871,7 +880,8 @@ function ResourcesCard({
     return acc;
   }, {});
 
-  const hasItems = knowledgeItems.length > 0;
+  const hasClientResources = clientResources.length > 0;
+  const hasKnowledgeItems = knowledgeItems.length > 0;
 
   return (
     <Card data-testid="card-resources">
@@ -885,13 +895,40 @@ function ResourcesCard({
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        {!hasItems ? (
+      <CardContent className="space-y-3">
+        {/* Resource Library summary */}
+        {hasClientResources && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Resource Library</span>
+              {missingCount > 0 && (
+                <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />{missingCount} need attention
+                </span>
+              )}
+            </div>
+            {keyResources.map(r => (
+              r.url ? (
+                <a key={r.id} href={r.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  data-testid={`link-client-resource-${r.id}`}>
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{r.title}</span>
+                </a>
+              ) : (
+                <p key={r.id} className="text-sm text-muted-foreground truncate pl-5">{r.title}</p>
+              )
+            ))}
+          </div>
+        )}
+
+        {/* Knowledge / Links */}
+        {!hasKnowledgeItems && !hasClientResources ? (
           <EmptyState icon={Link2} text='No resources added yet. Add links in the Marketing Hub.' />
         ) : (
           <div className="space-y-3">
             {Object.entries(grouped)
-              .slice(0, 5)
+              .slice(0, 4)
               .map(([section, items]) => (
                 <div key={section}>
                   <SectionLabel>{SECTION_LABEL[section] ?? section}</SectionLabel>
@@ -1187,7 +1224,7 @@ export function CompanyCommandCenter({
 
       {/* Row 5: Resources + Brand Voice + Recent Activity */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <ResourcesCard knowledgeItems={knowledgeItems} onNavigate={onNavigate} />
+        <ResourcesCard companyId={companyId} knowledgeItems={knowledgeItems} onNavigate={onNavigate} />
         <BrandVoiceCard brandProfile={brandProfile} onNavigate={onNavigate} />
         <RecentActivityCard tasks={tasks} threads={threads} contentItems={contentItems} onNavigate={onNavigate} />
       </div>

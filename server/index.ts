@@ -104,6 +104,25 @@ async function migrateCampaignWorkspaceColumns() {
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS campaign_request_id varchar",
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS cadence_id varchar",
     "ALTER TABLE deliverable_types ADD COLUMN IF NOT EXISTS content_platform text",
+    `CREATE TABLE IF NOT EXISTS client_resources (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      title text NOT NULL,
+      resource_type text NOT NULL,
+      url text,
+      description text,
+      visibility text NOT NULL DEFAULT 'internal_only',
+      related_campaign_id varchar,
+      related_task_id varchar,
+      related_content_item_id varchar,
+      owner text,
+      status text NOT NULL DEFAULT 'active',
+      last_checked_date text,
+      notes text,
+      created_by varchar NOT NULL,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

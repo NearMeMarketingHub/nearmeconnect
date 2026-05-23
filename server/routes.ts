@@ -11989,6 +11989,73 @@ export async function registerRoutes(
     } catch { res.status(500).json({ error: "Failed to fetch hill charts" }); }
   });
 
+  // ── Client Resources ─────────────────────────────────────────────────────────
+
+  // Admin: list all resources (optionally filtered by company)
+  app.get("/api/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { companyId, resourceType, status, visibility } = req.query as Record<string, string>;
+      const resources = await storage.getAllClientResources({ companyId, resourceType, status, visibility });
+      res.json(resources);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Company-scoped: list resources for a specific company
+  app.get("/api/companies/:companyId/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const { resourceType, status, visibility } = req.query as Record<string, string>;
+      const adminCheck = await storage.isAdmin(req.user!.id);
+      // Clients can only see client_visible resources
+      const effectiveVisibility = adminCheck ? visibility : "client_visible";
+      const resources = await storage.getClientResources(companyId, { resourceType, status, visibility: effectiveVisibility });
+      res.json(resources);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const resource = await storage.getClientResource(req.params.id as string);
+      if (!resource) return res.status(404).json({ error: "Not found" });
+      const adminCheck = await storage.isAdmin(req.user!.id);
+      if (!adminCheck && resource.visibility !== "client_visible") return res.status(403).json({ error: "Forbidden" });
+      res.json(resource);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/companies/:companyId/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const adminCheck = await storage.isAdmin(req.user!.id);
+      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
+      const companyId = req.params.companyId as string;
+      const resource = await storage.createClientResource({ ...req.body, companyId, createdBy: req.user!.id });
+      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
+      res.status(201).json(resource);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
+  app.patch("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const adminCheck = await storage.isAdmin(req.user!.id);
+      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
+      const companyId = req.params.companyId as string;
+      const resource = await storage.updateClientResource(req.params.id as string, req.body);
+      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
+      res.json(resource);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const adminCheck = await storage.isAdmin(req.user!.id);
+      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
+      const companyId = req.params.companyId as string;
+      await storage.deleteClientResource(req.params.id as string);
+      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post("/api/companies/:companyId/hill-charts", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const companyId = req.params.companyId as string;

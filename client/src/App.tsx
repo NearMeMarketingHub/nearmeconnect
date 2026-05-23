@@ -49,6 +49,8 @@ import AiBriefPage from "@/pages/admin/ai-brief";
 import AdminAiTemplates from "@/pages/admin/ai-templates";
 import WorkflowLibraryPage from "@/pages/admin/workflow-library";
 import AdminCheckIns from "@/pages/admin/check-ins";
+import AdminResourceLibrary from "@/pages/admin/resource-library";
+import ClientResourceLibrary from "@/pages/client/resource-library";
 import ClientGovernment from "@/pages/client/government";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -193,6 +195,7 @@ function AppContent() {
         <Route path="/admin/ai-templates">{() => <ErrorBoundary showNav><AdminAiTemplates /></ErrorBoundary>}</Route>
         <Route path="/admin/workflow-library">{() => <ErrorBoundary showNav><WorkflowLibraryPage /></ErrorBoundary>}</Route>
         <Route path="/admin/check-ins">{() => <ErrorBoundary showNav><AdminCheckIns /></ErrorBoundary>}</Route>
+        <Route path="/admin/resource-library">{() => <ErrorBoundary showNav><AdminResourceLibrary /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
@@ -233,6 +236,9 @@ function AppContent() {
         <Route path="/client/training">{() => <ErrorBoundary showNav><ClientTraining /></ErrorBoundary>}</Route>
         <Route path="/client/team">
           {() => <ErrorBoundary showNav><ClientTeam companyId={companyId} /></ErrorBoundary>}
+        </Route>
+        <Route path="/client/resources">
+          {() => <ErrorBoundary showNav><ClientResourceLibrary companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/government">{() => <ErrorBoundary showNav><ClientGovernment /></ErrorBoundary>}</Route>
         <Route component={NotFound} />

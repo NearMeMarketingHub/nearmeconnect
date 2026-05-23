@@ -1784,6 +1784,39 @@ export type CheckinResponse = typeof checkinResponses.$inferSelect;
 
 // ── Hill Charts ───────────────────────────────────────────────────────────────
 
+// ── Client Resource Library ───────────────────────────────────────────────────
+export const resourceTypeEnum = [
+  "sharepoint_main_folder", "brand_kit", "logo_creative_assets", "brand_guidelines",
+  "website_admin", "social_profile", "directory_profile", "google_business_profile",
+  "hubspot_record", "campaign_folder", "reporting_folder", "credentials_reference",
+  "strategy_doc", "meeting_notes_folder", "other",
+] as const;
+export const resourceStatusEnum = ["active", "missing", "needs_update", "archived"] as const;
+export const resourceVisibilityEnum = ["internal_only", "client_visible", "admin_only"] as const;
+
+export const clientResources = pgTable("client_resources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  resourceType: text("resource_type").notNull().$type<typeof resourceTypeEnum[number]>(),
+  url: text("url"),
+  description: text("description"),
+  visibility: text("visibility").notNull().default("internal_only").$type<typeof resourceVisibilityEnum[number]>(),
+  relatedCampaignId: varchar("related_campaign_id"),
+  relatedTaskId: varchar("related_task_id"),
+  relatedContentItemId: varchar("related_content_item_id"),
+  owner: text("owner"),
+  status: text("status").notNull().default("active").$type<typeof resourceStatusEnum[number]>(),
+  lastCheckedDate: text("last_checked_date"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertClientResourceSchema = createInsertSchema(clientResources).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClientResource = z.infer<typeof insertClientResourceSchema>;
+export type ClientResource = typeof clientResources.$inferSelect;
+
 export const hillCharts = pgTable("hill_charts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull(),

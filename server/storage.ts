@@ -208,6 +208,9 @@ import {
   hillCharts,
   type HillChart,
   type InsertHillChart,
+  clientResources,
+  type ClientResource,
+  type InsertClientResource,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -608,6 +611,14 @@ export interface IStorage {
   getCompanyWorkflows(companyId: string): Promise<(CompanyWorkflow & { template: HubspotWorkflowTemplate })[]>;
   updateCompanyWorkflow(id: string, data: Partial<Pick<InsertCompanyWorkflow, 'status' | 'hubspotWorkflowId' | 'notes'>>): Promise<CompanyWorkflow | undefined>;
   deleteCompanyWorkflow(id: string): Promise<void>;
+
+  // Client Resources
+  getClientResources(companyId: string, filters?: { resourceType?: string; status?: string; visibility?: string }): Promise<ClientResource[]>;
+  getAllClientResources(filters?: { companyId?: string; resourceType?: string; status?: string; visibility?: string }): Promise<ClientResource[]>;
+  getClientResource(id: string): Promise<ClientResource | undefined>;
+  createClientResource(data: InsertClientResource): Promise<ClientResource>;
+  updateClientResource(id: string, data: Partial<InsertClientResource>): Promise<ClientResource | undefined>;
+  deleteClientResource(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3324,6 +3335,49 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHillChart(id: string): Promise<void> {
     await db.delete(hillCharts).where(eq(hillCharts.id, id));
+  }
+
+  // ── Client Resources ──────────────────────────────────────────────────────────
+
+  async getClientResources(companyId: string, filters?: { resourceType?: string; status?: string; visibility?: string }): Promise<ClientResource[]> {
+    const conditions: any[] = [eq(clientResources.companyId, companyId)];
+    if (filters?.resourceType) conditions.push(eq(clientResources.resourceType, filters.resourceType as any));
+    if (filters?.status) conditions.push(eq(clientResources.status, filters.status as any));
+    if (filters?.visibility) conditions.push(eq(clientResources.visibility, filters.visibility as any));
+    return db.select().from(clientResources).where(and(...conditions)).orderBy(clientResources.resourceType, clientResources.title);
+  }
+
+  async getAllClientResources(filters?: { companyId?: string; resourceType?: string; status?: string; visibility?: string }): Promise<ClientResource[]> {
+    const conditions: any[] = [];
+    if (filters?.companyId) conditions.push(eq(clientResources.companyId, filters.companyId));
+    if (filters?.resourceType) conditions.push(eq(clientResources.resourceType, filters.resourceType as any));
+    if (filters?.status) conditions.push(eq(clientResources.status, filters.status as any));
+    if (filters?.visibility) conditions.push(eq(clientResources.visibility, filters.visibility as any));
+    const q = conditions.length > 0
+      ? db.select().from(clientResources).where(and(...conditions))
+      : db.select().from(clientResources);
+    return q.orderBy(clientResources.companyId, clientResources.resourceType, clientResources.title);
+  }
+
+  async getClientResource(id: string): Promise<ClientResource | undefined> {
+    const [row] = await db.select().from(clientResources).where(eq(clientResources.id, id));
+    return row;
+  }
+
+  async createClientResource(data: InsertClientResource): Promise<ClientResource> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(clientResources).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateClientResource(id: string, data: Partial<InsertClientResource>): Promise<ClientResource | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(clientResources).set({ ...(data as any), updatedAt: now }).where(eq(clientResources.id, id)).returning();
+    return row;
+  }
+
+  async deleteClientResource(id: string): Promise<void> {
+    await db.delete(clientResources).where(eq(clientResources.id, id));
   }
 }
 
