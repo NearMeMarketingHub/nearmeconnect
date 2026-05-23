@@ -1499,6 +1499,7 @@ export const contentCalendarItems = pgTable("content_calendar_items", {
   contentType: text("content_type").$type<ContentType>().notNull().default("post"),
   pillarId: varchar("pillar_id"),
   assignedTo: varchar("assigned_to"),
+  assignedToName: text("assigned_to_name"),
   title: text("title").notNull(),
   bodyContent: text("body_content"),
   hashtags: text("hashtags"),
