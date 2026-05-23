@@ -1,0 +1,140 @@
+BUG: HubSpot shows "Unable to load app information" when trying to connect.
+This error means HubSpot cannot find or validate the OAuth app.
+
+DIAGNOSIS — check these in order:
+
+STEP 1: Verify environment variables are set correctly in Replit Secrets.
+  Check that ALL of these exist and have values (not empty strings):
+    HUBSPOT_CLIENT_ID
+    HUBSPOT_CLIENT_SECRET  
+    HUBSPOT_REDIRECT_URI
+
+  Add a debug route (admin-only, remove after testing):
+  GET /api/debug/hubspot-config
+    return {
+      hasClientId: !!process.env.HUBSPOT_CLIENT_ID,
+      hasClientSecret: !!process.env.HUBSPOT_CLIENT_SECRET,
+      redirectUri: process.env.HUBSPOT_REDIRECT_URI,
+      clientIdPreview: process.env.HUBSPOT_CLIENT_ID?.substring(0, 8) + '...'
+    }
+
+STEP 2: Fix the OAuth authorization URL construction.
+  The connect route must build the URL exactly like this:
+
+  GET /api/hubspot/connect/:companyId
+
+  const SCOPES = [
+    'crm.objects.contacts.read',
+    'crm.objects.contacts.write', 
+    'crm.objects.companies.read',
+    'crm.objects.companies.write',
+    'crm.objects.deals.read',
+    'crm.objects.tasks.read',
+    'crm.objects.tasks.write',
+    'content',
+    'social',
+    'automation',
+    'reports'
+  ].join(' ')
+
+  const authUrl = new URL('https://app.hubspot.com/oauth/authorize')
+  authUrl.searchParams.set('client_id', process.env.HUBSPOT_CLIENT_ID)
+  authUrl.searchParams.set('redirect_uri', process.env.HUBSPOT_REDIRECT_URI)
+  authUrl.searchParams.set('scope', SCOPES)
+  authUrl.searchParams.set('state', companyId)
+
+  return res.redirect(authUrl.toString())
+
+STEP 3: Verify the HubSpot Developer App settings match EXACTLY.
+  The user must check app.hubspot.com/developer → their app → Auth tab:
+  
+  Required redirect URL must be EXACTLY:
+    https://portal.nearmemarketinghub.com/api/hubspot/callback
+  
+  Common mistakes that cause "Unable to load app information":
+    ✗ Trailing slash: .../callback/  (remove it)
+    ✗ HTTP instead of HTTPS: http://portal...
+    ✗ Wrong path: /api/hubspot/oauth/callback vs /api/hubspot/callback
+    ✗ App is in "draft" state and not published in HubSpot developer portal
+    ✗ Wrong scopes — some scopes require the app to be a "public app" type
+    ✗ Client ID copied with extra spaces
+
+STEP 4: Fix the callback route to handle errors gracefully.
+  GET /api/hubspot/callback
+
+  // HubSpot sends error param if user denies or config is wrong
+  if (req.query.error) {
+    console.error('HubSpot OAuth error:', req.query.error, req.query.error_description)
+    return res.redirect(`/companies?error=hubspot_${req.query.error}`)
+  }
+
+  const { code, state: companyId } = req.query
+  
+  // Exchange code for tokens
+  const tokenResponse = await fetch('https://api.hubapi.com/oauth/v1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: process.env.HUBSPOT_CLIENT_ID,
+      client_secret: process.env.HUBSPOT_CLIENT_SECRET,
+      redirect_uri: process.env.HUBSPOT_REDIRECT_URI,
+      code
+    })
+  })
+
+  if (!tokenResponse.ok) {
+    const err = await tokenResponse.json()
+    console.error('Token exchange failed:', err)
+    return res.redirect(`/companies/${companyId}?error=hubspot_token_failed`)
+  }
+
+  const tokens = await tokenResponse.json()
+  // tokens = { access_token, refresh_token, expires_in, token_type }
+  
+  // Get HubSpot portal info
+  const portalResponse = await fetch('https://api.hubapi.com/oauth/v1/access-tokens/' + tokens.access_token)
+  const portalInfo = await portalResponse.json()
+  // portalInfo.hub_id = the portal ID (numeric)
+  // portalInfo.hub_domain = the HubSpot domain
+
+  // Save to hubspot_connections table
+  await db.query(`
+    INSERT INTO hubspot_connections 
+      (company_id, portal_id, access_token, refresh_token, 
+       token_expires_at, hub_domain, connected_by, connected_at, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
+    ON CONFLICT (company_id) DO UPDATE SET
+      portal_id = $2, access_token = $3, refresh_token = $4,
+      token_expires_at = $5, hub_domain = $6, is_active = true
+  `, [
+    companyId, 
+    String(portalInfo.hub_id),
+    tokens.access_token,
+    tokens.refresh_token,
+    new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+    portalInfo.hub_domain,
+    req.session.userId,
+    new Date().toISOString()
+  ])
+
+  return res.redirect(`/companies/${companyId}?success=hubspot_connected`)
+
+STEP 5: Show clear connection status in the UI.
+  On the HubSpot tab of the company detail page:
+  
+  If connection exists and is_active = true:
+    Green badge "Connected" + portal domain + "Disconnect" link
+  
+  If no connection or is_active = false:
+    Orange "Connect HubSpot" button that links to /api/hubspot/connect/:companyId
+  
+  If URL has ?error=hubspot_*:
+    Show a red alert banner with the specific error and a "Try Again" button
+    Include this helper text:
+    "If you see 'Unable to load app information', verify your HubSpot 
+    Developer App redirect URL matches exactly: 
+    https://portal.nearmemarketinghub.com/api/hubspot/callback"
+  
+  If URL has ?success=hubspot_connected:
+    Show green success toast "HubSpot connected successfully!"

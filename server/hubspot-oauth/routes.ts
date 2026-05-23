@@ -18,15 +18,16 @@ import type { HubspotConnection } from "@shared/schema";
 function buildAuthUrl(companyId: string): string {
   const clientId = process.env.HUBSPOT_CLIENT_ID || "";
   const redirectUri = process.env.HUBSPOT_REDIRECT_URI || "";
+  // Only include scopes that are available to standard public apps.
+  // Scopes like analytics.behavioral_events.send, cms.knowledge_base.articles.read,
+  // tickets, and crm.objects.marketing_events.read require special app types and
+  // will cause HubSpot to show "Unable to load app information".
   const scopes = [
     "crm.objects.contacts.read", "crm.objects.contacts.write",
     "crm.objects.companies.read", "crm.objects.companies.write",
     "crm.objects.deals.read", "crm.objects.deals.write",
     "crm.objects.tasks.read", "crm.objects.tasks.write",
-    "crm.objects.marketing_events.read",
-    "content", "social", "automation", "reports", "tickets",
-    "analytics.behavioral_events.send",
-    "cms.knowledge_base.articles.read",
+    "content", "social", "automation", "reports",
   ].join(" ");
 
   const state = Buffer.from(JSON.stringify({ companyId })).toString("base64url");
@@ -40,6 +41,30 @@ function buildAuthUrl(companyId: string): string {
 }
 
 export function registerHubSpotOAuthRoutes(app: Express) {
+
+  // ── Debug route (admin-only) ───────────────────────────────────────────────
+  app.get("/api/debug/hubspot-config", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      res.json({
+        hasClientId: !!process.env.HUBSPOT_CLIENT_ID,
+        hasClientSecret: !!process.env.HUBSPOT_CLIENT_SECRET,
+        hasRedirectUri: !!process.env.HUBSPOT_REDIRECT_URI,
+        redirectUri: process.env.HUBSPOT_REDIRECT_URI || "(not set)",
+        clientIdPreview: process.env.HUBSPOT_CLIENT_ID
+          ? process.env.HUBSPOT_CLIENT_ID.substring(0, 8) + "..."
+          : "(not set)",
+        expectedRedirectUri: "https://portal.nearmemarketinghub.com/api/hubspot/callback",
+        redirectUriMatches:
+          process.env.HUBSPOT_REDIRECT_URI === "https://portal.nearmemarketinghub.com/api/hubspot/callback",
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ── OAuth connection ──────────────────────────────────────────────────────
 

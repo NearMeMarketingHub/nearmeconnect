@@ -1,16 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import {
   Link2, Link2Off, RefreshCw, ExternalLink, Users, DollarSign,
   Mail, BarChart2, Loader2, AlertTriangle, CheckCircle2, Clock,
-  Zap, ScrollText, CalendarPlus, Play, Pause, FileText,
+  Zap, ScrollText, CalendarPlus, Play, Pause, FileText, X,
 } from "lucide-react";
 
 interface HubspotPanelProps {
@@ -36,8 +38,20 @@ const ACTION_LABELS: Record<string, string> = {
 
 export function HubspotPanel({ companyId }: HubspotPanelProps) {
   const { toast } = useToast();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const hubspotParam = urlParams.get("hubspot");
+  const hubspotMsg = urlParams.get("msg");
+  const [errorDismissed, setErrorDismissed] = useState(false);
   const [activeTab, setActiveTab] = useState("crm");
   const [pushingCalendar, setPushingCalendar] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (hubspotParam === "connected") {
+      toast({ title: "HubSpot connected successfully!", description: "Your HubSpot account has been linked to this company." });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: conn, isLoading: connLoading } = useQuery<any>({
     queryKey: ["/api/hubspot/connection", companyId],
@@ -167,27 +181,68 @@ export function HubspotPanel({ companyId }: HubspotPanelProps) {
 
   if (!conn?.connected) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 py-12">
-          <div className="rounded-full bg-muted p-4">
-            <Link2 className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <div className="text-center space-y-1">
-            <h3 className="font-semibold text-lg">Connect HubSpot</h3>
-            <p className="text-sm text-muted-foreground max-w-xs">
-              Link this client's HubSpot account to sync contacts, deals, tasks, and campaign data.
-            </p>
-          </div>
-          <Button
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-            onClick={() => { window.location.href = `/api/hubspot/connect/${companyId}`; }}
-            data-testid="button-hubspot-connect"
-          >
-            <Link2 className="h-4 w-4 mr-2" />
-            Connect HubSpot
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        {hubspotParam === "error" && !errorDismissed && (
+          <Alert variant="destructive" data-testid="alert-hubspot-error">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <p className="font-medium">HubSpot connection failed</p>
+                  {hubspotMsg && (
+                    <p className="text-xs opacity-90 font-mono">{decodeURIComponent(hubspotMsg)}</p>
+                  )}
+                  <p className="text-xs opacity-80">
+                    If you see "Unable to load app information", verify the HubSpot Developer App redirect URL
+                    matches exactly:{" "}
+                    <span className="font-mono font-medium">
+                      https://portal.nearmemarketinghub.com/api/hubspot/callback
+                    </span>
+                    {" "}(no trailing slash, HTTPS, exact path).
+                  </p>
+                </div>
+                <button
+                  onClick={() => setErrorDismissed(true)}
+                  className="shrink-0 opacity-70 hover:opacity-100"
+                  data-testid="button-dismiss-hubspot-error"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                onClick={() => { window.location.href = `/api/hubspot/connect/${companyId}`; }}
+                data-testid="button-hubspot-retry"
+              >
+                Try Again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 py-12">
+            <div className="rounded-full bg-muted p-4">
+              <Link2 className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="font-semibold text-lg">Connect HubSpot</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Link this client's HubSpot account to sync contacts, deals, tasks, and campaign data.
+              </p>
+            </div>
+            <Button
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+              onClick={() => { window.location.href = `/api/hubspot/connect/${companyId}`; }}
+              data-testid="button-hubspot-connect"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              Connect HubSpot
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
