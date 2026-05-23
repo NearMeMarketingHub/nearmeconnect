@@ -570,7 +570,7 @@ export interface IStorage {
   getContentAssets(companyId?: string, pillarId?: string): Promise<ContentAsset[]>;
   createContentAsset(data: InsertContentAsset): Promise<ContentAsset>;
   deleteContentAsset(id: string): Promise<void>;
-  getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string }): Promise<ContentCalendarItem[]>;
+  getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string; campaignRequestId?: string }): Promise<ContentCalendarItem[]>;
   getContentCalendarItem(id: string): Promise<ContentCalendarItem | undefined>;
   createContentCalendarItem(data: InsertContentCalendarItem): Promise<ContentCalendarItem>;
   updateContentCalendarItem(id: string, data: Partial<ContentCalendarItem>): Promise<ContentCalendarItem | undefined>;
@@ -2917,11 +2917,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(contentAssets).where(eq(contentAssets.id, id));
   }
 
-  async getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string }): Promise<ContentCalendarItem[]> {
+  async getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string; campaignRequestId?: string }): Promise<ContentCalendarItem[]> {
     const conditions = [];
     if (filters.companyId) conditions.push(eq(contentCalendarItems.companyId, filters.companyId));
     if (filters.platform) conditions.push(eq(contentCalendarItems.platform, filters.platform as any));
     if (filters.status) conditions.push(eq(contentCalendarItems.status, filters.status as any));
+    if (filters.campaignRequestId) conditions.push(eq(contentCalendarItems.campaignRequestId, filters.campaignRequestId));
     if (filters.month !== undefined && filters.year !== undefined) {
       const prefix = `${filters.year}-${String(filters.month).padStart(2, "0")}-`;
       conditions.push(sql`${contentCalendarItems.scheduledDate} LIKE ${prefix + "%"}`);

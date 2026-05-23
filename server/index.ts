@@ -85,6 +85,30 @@ async function migrateOnboardingCredentials() {
   log("[onboarding-migration] Migration complete", "onboarding-migration");
 }
 
+async function migrateCampaignWorkspaceColumns() {
+  const { pool } = await import("./db");
+  const alterations = [
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS purpose text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS offer text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS objective text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS target_services text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS owner_name text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS launch_date text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS client_visible boolean NOT NULL DEFAULT false",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS sharepoint_folder_url text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS asset_links text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS approval_flow text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS campaign_notes text",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS reporting_included boolean NOT NULL DEFAULT false",
+    "ALTER TABLE campaign_requests ADD COLUMN IF NOT EXISTS published_urls text",
+    "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS campaign_request_id varchar",
+  ];
+  for (const stmt of alterations) {
+    await pool.query(stmt);
+  }
+  log("[campaign-workspace-migration] Campaign workspace columns ensured", "campaign-workspace-migration");
+}
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -320,6 +344,7 @@ async function seedDatabase() {
       }
       // One-time migration: move plaintext loginCredentials from onboarding records into encrypted company_credentials
       migrateOnboardingCredentials().catch(err => log(`[onboarding-migration] Error: ${err}`, "onboarding-migration"));
+      migrateCampaignWorkspaceColumns().catch(err => log(`[campaign-workspace-migration] Error: ${err}`, "campaign-workspace-migration"));
     },
   );
 

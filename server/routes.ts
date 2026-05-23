@@ -5907,6 +5907,149 @@ export async function registerRoutes(
     }
   });
 
+  // Manually generate tasks for a campaign (separate from approval flow)
+  app.post("/api/campaign-requests/:id/generate-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const request = await storage.getCampaignRequest((req.params.id as string));
+      if (!request) return res.status(404).json({ error: "Campaign request not found" });
+
+      const company = await storage.getCompany(request.companyId);
+      const campaignType = await storage.getCampaignType(request.campaignTypeId);
+      if (!company || !campaignType) return res.status(400).json({ error: "Company or campaign type not found" });
+
+      const deliverableTypes = await storage.getDeliverableTypes();
+      const effectiveDeliverableIds = request.requestDeliverableIds || campaignType.includedDeliverableIds || [];
+      let quantities: Record<string, number> = {};
+      if (request.requestDeliverableQuantities) {
+        try { quantities = JSON.parse(request.requestDeliverableQuantities); } catch {}
+      } else if (request.deliverableQuantities) {
+        try { quantities = JSON.parse(request.deliverableQuantities); } catch {}
+      } else if (campaignType.deliverableQuantities) {
+        try { quantities = JSON.parse(campaignType.deliverableQuantities); } catch {}
+      }
+
+      const { getBillingPeriod } = await import("@shared/billing");
+      const period = getBillingPeriod(company.billingStartDay);
+      const totalDeliverables = effectiveDeliverableIds.reduce((sum: number, delId: string) => sum + (quantities[delId] || 1), 0);
+      const created: string[] = [];
+
+      for (const delId of effectiveDeliverableIds) {
+        const del = deliverableTypes.find(d => d.id === delId || d.key === delId);
+        if (!del) continue;
+        const qty = quantities[delId] || 1;
+        const rushMultiplier = (request.isRush && !request.rushDisabled) ? 2 : 1;
+        const totalCreditForDeliverable = request.creditOverride != null
+          ? String(parseFloat(String(request.creditOverride)) / totalDeliverables * qty)
+          : String(parseFloat(del.credits) * qty * rushMultiplier);
+
+        const campaignTitle = request.name || campaignType.name;
+        const allDeliverableNames = effectiveDeliverableIds.map((id: string) => {
+          const d = deliverableTypes.find(dt => dt.id === id || dt.key === id);
+          const q = quantities[id] || 1;
+          return d ? (q > 1 ? `${d.name} (x${q})` : d.name) : null;
+        }).filter(Boolean);
+        const taskDescription = [
+          `This task is part of the campaign: ${campaignTitle}`,
+          request.notes ? `\nCampaign Notes: ${request.notes}` : '',
+          request.goals ? `\nGoals: ${request.goals}` : '',
+          request.targetAudience ? `\nTarget Audience: ${request.targetAudience}` : '',
+          `\nDeliverables in this campaign: ${allDeliverableNames.join(', ')}`,
+          `\nThis task covers: ${del.name}${qty > 1 ? ` (x${qty})` : ''}`,
+        ].filter(Boolean).join('');
+
+        const task = await storage.createTask({
+          companyId: request.companyId,
+          title: `${campaignTitle} - ${del.name}`,
+          description: taskDescription,
+          status: "pending",
+          priority: "medium",
+          creditCost: totalCreditForDeliverable,
+          type: "assigned",
+          deliverableType: del.key,
+          dueDate: request.dueDate,
+          assignedBy: userId,
+          creditsDeducted: false,
+          billingPeriodStart: period.startStr,
+          billingPeriodEnd: period.endStr,
+          approvalStatus: "approved",
+          noCredit: false,
+          taskOwnership: "agency",
+          campaignRequestId: request.id,
+          bulkQuantity: qty > 1 ? qty : null,
+        });
+        created.push(task.id);
+      }
+
+      broadcastInvalidation(["/api/admin/campaign-requests", "/api/tasks", "/api/companies"]);
+      res.json({ created: created.length, taskIds: created });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to generate tasks", detail: error.message });
+    }
+  });
+
+  // Generate content calendar placeholders for a campaign
+  app.post("/api/campaign-requests/:id/generate-content", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const request = await storage.getCampaignRequest((req.params.id as string));
+      if (!request) return res.status(404).json({ error: "Campaign request not found" });
+
+      const campaignType = await storage.getCampaignType(request.campaignTypeId);
+      const deliverableTypes = await storage.getDeliverableTypes();
+      const effectiveDeliverableIds = request.requestDeliverableIds || campaignType?.includedDeliverableIds || [];
+      let quantities: Record<string, number> = {};
+      if (request.requestDeliverableQuantities) {
+        try { quantities = JSON.parse(request.requestDeliverableQuantities); } catch {}
+      } else if (request.deliverableQuantities) {
+        try { quantities = JSON.parse(request.deliverableQuantities); } catch {}
+      }
+
+      const PLATFORM_MAP: Record<string, string> = {
+        blog: "website", email: "email", social: "instagram", "social-media": "instagram",
+        facebook: "facebook", linkedin: "linkedin", gbp: "google_business", video: "youtube",
+        podcast: "other", landing: "website", ads: "facebook", graphics: "instagram",
+      };
+
+      const now = new Date().toISOString();
+      const created: string[] = [];
+      const campaignTitle = request.name || campaignType?.name || "Campaign";
+
+      for (const delId of effectiveDeliverableIds) {
+        const del = deliverableTypes.find(d => d.id === delId || d.key === delId);
+        if (!del) continue;
+        const qty = quantities[delId] || 1;
+        const keyLower = (del.key || del.name || "").toLowerCase();
+        const platform = Object.entries(PLATFORM_MAP).find(([k]) => keyLower.includes(k))?.[1] || "other";
+
+        for (let i = 0; i < Math.min(qty, 12); i++) {
+          const item = await storage.createContentCalendarItem({
+            companyId: request.companyId,
+            platform: platform as any,
+            contentType: "post",
+            title: qty > 1 ? `${campaignTitle} - ${del.name} #${i + 1}` : `${campaignTitle} - ${del.name}`,
+            status: "draft",
+            createdBy: userId,
+            campaignRequestId: request.id,
+          });
+          created.push(item.id);
+        }
+      }
+
+      broadcastInvalidation(["/api/content-calendar", "/api/admin/campaign-requests"]);
+      res.json({ created: created.length, itemIds: created });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to generate content placeholders", detail: error.message });
+    }
+  });
+
+
   // ==================== MEETING TYPES ====================
 
   // Get all meeting types
@@ -11366,7 +11509,8 @@ export async function registerRoutes(
     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
     const platform = req.query.platform as string | undefined;
     const status = req.query.status as string | undefined;
-    const items = await storage.getContentCalendarItems({ companyId, month, year, platform, status });
+    const campaignRequestId = req.query.campaignRequestId as string | undefined;
+    const items = await storage.getContentCalendarItems({ companyId, month, year, platform, status, campaignRequestId });
     res.json(items);
   });
 
