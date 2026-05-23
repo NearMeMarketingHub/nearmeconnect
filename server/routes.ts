@@ -9,6 +9,7 @@ import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insert
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { registerHubSpotOAuthRoutes } from "./hubspot-oauth/routes";
 import { uploadToSharePoint, uploadToSharePointWithIds, downloadFromSharePoint, deleteFromSharePoint } from "./sharepoint";
 import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificationToUsers } from "./websocket";
 import multer from "multer";
@@ -194,6 +195,7 @@ export async function registerRoutes(
   setupAuth(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
+  registerHubSpotOAuthRoutes(app);
 
   app.get("/api/me", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {

@@ -1342,6 +1342,30 @@ export const monthlyReportTracker = pgTable("monthly_report_tracker", {
 });
 
 // Admin-managed credentials per company (separate from client onboarding loginCredentials)
+// ── HubSpot per-company OAuth connection ──────────────────────────────────────
+export const hubspotConnections = pgTable("hubspot_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  portalId: text("portal_id"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: text("token_expires_at"),
+  hubDomain: text("hub_domain"),
+  hubspotCompanyId: text("hubspot_company_id"),
+  scopesGranted: text("scopes_granted"),
+  connectedBy: varchar("connected_by").notNull(),
+  connectedAt: text("connected_at").notNull(),
+  lastSyncedAt: text("last_synced_at"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const insertHubspotConnectionSchema = createInsertSchema(hubspotConnections).omit({
+  id: true,
+  connectedAt: true,
+});
+export type InsertHubspotConnection = z.infer<typeof insertHubspotConnectionSchema>;
+export type HubspotConnection = typeof hubspotConnections.$inferSelect;
+
 export const companyCredentials = pgTable("company_credentials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),

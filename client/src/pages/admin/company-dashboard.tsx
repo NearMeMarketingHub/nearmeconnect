@@ -29,6 +29,7 @@ import { useUpload } from "@/hooks/use-upload";
 import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
+import { HubspotPanel } from "@/components/hubspot-panel";
 import {
   ArrowLeft,
   Plus,
@@ -2238,6 +2239,7 @@ export default function CompanyDashboard() {
               { value: "users", label: "Users", count: companyUsers.length },
               { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
+              { value: "hubspot", label: "HubSpot" },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -2299,6 +2301,10 @@ export default function CompanyDashboard() {
             <TabsTrigger value="reporting" data-testid="tab-reporting">
               <BarChart3 className="h-4 w-4 mr-2" />
               Reporting
+            </TabsTrigger>
+            <TabsTrigger value="hubspot" data-testid="tab-hubspot">
+              <Link2 className="h-4 w-4 mr-2" />
+              HubSpot
             </TabsTrigger>
           </TabsList>
 
@@ -4812,6 +4818,10 @@ export default function CompanyDashboard() {
 
           <TabsContent value="reporting" className="space-y-6">
             <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
+          </TabsContent>
+
+          <TabsContent value="hubspot" className="space-y-6">
+            <HubspotPanel companyId={companyId!} />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,0 +1,87 @@
+Update the existing task management system. DO NOT rebuild from scratch.
+Make targeted additions to existing task tables and UI.
+
+=== CHANGE 1: THREE VIEW MODES ===
+
+Add a view toggle at the top of all task pages: [Board] [List] [Summary]
+Default to Board view.
+
+--- BOARD VIEW (new default) ---
+Kanban columns from existing task status values: 
+  Pending | In Progress | Waiting on Client | In Review | Completed
+
+Each task card shows:
+  - Title (bold, full text if short, truncated at 60 chars)
+  - Description preview (first 100 chars, italic, muted)
+  - Assigned to: avatar initial + name (read tasks.assigned_to_name 
+    or JOIN task_assignees → users)
+  - Company badge (company name, colored chip — use a color hash of company_id)
+  - Category badge (from task_categories JOIN)
+  - Pillar badge (from content_pillars, if pillar_id is set) ← NEW LINK to BIG PICTURE
+  - Due date chip (red if overdue, orange if <48hrs, green if >3 days away)
+  - Priority left border (red=high, yellow=medium, gray=low)
+  - Credit cost (small badge, bottom right)
+  - Ownership badge: "Agency" or "Client" (from tasks.task_ownership)
+
+Columns also show:
+  - Task count in header
+  - Total credit value in header (sum of credit_cost in that column)
+
+Drag a card between columns → PATCH /api/tasks/:id { status: newStatus }
+  Also update tasks.updated_at
+
+--- LIST VIEW (existing, enhanced) ---
+Keep existing table. Add missing columns if not shown:
+  Assigned To name | Category | Description (truncated) | Pillar | Ownership
+Add column chooser (show/hide columns).
+Add GROUP BY dropdown: by Person | by Category | by Company | by Pillar
+  Groups collapse/expand. Each group header shows count + credit total.
+
+--- SUMMARY VIEW (new) ---
+Dashboard-style read-only view designed for the "thousand-foot view":
+  Row of KPI cards (for current filter scope):
+    To Do | In Progress | Waiting on Client | Completed This Week | Overdue
+  
+  Grouped table — 4 column categories across top:
+    To Complete | Pushed Out (past due date, not complete) | 
+    Agency Owned | Client Owned/Waiting
+  
+  Each cell in the table: list of task titles with company badge.
+  Designed to print cleanly (add Print button that opens print-optimized CSS view).
+
+=== CHANGE 2: EDIT DUE DATE INLINE ===
+On every task card and list row, clicking the due date opens a date picker inline.
+On confirm: PATCH /api/tasks/:id { due_date: newDate }
+No modal required for date-only changes.
+
+=== CHANGE 3: ASSIGNEE VISIBILITY ===
+Everywhere a task is shown, the assigned person's name must be visible.
+- Read from tasks.assigned_to_name first (populate this on every task save going forward)
+- Fall back to JOIN users on tasks.assigned_to
+- On existing tasks that have assigned_to but no assigned_to_name:
+  Run a one-time backfill query: 
+  UPDATE tasks SET assigned_to_name = users.first_name || ' ' || users.last_name
+  FROM users WHERE tasks.assigned_to = users.id AND tasks.assigned_to_name IS NULL
+
+=== CHANGE 4: TASK DETAIL MODAL IMPROVEMENTS ===
+When opening a task detail, show:
+  - Full title (editable inline)
+  - Full description (editable rich textarea)
+  - Assigned to (name + email + avatar)
+  - Company name + link to company profile
+  - Category + Pillar (the BIG PICTURE connection — show pillar name, description, color)
+  - Status, Priority, Due Date (all editable inline)
+  - Credit cost
+  - Task ownership
+  - HubSpot Task link (if hubspot_task_id is set, show "View in HubSpot" button)
+  - Checklist items (existing task_checklist_items — show progress bar)
+  - Attachments count
+  - Comments count
+  - Time tracked (tasks.total_time_tracked in minutes → display as Xh Ym)
+  - Created by, Created at, Updated at
+
+=== CHANGE 5: TASK → PILLAR LINK ===
+In task create/edit form, add optional "Content Pillar" dropdown.
+Loads content_pillars WHERE company_id matches the task's company.
+Saves to tasks.pillar_id.
+This connects the task to the BIG PICTURE strategy.

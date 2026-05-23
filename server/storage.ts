@@ -159,6 +159,8 @@ import {
   monthlyReportNotes,
   companyCredentials,
   companyKnowledgeItems,
+  hubspotConnections,
+  type HubspotConnection,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -462,6 +464,12 @@ export interface IStorage {
   createCompanyKnowledgeItem(data: InsertCompanyKnowledgeItem): Promise<CompanyKnowledgeItem>;
   updateCompanyKnowledgeItem(id: string, data: Partial<CompanyKnowledgeItem>): Promise<CompanyKnowledgeItem | undefined>;
   deleteCompanyKnowledgeItem(id: string): Promise<void>;
+
+  // HubSpot OAuth connections
+  getHubspotConnection(companyId: string): Promise<HubspotConnection | undefined>;
+  upsertHubspotConnection(data: Omit<HubspotConnection, "id">): Promise<HubspotConnection>;
+  updateHubspotConnection(companyId: string, data: Partial<HubspotConnection>): Promise<void>;
+  updateTaskHubspotId(taskId: string, hubspotTaskId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2630,6 +2638,45 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompanyKnowledgeItem(id: string): Promise<void> {
     await db.delete(companyKnowledgeItems).where(eq(companyKnowledgeItems.id, id));
+  }
+
+  async getHubspotConnection(companyId: string): Promise<HubspotConnection | undefined> {
+    const [conn] = await db.select().from(hubspotConnections)
+      .where(eq(hubspotConnections.companyId, companyId));
+    return conn;
+  }
+
+  async upsertHubspotConnection(data: Omit<HubspotConnection, "id">): Promise<HubspotConnection> {
+    const now = new Date().toISOString();
+    const [conn] = await db.insert(hubspotConnections)
+      .values({ ...data, connectedAt: data.connectedAt || now })
+      .onConflictDoUpdate({
+        target: hubspotConnections.companyId,
+        set: {
+          portalId: data.portalId,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          tokenExpiresAt: data.tokenExpiresAt,
+          hubDomain: data.hubDomain,
+          hubspotCompanyId: data.hubspotCompanyId,
+          scopesGranted: data.scopesGranted,
+          connectedBy: data.connectedBy,
+          lastSyncedAt: data.lastSyncedAt,
+          isActive: data.isActive,
+        },
+      })
+      .returning();
+    return conn;
+  }
+
+  async updateHubspotConnection(companyId: string, data: Partial<HubspotConnection>): Promise<void> {
+    await db.update(hubspotConnections)
+      .set(data)
+      .where(eq(hubspotConnections.companyId, companyId));
+  }
+
+  async updateTaskHubspotId(taskId: string, hubspotTaskId: string): Promise<void> {
+    await db.update(tasks).set({ hubspotTaskId } as any).where(eq(tasks.id, taskId));
   }
 }
 
