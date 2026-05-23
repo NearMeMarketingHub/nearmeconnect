@@ -679,8 +679,42 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
       (onboarding.googleBusinessInviteDate || onboarding.googleBusinessNA)
     : false;
 
+  const progressSteps = onboarding ? [
+    !!onboarding.socialProfilesListed,
+    !!accessComplete,
+    !!onboarding.loginCredentialsProvided,
+    !!onboarding.brandAssetsProvided,
+    !!onboarding.seasonalPreferencesConfirmed,
+    !!onboarding.isCompleted,
+  ] : [];
+  const progressPercent = progressSteps.length > 0
+    ? Math.round(progressSteps.filter(Boolean).length / progressSteps.length * 100)
+    : 0;
+
   return (
     <div className="space-y-6">
+      {/* ── Progress Bar ──────────────────────────────────────── */}
+      {onboarding && (
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Onboarding Progress</span>
+              <span className={`text-sm font-medium ${progressPercent === 100 ? "text-green-600 dark:text-green-400" : "text-primary"}`}>
+                {progressPercent === 100 ? "✓ Complete" : `${progressPercent}%`}
+              </span>
+            </div>
+            <div className="w-full bg-secondary rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-500 ${progressPercent === 100 ? "bg-green-500" : "bg-primary"}`}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {progressSteps.filter(Boolean).length} of {progressSteps.length} steps complete
+            </p>
+          </CardContent>
+        </Card>
+      )}
       {/* ── Onboarding Status card ───────────────────────────── */}
       {onboarding ? (
         <>

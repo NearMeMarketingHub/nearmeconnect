@@ -93,6 +93,7 @@ import {
   List,
   LayoutGrid,
   Kanban,
+  Megaphone,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -104,6 +105,7 @@ import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
 import { TaskBoardView } from "@/components/task-board-view";
 import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
+import { MarketingHub } from "@/components/marketing-hub";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -2240,6 +2242,7 @@ export default function CompanyDashboard() {
               { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
               { value: "hubspot", label: "HubSpot" },
+              { value: "marketing", label: "Marketing Hub" },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -2305,6 +2308,10 @@ export default function CompanyDashboard() {
             <TabsTrigger value="hubspot" data-testid="tab-hubspot">
               <Link2 className="h-4 w-4 mr-2" />
               HubSpot
+            </TabsTrigger>
+            <TabsTrigger value="marketing" data-testid="tab-marketing">
+              <Megaphone className="h-4 w-4 mr-2" />
+              Marketing Hub
             </TabsTrigger>
           </TabsList>
 
@@ -4534,6 +4541,10 @@ export default function CompanyDashboard() {
           {/* Company Info / Onboarding Tab */}
           <TabsContent value="onboarding" className="space-y-4">
             {companyId && <CompanyInfoHub companyId={companyId} />}
+          </TabsContent>
+
+          <TabsContent value="marketing" className="space-y-4">
+            {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => setActiveTab(tab)} />}
           </TabsContent>
 
           {/* Cadences Tab */}

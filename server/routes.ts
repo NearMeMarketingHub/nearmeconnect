@@ -3745,6 +3745,32 @@ export async function registerRoutes(
   });
 
   // Admin-only: credentials CRUD
+  // ── Brand Profile ────────────────────────────────────────────────────────────
+  app.get("/api/companies/:id/brand-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const profile = await storage.getBrandProfile(req.params.id as string);
+      if (!profile) return res.status(404).json({ error: "No brand profile yet" });
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch brand profile" });
+    }
+  });
+
+  app.put("/api/companies/:id/brand-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const profile = await storage.upsertBrandProfile(req.params.id as string, req.body);
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save brand profile" });
+    }
+  });
+
   app.get("/api/companies/:id/credentials", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -3834,7 +3860,7 @@ export async function registerRoutes(
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       const existing = await storage.getCompanyCredential((req.params.credId as string));
       if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
-      const { label, username, password, url, notes, category } = req.body;
+      const { label, username, password, url, notes, category, lastVerifiedAt } = req.body;
       const allowedFields: Partial<typeof existing> = {};
       if (label !== undefined) allowedFields.label = label;
       if (username !== undefined) allowedFields.username = username || null;
@@ -3842,6 +3868,7 @@ export async function registerRoutes(
       if (url !== undefined) allowedFields.url = url || null;
       if (notes !== undefined) allowedFields.notes = notes || null;
       if (category !== undefined) allowedFields.category = category || null;
+      if (lastVerifiedAt !== undefined) (allowedFields as any).lastVerifiedAt = lastVerifiedAt || null;
       const updated = await storage.updateCompanyCredential((req.params.credId as string), allowedFields);
       res.json(updated);
     } catch (error) {

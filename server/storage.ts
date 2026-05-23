@@ -160,7 +160,9 @@ import {
   companyCredentials,
   companyKnowledgeItems,
   hubspotConnections,
+  brandProfiles,
   type HubspotConnection,
+  type BrandProfile,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -464,6 +466,10 @@ export interface IStorage {
   createCompanyKnowledgeItem(data: InsertCompanyKnowledgeItem): Promise<CompanyKnowledgeItem>;
   updateCompanyKnowledgeItem(id: string, data: Partial<CompanyKnowledgeItem>): Promise<CompanyKnowledgeItem | undefined>;
   deleteCompanyKnowledgeItem(id: string): Promise<void>;
+
+  // Brand Profiles
+  getBrandProfile(companyId: string): Promise<BrandProfile | undefined>;
+  upsertBrandProfile(companyId: string, data: Partial<BrandProfile>): Promise<BrandProfile>;
 
   // HubSpot OAuth connections
   getHubspotConnection(companyId: string): Promise<HubspotConnection | undefined>;
@@ -2638,6 +2644,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompanyKnowledgeItem(id: string): Promise<void> {
     await db.delete(companyKnowledgeItems).where(eq(companyKnowledgeItems.id, id));
+  }
+
+  async getBrandProfile(companyId: string): Promise<BrandProfile | undefined> {
+    const [row] = await db.select().from(brandProfiles).where(eq(brandProfiles.companyId, companyId));
+    return row;
+  }
+
+  async upsertBrandProfile(companyId: string, data: Partial<BrandProfile>): Promise<BrandProfile> {
+    const existing = await this.getBrandProfile(companyId);
+    if (existing) {
+      const [updated] = await db.update(brandProfiles)
+        .set({ ...data, companyId, updatedAt: new Date().toISOString() })
+        .where(eq(brandProfiles.companyId, companyId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(brandProfiles)
+        .values({ ...data, companyId, createdAt: new Date().toISOString() })
+        .returning();
+      return created;
+    }
   }
 
   async getHubspotConnection(companyId: string): Promise<HubspotConnection | undefined> {

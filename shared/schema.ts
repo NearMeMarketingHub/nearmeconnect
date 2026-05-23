@@ -1375,6 +1375,7 @@ export const companyCredentials = pgTable("company_credentials", {
   url: text("url"),
   notes: text("notes"),
   category: text("category"),
+  lastVerifiedAt: text("last_verified_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });
@@ -1387,7 +1388,10 @@ export const insertCompanyCredentialSchema = createInsertSchema(companyCredentia
 export type InsertCompanyCredential = z.infer<typeof insertCompanyCredentialSchema>;
 export type CompanyCredential = typeof companyCredentials.$inferSelect;
 
-export const knowledgeSectionEnum = ["links", "profile", "ideas", "resources"] as const;
+export const knowledgeSectionEnum = [
+  "links", "profile", "ideas", "resources",
+  "website", "analytics", "social", "design", "ads", "email", "tools", "docs", "directory", "other",
+] as const;
 export type KnowledgeSection = typeof knowledgeSectionEnum[number];
 
 // Admin-managed knowledge hub items per company
@@ -1412,3 +1416,35 @@ export const insertCompanyKnowledgeItemSchema = createInsertSchema(companyKnowle
 });
 export type InsertCompanyKnowledgeItem = z.infer<typeof insertCompanyKnowledgeItemSchema>;
 export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;
+
+// Brand profile per company (visual identity, voice, positioning)
+export const brandProfiles = pgTable("brand_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  primaryColor: text("primary_color"),
+  secondaryColor: text("secondary_color"),
+  accentColor: text("accent_color"),
+  primaryFont: text("primary_font"),
+  secondaryFont: text("secondary_font"),
+  tagline: text("tagline"),
+  brandVoiceSummary: text("brand_voice_summary"),
+  targetAudienceDescription: text("target_audience_description"),
+  geographicFocus: text("geographic_focus"),
+  uniqueValueProposition: text("unique_value_proposition"),
+  doNotUsePhrases: text("do_not_use_phrases"),
+  logoPrimaryUrl: text("logo_primary_url"),
+  logoSecondaryUrl: text("logo_secondary_url"),
+  logoWhiteUrl: text("logo_white_url"),
+  brandGuidelinesUrl: text("brand_guidelines_url"),
+  competitorNotes: text("competitor_notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertBrandProfileSchema = createInsertSchema(brandProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBrandProfile = z.infer<typeof insertBrandProfileSchema>;
+export type BrandProfile = typeof brandProfiles.$inferSelect;
