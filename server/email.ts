@@ -1992,3 +1992,254 @@ export async function sendEmail(data: { to: string; subject: string; html: strin
     return false;
   }
 }
+
+// ── Workflow Email Template Builders ──────────────────────────────────────────
+// Each builder returns { subject, html } so emails can be previewed before send.
+// Actual dispatch is done by sendWorkflowEmail() below.
+
+const EMAIL_BRAND = {
+  primary: '#f97316',
+  dark: '#1f2937',
+  light: '#f9fafb',
+  border: '#e5e7eb',
+  text: '#374151',
+  muted: '#6b7280',
+};
+
+function baseLayout(title: string, body: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>
+  body{margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:${EMAIL_BRAND.text}}
+  .wrap{max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid ${EMAIL_BRAND.border}}
+  .hdr{background:${EMAIL_BRAND.dark};padding:24px 32px;display:flex;align-items:center;gap:12px}
+  .hdr-title{color:#fff;font-size:20px;font-weight:700;margin:0}
+  .hdr-badge{background:${EMAIL_BRAND.primary};color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px}
+  .body{padding:32px}
+  .greeting{font-size:16px;margin:0 0 16px}
+  .box{background:${EMAIL_BRAND.light};border:1px solid ${EMAIL_BRAND.border};border-radius:6px;padding:16px 20px;margin:16px 0}
+  .box-title{font-size:13px;font-weight:700;color:${EMAIL_BRAND.muted};text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px}
+  .label{font-size:12px;color:${EMAIL_BRAND.muted};margin:0 0 2px}
+  .value{font-size:15px;color:${EMAIL_BRAND.dark};margin:0 0 12px;font-weight:600}
+  .btn{display:inline-block;background:${EMAIL_BRAND.primary};color:#fff!important;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:700;font-size:14px;margin:8px 0}
+  .list-item{padding:8px 0;border-bottom:1px solid ${EMAIL_BRAND.border};font-size:14px}
+  .list-item:last-child{border-bottom:none}
+  .tag{display:inline-block;background:#fff3ed;color:${EMAIL_BRAND.primary};border:1px solid #fed7aa;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;margin:0 4px 4px 0}
+  .ftr{background:${EMAIL_BRAND.light};border-top:1px solid ${EMAIL_BRAND.border};padding:16px 32px;text-align:center;font-size:12px;color:${EMAIL_BRAND.muted}}
+  .alert-warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .alert-err{background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px}
+</style></head><body>
+<div class="wrap">
+  ${body}
+  <div class="ftr"><p style="margin:0">Near Me Connect &bull; <a href="https://nearmemarketinghub.com" style="color:${EMAIL_BRAND.primary}">Client Portal</a></p><p style="margin:4px 0 0">This is an automated message. Do not reply directly to this email.</p></div>
+</div>
+</body></html>`;
+}
+
+// 1. Approval Request
+export interface ApprovalRequestEmailData {
+  recipientName: string;
+  companyName: string;
+  deliverableTitle: string;
+  deliverableType: 'task' | 'campaign' | 'content';
+  deliverableDescription?: string;
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildApprovalRequestEmail(data: ApprovalRequestEmailData): { subject: string; html: string } {
+  const subject = `Action Required: Please Review "${data.deliverableTitle}"`;
+  const typeLabel = data.deliverableType === 'task' ? 'Task' : data.deliverableType === 'campaign' ? 'Campaign' : 'Content';
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Approval Request</span><span class="hdr-badge">${typeLabel}</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>We've completed a deliverable for <strong>${data.companyName}</strong> and need your review and approval before we proceed.</p>
+      <div class="box">
+        <div class="box-title">${typeLabel} Details</div>
+        <p class="label">Title</p><p class="value">${data.deliverableTitle}</p>
+        ${data.deliverableDescription ? `<p class="label">Description</p><p style="font-size:14px;margin:0 0 12px">${data.deliverableDescription}</p>` : ''}
+      </div>
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Notes from Your Team</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <p>Please log in to the portal to review and approve or request revisions.</p>
+      <a href="${data.portalLink}" class="btn">Review &amp; Approve</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 2. Meeting Recap
+export interface MeetingRecapEmailData {
+  recipientName: string;
+  companyName: string;
+  meetingTitle: string;
+  meetingDate: string;
+  decisions?: string[];
+  followUpTasks?: Array<{ title: string; owner?: string; dueDate?: string }>;
+  blockers?: string[];
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildMeetingRecapEmail(data: MeetingRecapEmailData): { subject: string; html: string } {
+  const subject = `Meeting Recap: ${data.meetingTitle} — ${data.meetingDate}`;
+  const decisionsHtml = (data.decisions && data.decisions.length > 0)
+    ? `<div class="box"><div class="box-title">Decisions Made</div>${data.decisions.map(d => `<div class="list-item">✓ ${d}</div>`).join('')}</div>` : '';
+  const followUpsHtml = (data.followUpTasks && data.followUpTasks.length > 0)
+    ? `<div class="box"><div class="box-title">Follow-Up Tasks</div>${data.followUpTasks.map(t => `<div class="list-item"><strong>${t.title}</strong>${t.owner ? ` &mdash; <span style="color:${EMAIL_BRAND.muted}">${t.owner}</span>` : ''}${t.dueDate ? ` <span class="tag">Due ${t.dueDate}</span>` : ''}</div>`).join('')}</div>` : '';
+  const blockersHtml = (data.blockers && data.blockers.length > 0)
+    ? `<div class="alert-warn">⚠️ <strong>Blockers / Next Steps:</strong><ul style="margin:8px 0 0;padding-left:20px">${data.blockers.map(b => `<li>${b}</li>`).join('')}</ul></div>` : '';
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Meeting Recap</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>Here's a summary of your recent meeting with the Near Me Connect team.</p>
+      <div class="box">
+        <div class="box-title">Meeting Details</div>
+        <p class="label">Meeting</p><p class="value">${data.meetingTitle}</p>
+        <p class="label">Date</p><p class="value">${data.meetingDate}</p>
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+      </div>
+      ${decisionsHtml}${followUpsHtml}${blockersHtml}
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Additional Notes</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <a href="${data.portalLink}" class="btn">View in Portal</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 3. Task Reminder (internal — overdue or due-soon)
+export interface TaskReminderEmailData {
+  recipientName: string;
+  tasks: Array<{ title: string; companyName: string; dueDate?: string; status: string; portalLink: string; assignee?: string; isOverdue?: boolean }>;
+}
+export function buildTaskReminderEmail(data: TaskReminderEmailData): { subject: string; html: string } {
+  const overdue = data.tasks.filter(t => t.isOverdue);
+  const dueSoon = data.tasks.filter(t => !t.isOverdue);
+  const subject = overdue.length > 0
+    ? `⚠️ ${overdue.length} Overdue Task${overdue.length > 1 ? 's' : ''} Need Attention`
+    : `Reminder: ${dueSoon.length} Task${dueSoon.length > 1 ? 's' : ''} Due Soon`;
+
+  const taskRows = (tasks: typeof data.tasks, label: string, colorClass: string) =>
+    tasks.length === 0 ? '' : `<div class="box"><div class="box-title" style="color:${colorClass}">${label}</div>${tasks.map(t => `
+      <div class="list-item">
+        <strong>${t.title}</strong> &mdash; ${t.companyName}
+        ${t.assignee ? `<span style="color:${EMAIL_BRAND.muted}"> · ${t.assignee}</span>` : ''}
+        ${t.dueDate ? `<span class="tag">Due ${t.dueDate}</span>` : ''}
+        <span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">${t.status}</span>
+        &nbsp;<a href="${t.portalLink}" style="font-size:12px;color:${EMAIL_BRAND.primary}">View →</a>
+      </div>`).join('')}</div>`;
+
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Task Reminder</span><span class="hdr-badge">Internal</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>This is an automated reminder about tasks that need attention.</p>
+      ${taskRows(overdue, 'Overdue Tasks', '#dc2626')}
+      ${taskRows(dueSoon, 'Due Soon', '#d97706')}
+      <p style="font-size:13px;color:${EMAIL_BRAND.muted};margin-top:24px">You are receiving this because you are a team member with task responsibilities.</p>
+    </div>`);
+  return { subject, html };
+}
+
+// 4. Monthly Report Ready (internal — admin review notice)
+export interface MonthlyReportReadyEmailData {
+  recipientName: string;
+  companyName: string;
+  reportMonth: string;
+  reportYear: number;
+  hasNotes: boolean;
+  portalLink: string;
+}
+export function buildMonthlyReportReadyEmail(data: MonthlyReportReadyEmailData): { subject: string; html: string } {
+  const subject = `Monthly Report Ready for Review: ${data.companyName} — ${data.reportMonth} ${data.reportYear}`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Report Ready for Review</span><span class="hdr-badge">Admin</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>The monthly performance report for <strong>${data.companyName}</strong> is ready for your review before sending to the client.</p>
+      <div class="box">
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+        <p class="label">Report Period</p><p class="value">${data.reportMonth} ${data.reportYear}</p>
+        <p class="label">Team Notes</p><p class="value">${data.hasNotes ? '✓ Notes added' : '⚠️ No notes yet — consider adding a personal message'}</p>
+      </div>
+      ${!data.hasNotes ? `<div class="alert-warn">You haven't added "Notes from Your Team" for this report yet. Clients appreciate a personal touch!</div>` : ''}
+      <a href="${data.portalLink}" class="btn">Review Report</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 5. Monthly Report Client (client-facing)
+export interface MonthlyReportClientEmailData {
+  recipientName: string;
+  companyName: string;
+  reportMonth: string;
+  reportYear: number;
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildMonthlyReportClientEmail(data: MonthlyReportClientEmailData): { subject: string; html: string } {
+  const subject = `Your ${data.reportMonth} ${data.reportYear} Report is Ready — ${data.companyName}`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Monthly Report Ready</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>Your <strong>${data.reportMonth} ${data.reportYear}</strong> performance report is now available in your portal.</p>
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Notes from Your Team</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <p>Log in to view your full report, including task activity, credit usage, campaign performance, and more.</p>
+      <a href="${data.portalLink}" class="btn">View My Report</a>
+      <p style="font-size:13px;color:${EMAIL_BRAND.muted};margin-top:24px">If you have any questions about your report, reach out to your team through the portal chat.</p>
+    </div>`);
+  return { subject, html };
+}
+
+// 6. Planning Gap Alert (internal)
+export interface PlanningGapAlertEmailData {
+  recipientName: string;
+  companyName: string;
+  gapDays: number;
+  lastScheduledDate?: string;
+  tasksScheduledCount: number;
+  portalLink: string;
+}
+export function buildPlanningGapAlertEmail(data: PlanningGapAlertEmailData): { subject: string; html: string } {
+  const urgency = data.gapDays >= 60 ? 'Critical' : 'Warning';
+  const subject = `[${urgency}] Planning Gap: ${data.companyName} has no work scheduled beyond ${data.gapDays} days`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Planning Gap Alert</span><span class="hdr-badge" style="background:${data.gapDays >= 60 ? '#dc2626' : '#d97706'}">${urgency}</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <div class="alert-${data.gapDays >= 60 ? 'err' : 'warn'}">
+        <strong>${data.companyName}</strong> currently has no work scheduled beyond the next <strong>${data.gapDays} days</strong>. Action is recommended to maintain consistent delivery.
+      </div>
+      <div class="box">
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+        <p class="label">Last Scheduled Work</p><p class="value">${data.lastScheduledDate || 'No upcoming work found'}</p>
+        <p class="label">Tasks in Pipeline</p><p class="value">${data.tasksScheduledCount} active task${data.tasksScheduledCount !== 1 ? 's' : ''}</p>
+        <p class="label">Gap</p><p class="value" style="color:${data.gapDays >= 60 ? '#dc2626' : '#d97706'}">${data.gapDays}+ days with nothing scheduled</p>
+      </div>
+      <p>Visit the portal to review the current task pipeline and schedule new work for this client.</p>
+      <a href="${data.portalLink}" class="btn">View ${data.companyName}'s Tasks</a>
+    </div>`);
+  return { subject, html };
+}
+
+// Unified send — dispatches to Resend and returns the Resend message ID
+export async function sendWorkflowEmail(opts: {
+  to: string[];
+  subject: string;
+  html: string;
+  idempotencyKey?: string;
+}): Promise<{ success: boolean; resendId?: string; error?: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    const creds = await getCredentials().catch(() => null);
+    if (!creds) return { success: false, error: 'RESEND_API_KEY is not configured' };
+  }
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const result = await client.emails.send({
+      from: fromEmail,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    });
+    return { success: true, resendId: (result as any)?.id };
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) };
+  }
+}

@@ -1877,6 +1877,39 @@ export const insertSeoDirectorySchema = createInsertSchema(seoDirectories).omit(
 export type InsertSeoDirectory = z.infer<typeof insertSeoDirectorySchema>;
 export type SeoDirectory = typeof seoDirectories.$inferSelect;
 
+// ── Email Logs ────────────────────────────────────────────────────────────────
+export const emailLogTemplateTypeEnum = ["approval_request", "meeting_recap", "task_reminder", "monthly_report_ready", "monthly_report_client", "planning_gap_alert"] as const;
+export type EmailLogTemplateType = typeof emailLogTemplateTypeEnum[number];
+
+export const emailLogStatusEnum = ["draft", "queued", "sent", "failed", "cancelled"] as const;
+export type EmailLogStatus = typeof emailLogStatusEnum[number];
+
+export const emailLogs = pgTable("email_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  relatedTaskId: varchar("related_task_id"),
+  relatedCampaignId: varchar("related_campaign_id"),
+  relatedMeetingId: varchar("related_meeting_id"),
+  relatedReportId: varchar("related_report_id"),
+  recipients: text("recipients").array().notNull(),
+  subject: text("subject").notNull(),
+  templateType: text("template_type").$type<EmailLogTemplateType>().notNull(),
+  htmlBody: text("html_body").notNull(),
+  resendEmailId: text("resend_email_id"),
+  status: text("status").$type<EmailLogStatus>().notNull().default("draft"),
+  sentAt: text("sent_at"),
+  errorMessage: text("error_message"),
+  triggeredBy: text("triggered_by").$type<"user" | "system">().notNull().default("user"),
+  triggeredById: varchar("triggered_by_id"),
+  idempotencyKey: text("idempotency_key"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertEmailLogSchema = createInsertSchema(emailLogs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
+export type EmailLog = typeof emailLogs.$inferSelect;
+
 // ── Integration Health ────────────────────────────────────────────────────────
 export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
 export type IntegrationType = typeof integrationTypeEnum[number];

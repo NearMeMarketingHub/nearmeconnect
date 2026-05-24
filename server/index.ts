@@ -182,6 +182,29 @@ async function migrateCampaignWorkspaceColumns() {
       updated_at text
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS integration_statuses_company_type_idx ON integration_statuses (company_id, integration_type)`,
+    `CREATE TABLE IF NOT EXISTS email_logs (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      related_task_id varchar,
+      related_campaign_id varchar,
+      related_meeting_id varchar,
+      related_report_id varchar,
+      recipients text[] NOT NULL,
+      subject text NOT NULL,
+      template_type text NOT NULL,
+      html_body text NOT NULL,
+      resend_email_id text,
+      status text NOT NULL DEFAULT 'draft',
+      sent_at text,
+      error_message text,
+      triggered_by text NOT NULL DEFAULT 'user',
+      triggered_by_id varchar,
+      idempotency_key text,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE INDEX IF NOT EXISTS email_logs_company_idx ON email_logs (company_id)`,
+    `CREATE INDEX IF NOT EXISTS email_logs_idempotency_idx ON email_logs (idempotency_key) WHERE idempotency_key IS NOT NULL`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

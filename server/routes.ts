@@ -13,7 +13,7 @@ import { registerHubSpotOAuthRoutes } from "./hubspot-oauth/routes";
 import { uploadToSharePoint, uploadToSharePointWithIds, downloadFromSharePoint, deleteFromSharePoint } from "./sharepoint";
 import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificationToUsers } from "./websocket";
 import multer from "multer";
-import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail } from "./email";
+import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail, buildApprovalRequestEmail, buildMeetingRecapEmail, buildTaskReminderEmail, buildMonthlyReportReadyEmail, buildMonthlyReportClientEmail, buildPlanningGapAlertEmail, sendWorkflowEmail } from "./email";
 import { generateOnboardingPdf } from "./pdf-generator";
 import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
@@ -12355,6 +12355,191 @@ export async function registerRoutes(
       const companyId = req.params.companyId as string;
       await storage.deleteSeoDirectory(req.params.id as string);
       broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Email Logs & Workflow Emails ─────────────────────────────────────────────
+
+  const portalBase = () => process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:5000`;
+
+  // GET company email logs
+  app.get("/api/companies/:companyId/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) {
+        const membership = await storage.getCompanyMembership(companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ error: "Access denied" });
+      }
+      const { templateType, status, relatedTaskId, relatedCampaignId, relatedMeetingId } = req.query as Record<string, string>;
+      const logs = await storage.getEmailLogs(companyId, { templateType, status, relatedTaskId, relatedCampaignId, relatedMeetingId });
+      res.json(logs);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET single email log
+  app.get("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const log = await storage.getEmailLog(req.params.id as string);
+      if (!log) return res.status(404).json({ error: "Not found" });
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) {
+        const membership = await storage.getCompanyMembership(log.companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(log);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET all email logs (admin only)
+  app.get("/api/admin/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { templateType, status } = req.query as Record<string, string>;
+      const logs = await storage.getAllEmailLogs({ templateType, status });
+      res.json(logs);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST build preview — returns { subject, html } without saving or sending
+  app.post("/api/email-logs/preview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { templateType, templateData } = req.body;
+      let result: { subject: string; html: string };
+      switch (templateType) {
+        case "approval_request":    result = buildApprovalRequestEmail(templateData); break;
+        case "meeting_recap":       result = buildMeetingRecapEmail(templateData); break;
+        case "task_reminder":       result = buildTaskReminderEmail(templateData); break;
+        case "monthly_report_ready": result = buildMonthlyReportReadyEmail(templateData); break;
+        case "monthly_report_client": result = buildMonthlyReportClientEmail(templateData); break;
+        case "planning_gap_alert":  result = buildPlanningGapAlertEmail(templateData); break;
+        default: return res.status(400).json({ error: "Unknown templateType" });
+      }
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST create draft email log (admin only)
+  app.post("/api/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { companyId, recipients, templateType, templateData, subject: overrideSubject, relatedTaskId, relatedCampaignId, relatedMeetingId, relatedReportId, idempotencyKey } = req.body;
+
+      // Idempotency check
+      if (idempotencyKey) {
+        const existing = await storage.getEmailLogByIdempotencyKey(idempotencyKey);
+        if (existing) return res.json(existing);
+      }
+
+      // Build HTML from template
+      let built: { subject: string; html: string };
+      switch (templateType) {
+        case "approval_request":    built = buildApprovalRequestEmail(templateData); break;
+        case "meeting_recap":       built = buildMeetingRecapEmail(templateData); break;
+        case "task_reminder":       built = buildTaskReminderEmail(templateData); break;
+        case "monthly_report_ready": built = buildMonthlyReportReadyEmail(templateData); break;
+        case "monthly_report_client": built = buildMonthlyReportClientEmail(templateData); break;
+        case "planning_gap_alert":  built = buildPlanningGapAlertEmail(templateData); break;
+        default: return res.status(400).json({ error: "Unknown templateType" });
+      }
+
+      const log = await storage.createEmailLog({
+        companyId,
+        recipients: Array.isArray(recipients) ? recipients : [recipients],
+        templateType,
+        subject: overrideSubject || built.subject,
+        htmlBody: built.html,
+        status: "draft",
+        triggeredBy: "user",
+        triggeredById: req.user!.id,
+        relatedTaskId: relatedTaskId || null,
+        relatedCampaignId: relatedCampaignId || null,
+        relatedMeetingId: relatedMeetingId || null,
+        relatedReportId: relatedReportId || null,
+        idempotencyKey: idempotencyKey || null,
+      });
+      broadcastInvalidation([`/api/companies/${companyId}/email-logs`, "/api/admin/email-logs"]);
+      res.status(201).json(log);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PATCH update draft (subject/recipients/htmlBody while still draft)
+  app.patch("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const log = await storage.getEmailLog(req.params.id as string);
+      if (!log) return res.status(404).json({ error: "Not found" });
+      if (log.status !== "draft") return res.status(400).json({ error: "Only draft emails can be edited" });
+      const { subject, recipients, htmlBody } = req.body;
+      const updated = await storage.updateEmailLog(log.id, {
+        ...(subject !== undefined ? { subject } : {}),
+        ...(recipients !== undefined ? { recipients } : {}),
+        ...(htmlBody !== undefined ? { htmlBody } : {}),
+      });
+      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST send a draft email log (admin only)
+  app.post("/api/email-logs/:id/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const log = await storage.getEmailLog(req.params.id as string);
+      if (!log) return res.status(404).json({ error: "Not found" });
+      if (log.status === "sent") return res.status(400).json({ error: "Email already sent" });
+      if (log.status === "cancelled") return res.status(400).json({ error: "Email was cancelled" });
+
+      const result = await sendWorkflowEmail({
+        to: log.recipients,
+        subject: log.subject,
+        html: log.htmlBody,
+        idempotencyKey: log.idempotencyKey || undefined,
+      });
+
+      const now = new Date().toISOString();
+      const updated = await storage.updateEmailLog(log.id, {
+        status: result.success ? "sent" : "failed",
+        sentAt: result.success ? now : undefined,
+        resendEmailId: result.resendId || undefined,
+        errorMessage: result.error || undefined,
+      });
+      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
+      if (!result.success) return res.status(502).json({ error: result.error, log: updated });
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST cancel a draft
+  app.post("/api/email-logs/:id/cancel", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const log = await storage.getEmailLog(req.params.id as string);
+      if (!log) return res.status(404).json({ error: "Not found" });
+      if (log.status === "sent") return res.status(400).json({ error: "Cannot cancel an already-sent email" });
+      const updated = await storage.updateEmailLog(log.id, { status: "cancelled" });
+      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`]);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE email log
+  app.delete("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const log = await storage.getEmailLog(req.params.id as string);
+      if (!log) return res.status(404).json({ error: "Not found" });
+      await storage.deleteEmailLog(log.id);
+      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });

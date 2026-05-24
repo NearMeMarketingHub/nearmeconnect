@@ -217,6 +217,9 @@ import {
   integrationStatuses,
   type IntegrationStatus,
   type InsertIntegrationStatus,
+  emailLogs,
+  type EmailLog,
+  type InsertEmailLog,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -641,6 +644,15 @@ export interface IStorage {
   createClientResource(data: InsertClientResource): Promise<ClientResource>;
   updateClientResource(id: string, data: Partial<InsertClientResource>): Promise<ClientResource | undefined>;
   deleteClientResource(id: string): Promise<void>;
+
+  // Email Logs
+  getEmailLogs(companyId: string, filters?: { templateType?: string; status?: string; relatedTaskId?: string; relatedCampaignId?: string; relatedMeetingId?: string }): Promise<EmailLog[]>;
+  getAllEmailLogs(filters?: { templateType?: string; status?: string }): Promise<EmailLog[]>;
+  getEmailLog(id: string): Promise<EmailLog | undefined>;
+  getEmailLogByIdempotencyKey(key: string): Promise<EmailLog | undefined>;
+  createEmailLog(data: InsertEmailLog): Promise<EmailLog>;
+  updateEmailLog(id: string, data: Partial<EmailLog>): Promise<EmailLog | undefined>;
+  deleteEmailLog(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3477,6 +3489,56 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClientResource(id: string): Promise<void> {
     await db.delete(clientResources).where(eq(clientResources.id, id));
+  }
+
+  // ── Email Logs ──────────────────────────────────────────────────────────────
+
+  async getEmailLogs(companyId: string, filters?: { templateType?: string; status?: string; relatedTaskId?: string; relatedCampaignId?: string; relatedMeetingId?: string }): Promise<EmailLog[]> {
+    let query = db.select().from(emailLogs).where(eq(emailLogs.companyId, companyId));
+    const rows = await query.orderBy(desc(emailLogs.createdAt));
+    return rows.filter(r => {
+      if (filters?.templateType && r.templateType !== filters.templateType) return false;
+      if (filters?.status && r.status !== filters.status) return false;
+      if (filters?.relatedTaskId && r.relatedTaskId !== filters.relatedTaskId) return false;
+      if (filters?.relatedCampaignId && r.relatedCampaignId !== filters.relatedCampaignId) return false;
+      if (filters?.relatedMeetingId && r.relatedMeetingId !== filters.relatedMeetingId) return false;
+      return true;
+    });
+  }
+
+  async getAllEmailLogs(filters?: { templateType?: string; status?: string }): Promise<EmailLog[]> {
+    const rows = await db.select().from(emailLogs).orderBy(desc(emailLogs.createdAt));
+    return rows.filter(r => {
+      if (filters?.templateType && r.templateType !== filters.templateType) return false;
+      if (filters?.status && r.status !== filters.status) return false;
+      return true;
+    });
+  }
+
+  async getEmailLog(id: string): Promise<EmailLog | undefined> {
+    const [row] = await db.select().from(emailLogs).where(eq(emailLogs.id, id));
+    return row;
+  }
+
+  async getEmailLogByIdempotencyKey(key: string): Promise<EmailLog | undefined> {
+    const [row] = await db.select().from(emailLogs).where(eq(emailLogs.idempotencyKey, key));
+    return row;
+  }
+
+  async createEmailLog(data: InsertEmailLog): Promise<EmailLog> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(emailLogs).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateEmailLog(id: string, data: Partial<EmailLog>): Promise<EmailLog | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(emailLogs).set({ ...(data as any), updatedAt: now }).where(eq(emailLogs.id, id)).returning();
+    return row;
+  }
+
+  async deleteEmailLog(id: string): Promise<void> {
+    await db.delete(emailLogs).where(eq(emailLogs.id, id));
   }
 }
 

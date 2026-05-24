@@ -116,6 +116,8 @@ import { NotepadPanel } from "@/components/notepad-panel";
 import { MessageBoardPanel } from "@/components/message-board-panel";
 import { SeoPanel } from "@/components/seo-panel";
 import { IntegrationHealthPanel } from "@/components/integration-health-panel";
+import { EmailComposerDialog } from "@/components/email-composer-dialog";
+import { EmailHistory } from "@/components/email-history";
 import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -437,6 +439,7 @@ export default function CompanyDashboard() {
       { key: "users",          label: "Users" },
       { key: "credit-history", label: "Credit History" },
       { key: "reporting",      label: "Reporting" },
+      { key: "emails",         label: "Emails" },
       { key: "details",        label: "Details" },
       { key: "integrations",   label: "Integrations" },
     ], defaultSub: "users" },
@@ -447,7 +450,7 @@ export default function CompanyDashboard() {
     marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
-    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin",
+    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin",
   };
 
   // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
@@ -473,6 +476,7 @@ export default function CompanyDashboard() {
   const [activeTab, setActiveTab] = useState(_initNav.tab);
   const [activeCategory, setActiveCategory] = useState(_initNav.cat);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [composeEmailOpen, setComposeEmailOpen] = useState(false);
   const [companyTaskFilter, setCompanyTaskFilter] = useState<"all" | "pending" | "in_progress" | "review" | "approved" | "completed" | "rejected">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
@@ -4881,6 +4885,28 @@ export default function CompanyDashboard() {
             <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
 
+          <TabsContent value="emails" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Workflow Emails</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Approval requests, meeting recaps, reports, and alerts. All client emails require preview before sending.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setComposeEmailOpen(true)}
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                data-testid="btn-compose-email"
+              >
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Compose Email
+              </Button>
+            </div>
+            {companyId && (
+              <EmailHistory companyId={companyId} isAdmin={true} />
+            )}
+          </TabsContent>
+
           <TabsContent value="integrations" className="space-y-4">
             {companyId && (
               <IntegrationHealthPanel companyId={companyId} isAdmin={true} />
@@ -5769,6 +5795,21 @@ export default function CompanyDashboard() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Email Composer Dialog */}
+      {companyId && (
+        <EmailComposerDialog
+          open={composeEmailOpen}
+          onOpenChange={setComposeEmailOpen}
+          companyId={companyId}
+          companyName={company?.name}
+          onSuccess={() => {
+            setComposeEmailOpen(false);
+            setActiveTab("emails");
+            setActiveCategory("admin");
+          }}
+        />
+      )}
     </div>
   );
 }
