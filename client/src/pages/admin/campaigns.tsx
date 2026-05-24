@@ -556,6 +556,14 @@ export default function AdminCampaigns() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {rejectedRequests.length > 0 && (
+              <Link href="/admin/rejections">
+                <Button variant="ghost" size="sm" data-testid="link-view-rejections">
+                  <XCircle className="w-4 h-4 mr-2 text-destructive" />
+                  View rejections ({rejectedRequests.length})
+                </Button>
+              </Link>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -760,7 +768,6 @@ export default function AdminCampaigns() {
               { value: "requests", label: "Requests", count: pendingRequests.length },
               { value: "approved", label: "Approved", count: approvedRequests.length },
               { value: "completed", label: "Completed", count: completedRequests.length },
-              { value: "rejected", label: "Rejected", count: rejectedRequests.length },
               { value: "types", label: "Types" },
             ]}
             activeTab={activeTab}
@@ -780,17 +787,13 @@ export default function AdminCampaigns() {
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Completed ({completedRequests.length})
             </TabsTrigger>
-            <TabsTrigger value="rejected" data-testid="tab-campaign-rejected">
-              <XCircle className="w-4 h-4 mr-2" />
-              Rejected ({rejectedRequests.length})
-            </TabsTrigger>
             <TabsTrigger value="types" data-testid="tab-campaign-types">
               <Package className="w-4 h-4 mr-2" />
               Types
             </TabsTrigger>
           </TabsList>
 
-          {["requests", "approved", "completed", "rejected"].map(tab => {
+          {["requests", "approved", "completed"].map(tab => {
             const allItems = tabRequestsMap[tab] || [];
             const currentPage = campaignPages[tab] || 1;
             const totalPages = Math.ceil(allItems.length / CAMPAIGNS_PER_PAGE);

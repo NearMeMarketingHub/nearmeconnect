@@ -19,6 +19,7 @@ import AdminOnboardingTemplates from "@/pages/admin/onboarding-templates";
 import AdminServiceTracks from "@/pages/admin/service-tracks";
 import AdminTaskTemplates from "@/pages/admin/task-templates";
 import AdminCampaigns from "@/pages/admin/campaigns";
+import AdminRejections from "@/pages/admin/rejections";
 import AdminMeetings from "@/pages/admin/meetings";
 import AdminTraining from "@/pages/admin/training";
 import AdminMediaProfiles from "@/pages/admin/media-profiles";
@@ -185,6 +186,7 @@ function AppContent() {
         <Route path="/admin/service-tracks">{() => <ErrorBoundary showNav><AdminServiceTracks /></ErrorBoundary>}</Route>
         <Route path="/admin/task-templates">{() => <ErrorBoundary showNav><AdminTaskTemplates /></ErrorBoundary>}</Route>
         <Route path="/admin/campaigns">{() => <ErrorBoundary showNav><AdminCampaigns /></ErrorBoundary>}</Route>
+        <Route path="/admin/rejections">{() => <ErrorBoundary showNav><AdminRejections /></ErrorBoundary>}</Route>
         <Route path="/admin/meetings">{() => <ErrorBoundary showNav><AdminMeetings /></ErrorBoundary>}</Route>
         <Route path="/admin/training">{() => <ErrorBoundary showNav><AdminTraining /></ErrorBoundary>}</Route>
         <Route path="/admin/media-profiles">{() => <ErrorBoundary showNav><AdminMediaProfiles /></ErrorBoundary>}</Route>

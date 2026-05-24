@@ -11863,6 +11863,91 @@ export async function registerRoutes(
     res.status(201).json(item);
   });
 
+  // Download a CSV template for bulk content upload (includes GBP fields)
+  app.get("/api/content-calendar/template", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const headers = [
+      "platform","contentType","title","bodyContent","hashtags","ctaText","ctaUrl",
+      "scheduledDate","scheduledTime","status",
+      "gbpPostType","gbpEventTitle","gbpEventStart","gbpEventEnd",
+      "gbpOfferTitle","gbpOfferStart","gbpOfferEnd","gbpOfferCoupon","gbpOfferTerms","gbpRedeemUrl",
+      "gbpProductName","gbpProductPrice","gbpProductDescription","gbpCtaType"
+    ];
+    const sampleSocial = [
+      "facebook","post","Spring sale announcement","Big spring sale this weekend!","#spring #sale","Shop Now","https://example.com",
+      "2026-06-01","09:00","draft",
+      "","","","","","","","","","","","","",""
+    ];
+    const sampleGbpEvent = [
+      "google_business","gbp_post","Summer kickoff event","Join us for the summer kickoff!","","Learn More","",
+      "2026-06-15","10:00","draft",
+      "event","Summer Kickoff","2026-06-15T10:00","2026-06-15T14:00","","","","","","","","","","learn_more"
+    ];
+    const sampleGbpOffer = [
+      "google_business","gbp_post","20% off promo","Limited-time 20% off any service.","","Redeem","https://example.com/promo",
+      "2026-06-20","08:00","draft",
+      "offer","","","","20% Off","2026-06-20","2026-06-27","SUMMER20","Cannot combine with other offers","https://example.com/promo",
+      "","","",""
+    ];
+    const esc = (v: string) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [headers, sampleSocial, sampleGbpEvent, sampleGbpOffer]
+      .map(row => row.map(esc).join(","))
+      .join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="content-calendar-template.csv"');
+    res.send(csv);
+  });
+
+  // Bulk-create content calendar items from a parsed array
+  app.post("/api/content-calendar/bulk", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    const userId = req.session.userId!;
+    const isAdmin = await storage.isAdmin(userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
+    const { companyId, items } = req.body || {};
+    if (!companyId || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "companyId and non-empty items[] required" });
+    }
+    if (items.length > 500) {
+      return res.status(400).json({ error: "Maximum 500 items per upload" });
+    }
+    const company = await storage.getCompany(companyId);
+    if (!company) return res.status(404).json({ error: "Company not found" });
+    const successes: any[] = [];
+    const errors: Array<{ row: number; message: string }> = [];
+    for (let i = 0; i < items.length; i++) {
+      const raw: any = { ...items[i], companyId };
+      // Normalise empty strings → undefined; for nullable enum fields use null instead
+      const nullableEnumFields = new Set(["gbpPostType"]);
+      Object.keys(raw).forEach(k => {
+        if (raw[k] === "") raw[k] = nullableEnumFields.has(k) ? null : undefined;
+      });
+      const parsed = insertContentCalendarItemSchema.safeParse(raw);
+      if (!parsed.success) {
+        const msg = Object.entries(parsed.error.flatten().fieldErrors)
+          .map(([f, m]) => `${f}: ${(m as string[])?.join("; ")}`).join(" | ");
+        errors.push({ row: i + 1, message: msg || "Invalid row" });
+        continue;
+      }
+      try {
+        const created = await storage.createContentCalendarItem({ ...parsed.data, createdBy: userId });
+        successes.push(created);
+      } catch (err: any) {
+        errors.push({ row: i + 1, message: err?.message || "Insert failed" });
+      }
+    }
+    broadcastInvalidation(["/api/content-calendar"]);
+    res.status(errors.length === items.length ? 400 : 200).json({
+      created: successes.length,
+      failed: errors.length,
+      errors,
+    });
+  });
+
   app.patch("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     const userId = req.session.userId!;
     const isAdmin = await storage.isAdmin(userId);

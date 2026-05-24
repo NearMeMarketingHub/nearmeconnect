@@ -13,6 +13,7 @@ import { ChevronLeft, ChevronRight, Plus, Wand2, Loader2, Download, FileText, Ca
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContentItemModal, PLATFORM_CONFIG, STATUS_CONFIG } from "./content-item-modal";
 import { BulkScheduleWizard } from "./bulk-schedule-wizard";
+import { BulkContentUploadDialog } from "./bulk-content-upload-dialog";
 
 interface ContentCalendarViewProps {
   companyId?: string;
@@ -611,6 +612,7 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
   const [editingItem, setEditingItem] = useState<ContentCalendarItem | null>(null);
   const [initialDate, setInitialDate] = useState<string | undefined>();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   const queryCompanyId = companyFilter || companyId;
   const params = new URLSearchParams();
@@ -659,6 +661,10 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
           <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)} data-testid="button-build-schedule">
             <Wand2 className="h-4 w-4 mr-2" />
             <span className="hidden sm:inline">Build Schedule</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setBulkUploadOpen(true)} data-testid="button-bulk-upload">
+            <Download className="h-4 w-4 mr-2 rotate-180" />
+            <span className="hidden sm:inline">Bulk Upload</span>
           </Button>
           <Button size="sm" onClick={() => openNew()} data-testid="button-new-content-item">
             <Plus className="h-4 w-4 mr-2" />
@@ -799,6 +805,13 @@ export function ContentCalendarView({ companyId, companies }: ContentCalendarVie
         item={editingItem}
         companies={companies}
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["/api/content-calendar"] })}
+      />
+
+      <BulkContentUploadDialog
+        open={bulkUploadOpen}
+        onOpenChange={setBulkUploadOpen}
+        companies={companies}
+        defaultCompanyId={queryCompanyId}
       />
 
       <BulkScheduleWizard
