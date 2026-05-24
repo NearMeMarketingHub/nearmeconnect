@@ -251,6 +251,10 @@ import {
   onboardingTaskTemplates,
   type OnboardingTaskTemplate,
   type InsertOnboardingTaskTemplate,
+  systemSettings,
+  retainerGenerationLogs,
+  type RetainerGenerationLog,
+  type InsertRetainerGenerationLog,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -736,6 +740,14 @@ export interface IStorage {
   getCreditReservationsByCompany(companyId: string, status?: string): Promise<CreditReservation[]>;
   updateCreditReservation(id: string, data: Partial<CreditReservation>): Promise<CreditReservation | undefined>;
   getCreditProjection(companyId: string): Promise<{ monthlyAllowance: number; usedCredits: number; reservedCredits: number; remainingCredits: number; hasOverage: boolean }>;
+  // Auto-generation helpers
+  getAllActiveRetainerAssignments(): Promise<ClientRetainerAssignment[]>;
+  // System Settings
+  getSystemSetting(key: string): Promise<string | null>;
+  setSystemSetting(key: string, value: string): Promise<void>;
+  // Retainer Generation Logs
+  createRetainerGenerationLog(data: InsertRetainerGenerationLog): Promise<RetainerGenerationLog>;
+  getRetainerGenerationLogs(limit?: number): Promise<RetainerGenerationLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3935,6 +3947,49 @@ export class DatabaseStorage implements IStorage {
     const hasOverage = (usedCredits + reservedCredits) > monthlyAllowance;
 
     return { monthlyAllowance, usedCredits, reservedCredits, remainingCredits, hasOverage };
+  }
+
+  async getAllActiveRetainerAssignments(): Promise<ClientRetainerAssignment[]> {
+    return await db
+      .select()
+      .from(clientRetainerAssignments)
+      .where(
+        and(
+          eq(clientRetainerAssignments.status, "active"),
+          eq(clientRetainerAssignments.autoGenerationEnabled, true),
+        ),
+      );
+  }
+
+  async getSystemSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(systemSettings).where(eq(systemSettings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSystemSetting(key: string, value: string): Promise<void> {
+    await db
+      .insert(systemSettings)
+      .values({ key, value, updatedAt: new Date().toISOString() })
+      .onConflictDoUpdate({
+        target: systemSettings.key,
+        set: { value, updatedAt: new Date().toISOString() },
+      });
+  }
+
+  async createRetainerGenerationLog(data: InsertRetainerGenerationLog): Promise<RetainerGenerationLog> {
+    const [row] = await db
+      .insert(retainerGenerationLogs)
+      .values({ ...data, createdAt: new Date().toISOString() } as any)
+      .returning();
+    return row;
+  }
+
+  async getRetainerGenerationLogs(limit = 50): Promise<RetainerGenerationLog[]> {
+    return await db
+      .select()
+      .from(retainerGenerationLogs)
+      .orderBy(desc(retainerGenerationLogs.createdAt))
+      .limit(limit);
   }
 }
 

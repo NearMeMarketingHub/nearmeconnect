@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ interface RetainerAssignmentData {
   monthlyCreditAllocationOverride: number | null;
   monthlyPriceOverride: string | null;
   generationWindowDaysOverride: number | null;
+  autoGenerationEnabled: boolean;
   notes: string | null;
   template: {
     id: string;
@@ -138,13 +140,26 @@ function scopeLines(text: string | null | undefined): string[] {
 export function RetainerOverviewCard({
   companyId,
   onNavigate,
+  isAdmin = false,
 }: {
   companyId: string;
   onNavigate?: (tab: string) => void;
+  isAdmin?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<RetainerOverviewData>({
     queryKey: [`/api/companies/${companyId}/retainer-overview`],
     staleTime: 30000,
+  });
+
+  const toggleAutoGenMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      await apiRequest("PATCH", `/api/companies/${companyId}/retainer-assignment/auto-gen`, { autoGenerationEnabled: enabled });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}/retainer-overview`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}/retainer-assignment`] });
+    },
   });
 
   if (isLoading) {
@@ -194,9 +209,28 @@ export function RetainerOverviewCard({
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <RefreshCw className="h-4 w-4 text-muted-foreground" /> Retainer Plan
           </CardTitle>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${statusColor(assignment.status)}`}>
-            {assignment.status}
-          </span>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground" title="Auto-generation enabled/disabled for this client">
+                <span className={assignment.autoGenerationEnabled ? "text-green-600 dark:text-green-400 font-medium" : "line-through opacity-50"}>
+                  Auto-gen
+                </span>
+                <button
+                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-150 focus:outline-none ${assignment.autoGenerationEnabled ? "bg-green-500" : "bg-muted"} ${toggleAutoGenMutation.isPending ? "opacity-50" : ""}`}
+                  role="switch"
+                  aria-checked={assignment.autoGenerationEnabled}
+                  onClick={() => toggleAutoGenMutation.mutate(!assignment.autoGenerationEnabled)}
+                  disabled={toggleAutoGenMutation.isPending}
+                  data-testid="switch-company-autogen"
+                >
+                  <span className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-150 ${assignment.autoGenerationEnabled ? "translate-x-3" : "translate-x-0"}`} />
+                </button>
+              </div>
+            )}
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${statusColor(assignment.status)}`}>
+              {assignment.status}
+            </span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

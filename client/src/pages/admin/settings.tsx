@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight, Mail, CheckCircle2, AlertCircle, Send, Pencil, Layers, FileText, Image, Video, Share, MapPin, Globe, Zap, BarChart3, CheckCircle, Users as UsersIcon, GripVertical, Wand2 } from "lucide-react";
+import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight, Mail, CheckCircle2, AlertCircle, Send, Pencil, Layers, FileText, Image, Video, Share, MapPin, Globe, Zap, BarChart3, CheckCircle, Users as UsersIcon, GripVertical, Wand2, Bot, Play, CalendarClock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link } from "wouter";
 import type { Company, TaskCategory } from "@shared/schema";
@@ -307,6 +308,57 @@ export default function AdminSettings() {
     onError: () => toast({ title: "Failed to delete category", variant: "destructive" }),
   });
 
+  // ── Retainer Settings ────────────────────────────────────────────────────
+  const { data: retainerSettings, isLoading: retainerSettingsLoading } = useQuery<{
+    autoGenerationEnabled: boolean;
+    dryRun: boolean;
+    generationWindowDays: number;
+  }>({
+    queryKey: ["/api/admin/retainer-settings"],
+  });
+
+  const saveRetainerSettingsMutation = useMutation({
+    mutationFn: async (data: { autoGenerationEnabled?: boolean; dryRun?: boolean; generationWindowDays?: number }) => {
+      await apiRequest("POST", "/api/admin/retainer-settings", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/retainer-settings"] });
+      toast({ title: "Retainer settings saved" });
+    },
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+  });
+
+  const runGenerationMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await apiRequest("POST", "/api/admin/retainer-auto-generate", { dryRun });
+      return res.json();
+    },
+    onSuccess: (data: { companiesProcessed: number; tasksCreated: number; tasksSkipped: number; status: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/retainer-generation-logs"] });
+      toast({
+        title: data.status === "dry_run" ? "Dry-run complete" : "Generation complete",
+        description: `${data.companiesProcessed} companies · ${data.tasksCreated} tasks created · ${data.tasksSkipped} skipped`,
+      });
+    },
+    onError: () => toast({ title: "Generation failed", variant: "destructive" }),
+  });
+
+  const { data: retainerLogs = [], isLoading: retainerLogsLoading } = useQuery<Array<{
+    id: string;
+    runType: string;
+    status: string;
+    companiesProcessed: number;
+    tasksCreated: number;
+    tasksSkipped: number;
+    dryRun: boolean;
+    errorMessage: string | null;
+    details: string | null;
+    triggeredBy: string | null;
+    createdAt: string;
+  }>>({
+    queryKey: ["/api/admin/retainer-generation-logs"],
+  });
+
   const resetCatForm = () => {
     setCatFormOpen(false);
     setEditingCat(null);
@@ -358,6 +410,7 @@ export default function AdminSettings() {
               { value: "categories", label: "Categories" },
               { value: "maintenance", label: "Maintenance" },
               { value: "hubspot", label: "HubSpot" },
+              { value: "retainer", label: "Retainer" },
             ]}
             activeTab={settingsTab}
             onTabChange={setSettingsTab}
@@ -379,6 +432,10 @@ export default function AdminSettings() {
             <TabsTrigger value="hubspot" data-testid="tab-hubspot">
               <Cloud className="h-4 w-4 mr-2" />
               HubSpot
+            </TabsTrigger>
+            <TabsTrigger value="retainer" data-testid="tab-retainer">
+              <Bot className="h-4 w-4 mr-2" />
+              Retainer
             </TabsTrigger>
           </TabsList>
 
@@ -1083,6 +1140,167 @@ export default function AdminSettings() {
                 )}
               </TabsContent>
             </Tabs>
+          </TabsContent>
+
+          {/* ── Retainer Auto-Generation ─────────────────────────────── */}
+          <TabsContent value="retainer" className="mt-6 space-y-6">
+            {/* Global settings card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  Auto-Generation Settings
+                </CardTitle>
+                <CardDescription>
+                  Control the daily scheduler that generates retainer tasks for all active clients.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {retainerSettingsLoading ? (
+                  <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}</div>
+                ) : (
+                  <>
+                    {/* Global enable */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Enable auto-generation</p>
+                        <p className="text-xs text-muted-foreground">Runs daily at 7:00 AM ET for all active retainer clients</p>
+                      </div>
+                      <Switch
+                        checked={retainerSettings?.autoGenerationEnabled ?? true}
+                        onCheckedChange={v => saveRetainerSettingsMutation.mutate({ autoGenerationEnabled: v })}
+                        disabled={saveRetainerSettingsMutation.isPending}
+                        data-testid="switch-retainer-autogen"
+                      />
+                    </div>
+
+                    {/* Dry-run mode */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Dry-run mode</p>
+                        <p className="text-xs text-muted-foreground">Preview what would be generated without actually creating tasks</p>
+                      </div>
+                      <Switch
+                        checked={retainerSettings?.dryRun ?? false}
+                        onCheckedChange={v => saveRetainerSettingsMutation.mutate({ dryRun: v })}
+                        disabled={saveRetainerSettingsMutation.isPending}
+                        data-testid="switch-retainer-dryrun"
+                      />
+                    </div>
+
+                    {/* Generation window */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Default generation window</p>
+                        <p className="text-xs text-muted-foreground">How far ahead to schedule tasks (per-client override applies)</p>
+                      </div>
+                      <Select
+                        value={String(retainerSettings?.generationWindowDays ?? 30)}
+                        onValueChange={v => saveRetainerSettingsMutation.mutate({ generationWindowDays: parseInt(v) })}
+                      >
+                        <SelectTrigger className="w-28" data-testid="select-retainer-window">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="14">14 days</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                          <SelectItem value="60">60 days</SelectItem>
+                          <SelectItem value="90">90 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Manual run buttons */}
+                    <div className="flex items-center gap-3 pt-2 border-t">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => runGenerationMutation.mutate(false)}
+                        disabled={runGenerationMutation.isPending}
+                        data-testid="button-run-generation"
+                      >
+                        {runGenerationMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                        Run Now
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => runGenerationMutation.mutate(true)}
+                        disabled={runGenerationMutation.isPending}
+                        data-testid="button-dry-run-generation"
+                      >
+                        {runGenerationMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarClock className="h-4 w-4 mr-2" />}
+                        Dry Run
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Generation logs */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarClock className="h-4 w-4" />
+                  Generation History
+                </CardTitle>
+                <CardDescription>Last 50 scheduler runs</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {retainerLogsLoading ? (
+                  <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}</div>
+                ) : retainerLogs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No generation runs yet. Click "Run Now" to trigger the first one.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-muted-foreground border-b">
+                          <th className="text-left pb-2 pr-4 font-medium">When</th>
+                          <th className="text-left pb-2 pr-4 font-medium">Type</th>
+                          <th className="text-left pb-2 pr-4 font-medium">Status</th>
+                          <th className="text-right pb-2 pr-4 font-medium">Companies</th>
+                          <th className="text-right pb-2 pr-4 font-medium">Created</th>
+                          <th className="text-right pb-2 font-medium">Skipped</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {retainerLogs.map(log => (
+                          <tr key={log.id} className="text-xs" data-testid={`row-retainer-log-${log.id}`}>
+                            <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">
+                              {new Date(log.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}
+                            </td>
+                            <td className="py-2.5 pr-4">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${log.runType === "manual" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
+                                {log.runType}
+                              </span>
+                            </td>
+                            <td className="py-2.5 pr-4">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                log.status === "success" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                log.status === "dry_run" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                log.status === "skipped" ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" :
+                                log.status === "partial" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300" :
+                                "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                              }`}>
+                                {log.status}
+                              </span>
+                              {log.dryRun && log.status !== "dry_run" && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">dry</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 pr-4 text-right font-mono">{log.companiesProcessed}</td>
+                            <td className="py-2.5 pr-4 text-right font-mono text-green-600 dark:text-green-400">{log.tasksCreated}</td>
+                            <td className="py-2.5 text-right font-mono text-muted-foreground">{log.tasksSkipped}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

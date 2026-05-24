@@ -2055,6 +2055,7 @@ export const clientRetainerAssignments = pgTable("client_retainer_assignments", 
   monthlyCreditAllocationOverride: real("monthly_credit_allocation_override"),
   monthlyPriceOverride: decimal("monthly_price_override", { precision: 10, scale: 2 }),
   generationWindowDaysOverride: integer("generation_window_days_override"),
+  autoGenerationEnabled: boolean("auto_generation_enabled").notNull().default(true),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
@@ -2176,3 +2177,36 @@ export const integrationStatuses = pgTable("integration_statuses", {
 export const insertIntegrationStatusSchema = createInsertSchema(integrationStatuses).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
 export type IntegrationStatus = typeof integrationStatuses.$inferSelect;
+
+// ── System Settings (global key-value store) ──────────────────────────────────
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at"),
+});
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// ── Retainer Generation Logs ──────────────────────────────────────────────────
+export const retainerGenerationRunTypeEnum = ["scheduled", "manual"] as const;
+export type RetainerGenerationRunType = typeof retainerGenerationRunTypeEnum[number];
+
+export const retainerGenerationStatusEnum = ["success", "partial", "failed", "dry_run", "skipped"] as const;
+export type RetainerGenerationStatus = typeof retainerGenerationStatusEnum[number];
+
+export const retainerGenerationLogs = pgTable("retainer_generation_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runType: text("run_type").$type<RetainerGenerationRunType>().notNull().default("scheduled"),
+  status: text("status").$type<RetainerGenerationStatus>().notNull().default("success"),
+  companiesProcessed: integer("companies_processed").notNull().default(0),
+  tasksCreated: integer("tasks_created").notNull().default(0),
+  tasksSkipped: integer("tasks_skipped").notNull().default(0),
+  dryRun: boolean("dry_run").notNull().default(false),
+  errorMessage: text("error_message"),
+  details: text("details"),
+  triggeredBy: varchar("triggered_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertRetainerGenerationLogSchema = createInsertSchema(retainerGenerationLogs).omit({ id: true, createdAt: true });
+export type InsertRetainerGenerationLog = z.infer<typeof insertRetainerGenerationLogSchema>;
+export type RetainerGenerationLog = typeof retainerGenerationLogs.$inferSelect;

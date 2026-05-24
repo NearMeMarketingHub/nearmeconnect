@@ -1446,7 +1446,7 @@ export function CompanyCommandCenter({
       {/* Row 2: Retainer Plan Overview + Scope of Work */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2">
-          <RetainerOverviewCard companyId={companyId} onNavigate={onNavigate} />
+          <RetainerOverviewCard companyId={companyId} onNavigate={onNavigate} isAdmin={true} />
         </div>
         <ScopeOfWorkCard companyId={companyId} onNavigate={onNavigate} />
       </div>

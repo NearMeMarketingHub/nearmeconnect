@@ -381,6 +381,29 @@ async function migrateCampaignWorkspaceColumns() {
       created_at text NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS ott_template_idx ON onboarding_task_templates (onboarding_template_id)`,
+    // Auto-generation column on retainer assignments
+    "ALTER TABLE client_retainer_assignments ADD COLUMN IF NOT EXISTS auto_generation_enabled BOOLEAN NOT NULL DEFAULT true",
+    // System settings (global key-value)
+    `CREATE TABLE IF NOT EXISTS system_settings (
+      key text PRIMARY KEY,
+      value text NOT NULL,
+      updated_at text
+    )`,
+    // Retainer generation run logs
+    `CREATE TABLE IF NOT EXISTS retainer_generation_logs (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      run_type text NOT NULL DEFAULT 'scheduled',
+      status text NOT NULL DEFAULT 'success',
+      companies_processed integer NOT NULL DEFAULT 0,
+      tasks_created integer NOT NULL DEFAULT 0,
+      tasks_skipped integer NOT NULL DEFAULT 0,
+      dry_run boolean NOT NULL DEFAULT false,
+      error_message text,
+      details text,
+      triggered_by varchar,
+      created_at text NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS rgl_created_at_idx ON retainer_generation_logs (created_at DESC)`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);
@@ -780,4 +803,8 @@ async function seedDatabase() {
   // HubSpot OAuth scheduler - nightly sync + token refresh every 6 hours
   const { setupHubSpotScheduler } = await import("./hubspot-scheduler");
   await setupHubSpotScheduler();
+
+  // Retainer auto-generation scheduler - daily at 7:00 AM ET
+  const { setupRetainerScheduler } = await import("./retainer-scheduler");
+  setupRetainerScheduler();
 })();

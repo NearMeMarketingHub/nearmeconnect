@@ -13146,6 +13146,85 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Retainer Auto-Generation: per-company toggle ───────────────────────────
+
+  app.patch("/api/companies/:companyId/retainer-assignment/auto-gen", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const { autoGenerationEnabled } = req.body as { autoGenerationEnabled: boolean };
+      const assignment = await storage.getClientRetainerAssignment(companyId);
+      if (!assignment) return res.status(404).json({ error: "No retainer assignment found" });
+      const updated = await storage.updateClientRetainerAssignment(assignment.id, { autoGenerationEnabled: !!autoGenerationEnabled });
+      broadcastInvalidation([`/api/companies/${companyId}/retainer-overview`, `/api/companies/${companyId}/retainer-assignment`]);
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Admin: Global retainer settings ────────────────────────────────────────
+
+  app.get("/api/admin/retainer-settings", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const [enabled, dryRun, windowDays] = await Promise.all([
+        storage.getSystemSetting("retainer.autoGenerationEnabled"),
+        storage.getSystemSetting("retainer.dryRun"),
+        storage.getSystemSetting("retainer.generationWindowDays"),
+      ]);
+      res.json({
+        autoGenerationEnabled: enabled !== "false",
+        dryRun: dryRun === "true",
+        generationWindowDays: parseInt(windowDays ?? "30", 10),
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/retainer-settings", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { autoGenerationEnabled, dryRun, generationWindowDays } = req.body as {
+        autoGenerationEnabled?: boolean;
+        dryRun?: boolean;
+        generationWindowDays?: number;
+      };
+      const ops: Promise<void>[] = [];
+      if (autoGenerationEnabled !== undefined) ops.push(storage.setSystemSetting("retainer.autoGenerationEnabled", String(autoGenerationEnabled)));
+      if (dryRun !== undefined) ops.push(storage.setSystemSetting("retainer.dryRun", String(dryRun)));
+      if (generationWindowDays !== undefined) ops.push(storage.setSystemSetting("retainer.generationWindowDays", String(generationWindowDays)));
+      await Promise.all(ops);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/admin/retainer-auto-generate", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { dryRun, companyId } = req.body as { dryRun?: boolean; companyId?: string };
+      const { runRetainerAutoGeneration } = await import("./retainer-scheduler");
+      const result = await runRetainerAutoGeneration({
+        dryRunOverride: dryRun,
+        triggeredBy: req.user!.id,
+        runType: "manual",
+        companyIdFilter: companyId,
+      });
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/retainer-generation-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const limit = parseInt(String(req.query.limit ?? "50"), 10);
+      const logs = await storage.getRetainerGenerationLogs(limit);
+      res.json(logs);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Credit Projection ──────────────────────────────────────────────────────
 
   app.get("/api/companies/:companyId/credit-projection", isAuthenticated, async (req: AuthenticatedRequest, res) => {
