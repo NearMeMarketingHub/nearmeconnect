@@ -14,7 +14,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
-import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target } from "lucide-react";
+import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target, Mail } from "lucide-react";
+import { EmailHistory } from "@/components/email-history";
+import { EmailComposerDialog } from "@/components/email-composer-dialog";
 import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
@@ -63,6 +65,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [messageInput, setMessageInput] = useState("");
   const [messageMentions, setMessageMentions] = useState<string[]>([]);
   const [showChat, setShowChat] = useState(false);
+  const [composeEmailOpen, setComposeEmailOpen] = useState(false);
   const [showMemberSelector, setShowMemberSelector] = useState(false);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [editingCredits, setEditingCredits] = useState(false);
@@ -2392,8 +2395,48 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               </div>
             </>
           )}
+
+          {/* Workflow Emails — Admin only */}
+          {isAdmin && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-muted-foreground text-xs flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Workflow Emails
+                  </Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => setComposeEmailOpen(true)}
+                    data-testid="button-compose-task-email"
+                  >
+                    <Mail className="h-3.5 w-3.5 mr-1" />
+                    Compose
+                  </Button>
+                </div>
+                <EmailHistory
+                  companyId={companyId}
+                  isAdmin={true}
+                  relatedTaskId={task.id}
+                  compact={true}
+                />
+              </div>
+            </>
+          )}
         </div>
       </SheetContent>
+
+      <EmailComposerDialog
+        open={composeEmailOpen}
+        onOpenChange={setComposeEmailOpen}
+        companyId={companyId}
+        defaultRelatedTaskId={task.id}
+        defaultTemplate="approval_request"
+        onSuccess={() => setComposeEmailOpen(false)}
+      />
 
       {/* Member selector for creating new task chat */}
       <ChatMemberSelector

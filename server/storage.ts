@@ -245,6 +245,12 @@ import {
   creditReservations,
   type CreditReservation,
   type InsertCreditReservation,
+  onboardingTemplates,
+  type OnboardingTemplate,
+  type InsertOnboardingTemplate,
+  onboardingTaskTemplates,
+  type OnboardingTaskTemplate,
+  type InsertOnboardingTaskTemplate,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -710,6 +716,16 @@ export interface IStorage {
   updateClientRetainerAssignment(id: string, data: Partial<ClientRetainerAssignment>): Promise<ClientRetainerAssignment | undefined>;
   getClientRetainerServiceTracks(assignmentId: string): Promise<(ClientRetainerServiceTrack & { track: ServiceTrack })[]>;
   setClientRetainerServiceTracks(assignmentId: string, tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[]): Promise<void>;
+  // Onboarding Templates
+  getOnboardingTemplates(): Promise<OnboardingTemplate[]>;
+  getOnboardingTemplate(id: string): Promise<OnboardingTemplate | undefined>;
+  createOnboardingTemplate(data: InsertOnboardingTemplate): Promise<OnboardingTemplate>;
+  updateOnboardingTemplate(id: string, data: Partial<OnboardingTemplate>): Promise<OnboardingTemplate | undefined>;
+  deleteOnboardingTemplate(id: string): Promise<void>;
+  getOnboardingTaskTemplates(onboardingTemplateId: string): Promise<OnboardingTaskTemplate[]>;
+  createOnboardingTaskTemplate(data: InsertOnboardingTaskTemplate): Promise<OnboardingTaskTemplate>;
+  updateOnboardingTaskTemplate(id: string, data: Partial<OnboardingTaskTemplate>): Promise<OnboardingTaskTemplate | undefined>;
+  deleteOnboardingTaskTemplate(id: string): Promise<void>;
   // Retainer Generated Task History
   createRetainerGeneratedTask(data: InsertRetainerGeneratedTask): Promise<RetainerGeneratedTask>;
   getRetainerGeneratedTaskByDedup(companyId: string, taskTemplateId: string, periodStart: string): Promise<RetainerGeneratedTask | undefined>;
@@ -3780,6 +3796,64 @@ export class DatabaseStorage implements IStorage {
         notes: t.notes ?? null,
       })));
     }
+  }
+
+  // ── Onboarding Templates ─────────────────────────────────────────────────────
+
+  async getOnboardingTemplates(): Promise<OnboardingTemplate[]> {
+    return db.select().from(onboardingTemplates).orderBy(onboardingTemplates.name);
+  }
+
+  async getOnboardingTemplate(id: string): Promise<OnboardingTemplate | undefined> {
+    const [row] = await db.select().from(onboardingTemplates).where(eq(onboardingTemplates.id, id));
+    return row;
+  }
+
+  async createOnboardingTemplate(data: InsertOnboardingTemplate): Promise<OnboardingTemplate> {
+    const [row] = await db.insert(onboardingTemplates).values({
+      ...(data as any),
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async updateOnboardingTemplate(id: string, data: Partial<OnboardingTemplate>): Promise<OnboardingTemplate | undefined> {
+    const [row] = await db.update(onboardingTemplates)
+      .set({ ...data, updatedAt: new Date().toISOString() } as any)
+      .where(eq(onboardingTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteOnboardingTemplate(id: string): Promise<void> {
+    await db.delete(onboardingTaskTemplates).where(eq(onboardingTaskTemplates.onboardingTemplateId, id));
+    await db.delete(onboardingTemplates).where(eq(onboardingTemplates.id, id));
+  }
+
+  async getOnboardingTaskTemplates(onboardingTemplateId: string): Promise<OnboardingTaskTemplate[]> {
+    return db.select().from(onboardingTaskTemplates)
+      .where(eq(onboardingTaskTemplates.onboardingTemplateId, onboardingTemplateId))
+      .orderBy(onboardingTaskTemplates.sortOrder);
+  }
+
+  async createOnboardingTaskTemplate(data: InsertOnboardingTaskTemplate): Promise<OnboardingTaskTemplate> {
+    const [row] = await db.insert(onboardingTaskTemplates).values({
+      ...(data as any),
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async updateOnboardingTaskTemplate(id: string, data: Partial<OnboardingTaskTemplate>): Promise<OnboardingTaskTemplate | undefined> {
+    const [row] = await db.update(onboardingTaskTemplates)
+      .set(data as any)
+      .where(eq(onboardingTaskTemplates.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteOnboardingTaskTemplate(id: string): Promise<void> {
+    await db.delete(onboardingTaskTemplates).where(eq(onboardingTaskTemplates.id, id));
   }
 
   // ── Retainer Generated Task History ─────────────────────────────────────────

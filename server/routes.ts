@@ -13077,6 +13077,167 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Onboarding Templates ───────────────────────────────────────────────────
+
+  app.get("/api/onboarding-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const templates = await storage.getOnboardingTemplates();
+      const result = await Promise.all(templates.map(async (t) => ({
+        ...t,
+        tasks: await storage.getOnboardingTaskTemplates(t.id),
+      })));
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/onboarding-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { name, description, suggestedPrice, status } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+      const tpl = await storage.createOnboardingTemplate({ name: name.trim(), description: description ?? null, suggestedPrice: suggestedPrice ?? null, status: status ?? "active" });
+      res.status(201).json(tpl);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/onboarding-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const tpl = await storage.updateOnboardingTemplate(String(req.params.id), req.body);
+      if (!tpl) return res.status(404).json({ error: "Not found" });
+      res.json(tpl);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/onboarding-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteOnboardingTemplate(String(req.params.id));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Onboarding Task Templates
+  app.post("/api/onboarding-templates/:templateId/tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { title, description, defaultInstructions, defaultCreditCost, defaultDueOffsetDays, defaultRoleOwner, requiresClientApproval, createsClientVisibleTask, noCredit, sortOrder } = req.body;
+      if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
+      const task = await storage.createOnboardingTaskTemplate({
+        onboardingTemplateId: String(req.params.templateId),
+        title: title.trim(),
+        description: description ?? null,
+        defaultInstructions: defaultInstructions ?? null,
+        defaultCreditCost: defaultCreditCost ?? "0",
+        defaultDueOffsetDays: defaultDueOffsetDays ?? null,
+        defaultRoleOwner: defaultRoleOwner ?? null,
+        requiresClientApproval: requiresClientApproval ?? false,
+        createsClientVisibleTask: createsClientVisibleTask ?? false,
+        noCredit: noCredit !== false,
+        sortOrder: sortOrder ?? 0,
+      });
+      res.status(201).json(task);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/onboarding-task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const task = await storage.updateOnboardingTaskTemplate(String(req.params.id), req.body);
+      if (!task) return res.status(404).json({ error: "Not found" });
+      res.json(task);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/onboarding-task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteOnboardingTaskTemplate(String(req.params.id));
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Company onboarding setup: preview + confirm
+  app.post("/api/companies/:companyId/onboarding-setup/preview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { onboardingTemplateId, startDate } = req.body as { onboardingTemplateId: string; startDate: string };
+      const taskTemplates = await storage.getOnboardingTaskTemplates(onboardingTemplateId);
+      const base = new Date(startDate);
+      const tasks = taskTemplates.map(tpl => {
+        const dueDate = tpl.defaultDueOffsetDays != null
+          ? new Date(base.getTime() + tpl.defaultDueOffsetDays * 86400000).toISOString().split("T")[0]
+          : null;
+        return {
+          title: tpl.title,
+          description: tpl.description,
+          defaultInstructions: tpl.defaultInstructions,
+          dueDate,
+          creditCost: parseFloat(tpl.defaultCreditCost),
+          roleOwner: tpl.defaultRoleOwner,
+          requiresApproval: tpl.requiresClientApproval,
+          clientVisible: tpl.createsClientVisibleTask,
+          noCredit: tpl.noCredit,
+          sortOrder: tpl.sortOrder,
+          onboardingTaskTemplateId: tpl.id,
+        };
+      });
+      const totalCredits = tasks.reduce((s, t) => s + (t.noCredit ? 0 : t.creditCost), 0);
+      res.json({ tasks, totalCredits, taskCount: tasks.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/companies/:companyId/onboarding-setup/confirm", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const { tasks, onboardingTemplateId } = req.body as {
+        tasks: Array<{
+          title: string;
+          description?: string;
+          defaultInstructions?: string;
+          dueDate?: string;
+          creditCost: number;
+          roleOwner?: string;
+          requiresApproval: boolean;
+          clientVisible: boolean;
+          noCredit: boolean;
+          onboardingTaskTemplateId: string;
+        }>;
+        onboardingTemplateId: string;
+      };
+      const created = [];
+      for (const t of tasks) {
+        const task = await storage.createTask({
+          companyId,
+          title: t.title,
+          description: t.defaultInstructions ?? t.description ?? null,
+          status: "pending",
+          priority: "medium",
+          creditCost: String(t.creditCost),
+          type: "assigned",
+          dueDate: t.dueDate ?? null,
+          taskOwnership: "agency",
+          approvalStatus: t.requiresApproval ? "pending" : "approved",
+          noCredit: t.noCredit,
+          source: "onboarding_template",
+          clientVisible: t.clientVisible,
+        } as any);
+        created.push(task);
+      }
+      broadcastInvalidation([`/api/tasks?companyId=${companyId}`, `/api/companies/${companyId}`]);
+      res.status(201).json({ created: created.length, tasks: created });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }
 

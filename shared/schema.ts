@@ -2076,6 +2076,45 @@ export const insertClientRetainerServiceTrackSchema = createInsertSchema(clientR
 export type InsertClientRetainerServiceTrack = z.infer<typeof insertClientRetainerServiceTrackSchema>;
 export type ClientRetainerServiceTrack = typeof clientRetainerServiceTracks.$inferSelect;
 
+// ── Onboarding / Implementation Templates ────────────────────────────────────
+
+export const onboardingTemplateStatusEnum = ["active", "inactive", "draft"] as const;
+export type OnboardingTemplateStatus = typeof onboardingTemplateStatusEnum[number];
+
+export const onboardingTemplates = pgTable("onboarding_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  suggestedPrice: decimal("suggested_price", { precision: 10, scale: 2 }),
+  status: text("status").$type<OnboardingTemplateStatus>().notNull().default("active"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertOnboardingTemplateSchema = createInsertSchema(onboardingTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOnboardingTemplate = z.infer<typeof insertOnboardingTemplateSchema>;
+export type OnboardingTemplate = typeof onboardingTemplates.$inferSelect;
+
+export const onboardingTaskTemplates = pgTable("onboarding_task_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  onboardingTemplateId: varchar("onboarding_template_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  defaultInstructions: text("default_instructions"),
+  defaultCreditCost: decimal("default_credit_cost", { precision: 10, scale: 2 }).notNull().default("0"),
+  defaultDueOffsetDays: integer("default_due_offset_days"),
+  defaultRoleOwner: text("default_role_owner"),
+  requiresClientApproval: boolean("requires_client_approval").notNull().default(false),
+  createsClientVisibleTask: boolean("creates_client_visible_task").notNull().default(false),
+  noCredit: boolean("no_credit").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertOnboardingTaskTemplateSchema = createInsertSchema(onboardingTaskTemplates).omit({ id: true, createdAt: true });
+export type InsertOnboardingTaskTemplate = z.infer<typeof insertOnboardingTaskTemplateSchema>;
+export type OnboardingTaskTemplate = typeof onboardingTaskTemplates.$inferSelect;
+
 // ── Retainer Generated Task History (dedup) ──────────────────────────────────
 export const retainerGeneratedTasks = pgTable("retainer_generated_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

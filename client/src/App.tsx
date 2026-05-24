@@ -15,6 +15,7 @@ import AdminCompanies from "@/pages/admin/companies";
 import AdminAddCompany from "@/pages/admin/add-company";
 import AdminDeliverableTypes from "@/pages/admin/deliverable-types";
 import AdminRetainerTemplates from "@/pages/admin/retainer-templates";
+import AdminOnboardingTemplates from "@/pages/admin/onboarding-templates";
 import AdminServiceTracks from "@/pages/admin/service-tracks";
 import AdminTaskTemplates from "@/pages/admin/task-templates";
 import AdminCampaigns from "@/pages/admin/campaigns";
@@ -180,6 +181,7 @@ function AppContent() {
         <Route path="/admin/companies">{() => <ErrorBoundary showNav><AdminCompanies /></ErrorBoundary>}</Route>
         <Route path="/admin/deliverables">{() => <ErrorBoundary showNav><AdminDeliverableTypes /></ErrorBoundary>}</Route>
         <Route path="/admin/retainer-templates">{() => <ErrorBoundary showNav><AdminRetainerTemplates /></ErrorBoundary>}</Route>
+        <Route path="/admin/onboarding-templates">{() => <ErrorBoundary showNav><AdminOnboardingTemplates /></ErrorBoundary>}</Route>
         <Route path="/admin/service-tracks">{() => <ErrorBoundary showNav><AdminServiceTracks /></ErrorBoundary>}</Route>
         <Route path="/admin/task-templates">{() => <ErrorBoundary showNav><AdminTaskTemplates /></ErrorBoundary>}</Route>
         <Route path="/admin/campaigns">{() => <ErrorBoundary showNav><AdminCampaigns /></ErrorBoundary>}</Route>

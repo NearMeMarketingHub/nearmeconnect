@@ -355,6 +355,32 @@ async function migrateCampaignWorkspaceColumns() {
     )`,
     `CREATE INDEX IF NOT EXISTS cr_company_status_idx ON credit_reservations (company_id, status)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS cr_task_unique_idx ON credit_reservations (generated_task_id)`,
+    // Onboarding / Implementation Templates
+    `CREATE TABLE IF NOT EXISTS onboarding_templates (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      description text,
+      suggested_price decimal(10,2),
+      status text NOT NULL DEFAULT 'active',
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE TABLE IF NOT EXISTS onboarding_task_templates (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      onboarding_template_id varchar NOT NULL,
+      title text NOT NULL,
+      description text,
+      default_instructions text,
+      default_credit_cost decimal(10,2) NOT NULL DEFAULT 0,
+      default_due_offset_days integer,
+      default_role_owner text,
+      requires_client_approval boolean NOT NULL DEFAULT false,
+      creates_client_visible_task boolean NOT NULL DEFAULT false,
+      no_credit boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at text NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS ott_template_idx ON onboarding_task_templates (onboarding_template_id)`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);
@@ -546,6 +572,99 @@ async function seedDatabase() {
     if (tierCount > 0) log(`Seeded ${tierCount} subscription tiers`);
 
     await storage.seedGlobalTaskCategories();
+
+    // Seed onboarding templates
+    const existingOnboarding = await storage.getOnboardingTemplates();
+    if (existingOnboarding.length === 0) {
+      const ONBOARDING_SEEDS: Array<{ name: string; description: string; suggestedPrice: string; tasks: Array<{ title: string; description?: string; defaultDueOffsetDays?: number; defaultRoleOwner?: string; sortOrder: number }> }> = [
+        {
+          name: "Client Launch Setup",
+          description: "Full onboarding package to get a new client set up in the portal and systems from day one.",
+          suggestedPrice: "0",
+          tasks: [
+            { title: "Client Intake Form", description: "Collect business info, goals, and initial preferences", defaultDueOffsetDays: 1, defaultRoleOwner: "account_manager", sortOrder: 0 },
+            { title: "Access Collection", description: "Gather logins and access to key platforms (website, social, ads, analytics)", defaultDueOffsetDays: 3, defaultRoleOwner: "account_manager", sortOrder: 1 },
+            { title: "SharePoint Folder Setup", description: "Create client folder structure in SharePoint for file storage", defaultDueOffsetDays: 2, defaultRoleOwner: "account_manager", sortOrder: 2 },
+            { title: "Brand Kit Collection", description: "Collect logos, fonts, color palette, and brand guidelines", defaultDueOffsetDays: 5, defaultRoleOwner: "designer", sortOrder: 3 },
+            { title: "Client Profile Setup", description: "Populate client profile in the portal with company info and services", defaultDueOffsetDays: 3, defaultRoleOwner: "account_manager", sortOrder: 4 },
+            { title: "Reporting Baseline", description: "Establish baseline metrics for tracking progress from month 1", defaultDueOffsetDays: 7, defaultRoleOwner: "strategist", sortOrder: 5 },
+            { title: "Portal Setup", description: "Configure client portal access and preferences", defaultDueOffsetDays: 2, defaultRoleOwner: "account_manager", sortOrder: 6 },
+            { title: "Add Users to Portal", description: "Invite client team members to the portal", defaultDueOffsetDays: 3, defaultRoleOwner: "account_manager", sortOrder: 7 },
+            { title: "Social Links Collection", description: "Collect all social media profile URLs and page IDs", defaultDueOffsetDays: 5, defaultRoleOwner: "account_manager", sortOrder: 8 },
+            { title: "Important Directories", description: "Document key directory listings (GMB, Yelp, BBB, etc.)", defaultDueOffsetDays: 7, defaultRoleOwner: "strategist", sortOrder: 9 },
+          ],
+        },
+        {
+          name: "HubSpot Quick Start",
+          description: "Rapid HubSpot setup for clients who need essential CRM functionality up and running fast.",
+          suggestedPrice: "0",
+          tasks: [
+            { title: "User Setup & Roles", description: "Create user accounts and assign appropriate permission sets", defaultDueOffsetDays: 2, defaultRoleOwner: "hubspot_specialist", sortOrder: 0 },
+            { title: "Custom Properties", description: "Build out essential contact, company, and deal properties", defaultDueOffsetDays: 5, defaultRoleOwner: "hubspot_specialist", sortOrder: 1 },
+            { title: "Lists Setup", description: "Create key active and static lists for segmentation", defaultDueOffsetDays: 7, defaultRoleOwner: "hubspot_specialist", sortOrder: 2 },
+            { title: "Forms Setup", description: "Create core lead capture and contact forms", defaultDueOffsetDays: 7, defaultRoleOwner: "hubspot_specialist", sortOrder: 3 },
+            { title: "Tracking Code Installation", description: "Install and verify HubSpot tracking on client website", defaultDueOffsetDays: 5, defaultRoleOwner: "developer", sortOrder: 4 },
+            { title: "Basic Workflow Setup", description: "Build lead assignment and follow-up notification workflows", defaultDueOffsetDays: 10, defaultRoleOwner: "hubspot_specialist", sortOrder: 5 },
+            { title: "Dashboard Setup", description: "Configure default sales and marketing dashboards", defaultDueOffsetDays: 10, defaultRoleOwner: "hubspot_specialist", sortOrder: 6 },
+            { title: "Training Call", description: "Live walkthrough of the HubSpot portal with client team", defaultDueOffsetDays: 14, defaultRoleOwner: "hubspot_specialist", sortOrder: 7 },
+          ],
+        },
+        {
+          name: "HubSpot Comprehensive Setup",
+          description: "Full-service HubSpot implementation including data modeling, pipelines, automations, integrations, and training.",
+          suggestedPrice: "0",
+          tasks: [
+            { title: "Discovery Call", description: "Review business processes, sales pipeline, and automation goals", defaultDueOffsetDays: 2, defaultRoleOwner: "hubspot_specialist", sortOrder: 0 },
+            { title: "Data Model Planning", description: "Map out object relationships, custom objects, and data architecture", defaultDueOffsetDays: 5, defaultRoleOwner: "hubspot_specialist", sortOrder: 1 },
+            { title: "Custom Properties Build-Out", description: "Create all required properties across contacts, companies, deals, and tickets", defaultDueOffsetDays: 10, defaultRoleOwner: "hubspot_specialist", sortOrder: 2 },
+            { title: "Pipeline Setup", description: "Build deal and ticket pipelines with custom stages and automations", defaultDueOffsetDays: 12, defaultRoleOwner: "hubspot_specialist", sortOrder: 3 },
+            { title: "Workflow Build-Out", description: "Create full automation library including lead nurture, sales sequences, and notifications", defaultDueOffsetDays: 18, defaultRoleOwner: "hubspot_specialist", sortOrder: 4 },
+            { title: "Integrations Setup", description: "Connect third-party tools (email, ads, calendar, etc.) and configure sync", defaultDueOffsetDays: 14, defaultRoleOwner: "developer", sortOrder: 5 },
+            { title: "Dashboards & Reporting", description: "Build custom reporting dashboards for sales, marketing, and leadership", defaultDueOffsetDays: 20, defaultRoleOwner: "hubspot_specialist", sortOrder: 6 },
+            { title: "QA & Testing", description: "Test all workflows, forms, pipelines, and integrations end-to-end", defaultDueOffsetDays: 22, defaultRoleOwner: "hubspot_specialist", sortOrder: 7 },
+            { title: "Documentation", description: "Create internal documentation for workflows, naming conventions, and SOPs", defaultDueOffsetDays: 25, defaultRoleOwner: "hubspot_specialist", sortOrder: 8 },
+            { title: "Training Call", description: "Comprehensive training session with client team and admin users", defaultDueOffsetDays: 28, defaultRoleOwner: "hubspot_specialist", sortOrder: 9 },
+          ],
+        },
+        {
+          name: "Local Visibility / GBP Setup",
+          description: "Google Business Profile and local SEO foundation setup for service-area businesses.",
+          suggestedPrice: "0",
+          tasks: [
+            { title: "GBP Audit", description: "Review existing Google Business Profile for completeness and accuracy", defaultDueOffsetDays: 3, defaultRoleOwner: "strategist", sortOrder: 0 },
+            { title: "NAP Review", description: "Audit name, address, phone consistency across web and directories", defaultDueOffsetDays: 5, defaultRoleOwner: "strategist", sortOrder: 1 },
+            { title: "Service / Category Review", description: "Optimize GBP categories and service list for local search visibility", defaultDueOffsetDays: 5, defaultRoleOwner: "strategist", sortOrder: 2 },
+            { title: "Citation Tracker Setup", description: "Build initial citation tracking spreadsheet and identify top priority directories", defaultDueOffsetDays: 7, defaultRoleOwner: "strategist", sortOrder: 3 },
+            { title: "Photo / Post Plan", description: "Create a 90-day plan for GBP photos and Google Posts", defaultDueOffsetDays: 10, defaultRoleOwner: "content_lead", sortOrder: 4 },
+            { title: "Directory Priorities", description: "Submit to top-tier local directories (Yelp, BBB, Bing Places, Apple Maps)", defaultDueOffsetDays: 14, defaultRoleOwner: "strategist", sortOrder: 5 },
+          ],
+        },
+        {
+          name: "Campaign Launch Setup",
+          description: "End-to-end setup for a new paid or organic campaign, from strategy through launch.",
+          suggestedPrice: "0",
+          tasks: [
+            { title: "Offer Strategy", description: "Define campaign offer, value proposition, and target audience", defaultDueOffsetDays: 3, defaultRoleOwner: "strategist", sortOrder: 0 },
+            { title: "Landing Page Plan", description: "Map out landing page structure, sections, CTAs, and conversion goals", defaultDueOffsetDays: 5, defaultRoleOwner: "strategist", sortOrder: 1 },
+            { title: "Copy", description: "Write headline, body copy, and CTA text for the landing page", defaultDueOffsetDays: 8, defaultRoleOwner: "content_lead", sortOrder: 2 },
+            { title: "Design", description: "Design landing page mockup and creative assets", defaultDueOffsetDays: 12, defaultRoleOwner: "designer", sortOrder: 3 },
+            { title: "Build", description: "Build and publish the landing page on client website or funnel tool", defaultDueOffsetDays: 16, defaultRoleOwner: "developer", sortOrder: 4 },
+            { title: "Email Sequence", description: "Write and configure 3-5 email follow-up sequence for leads", defaultDueOffsetDays: 14, defaultRoleOwner: "content_lead", sortOrder: 5 },
+            { title: "CRM Workflow Setup", description: "Set up lead routing, tagging, and follow-up workflows in CRM", defaultDueOffsetDays: 16, defaultRoleOwner: "hubspot_specialist", sortOrder: 6 },
+            { title: "Tracking Setup", description: "Install and verify conversion tracking (GA4, Meta Pixel, Google Ads)", defaultDueOffsetDays: 14, defaultRoleOwner: "developer", sortOrder: 7 },
+            { title: "QA", description: "End-to-end QA of form, tracking, email sequence, and CRM workflow", defaultDueOffsetDays: 18, defaultRoleOwner: "account_manager", sortOrder: 8 },
+            { title: "Launch", description: "Activate campaign and confirm all systems are live and tracking", defaultDueOffsetDays: 21, defaultRoleOwner: "account_manager", sortOrder: 9 },
+          ],
+        },
+      ];
+      for (const seed of ONBOARDING_SEEDS) {
+        const tpl = await storage.createOnboardingTemplate({ name: seed.name, description: seed.description, suggestedPrice: seed.suggestedPrice, status: "active" });
+        for (const task of seed.tasks) {
+          await storage.createOnboardingTaskTemplate({ onboardingTemplateId: tpl.id, title: task.title, description: task.description ?? null, defaultInstructions: null, defaultCreditCost: "0", defaultDueOffsetDays: task.defaultDueOffsetDays ?? null, defaultRoleOwner: task.defaultRoleOwner ?? null, requiresClientApproval: false, createsClientVisibleTask: false, noCredit: true, sortOrder: task.sortOrder });
+        }
+      }
+      log(`Seeded ${ONBOARDING_SEEDS.length} onboarding templates`);
+    }
   } catch (error) {
     console.error("Database seed error:", error);
   }
