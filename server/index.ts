@@ -719,6 +719,167 @@ async function seedDatabase() {
       }
       log(`Seeded ${ONBOARDING_SEEDS.length} onboarding templates`);
     }
+
+    // ── Service Tracks ────────────────────────────────────────────────────────
+    const existingTracks = await storage.getServiceTracks();
+    if (existingTracks.length === 0) {
+      const trackSeeds = [
+        { name: "Account Management and Strategy", slug: "account_management_and_strategy", description: "Strategic planning, account oversight, goal-setting, and ongoing client relationship management.", sortOrder: 1 },
+        { name: "Content Engine",                  slug: "content_engine",                  description: "Blog posts, social content, email newsletters, video scripts, and content calendar management.", sortOrder: 2 },
+        { name: "Local SEO and GBP",               slug: "local_seo_and_gbp",               description: "Google Business Profile management, local citations, directory listings, and local search optimization.", sortOrder: 3 },
+        { name: "HubSpot / CRM",                   slug: "hubspot_crm",                     description: "CRM setup, workflow automation, list management, pipeline configuration, and HubSpot hygiene.", sortOrder: 4 },
+        { name: "Campaigns and Funnels",            slug: "campaigns_and_funnels",           description: "Campaign strategy, landing page builds, email sequences, lead magnets, and conversion funnel management.", sortOrder: 5 },
+        { name: "Paid Ads",                         slug: "paid_ads",                        description: "Google Ads, Meta Ads, and other paid channels — strategy, creative, optimization, and reporting.", sortOrder: 6 },
+        { name: "Website and Technical",            slug: "website_and_technical",           description: "Website updates, landing pages, technical fixes, tracking setup, and CRO improvements.", sortOrder: 7 },
+        { name: "Reporting and Insights",           slug: "reporting_and_insights",          description: "Monthly performance reports, KPI dashboards, analytics reviews, and data-driven recommendations.", sortOrder: 8 },
+        { name: "RevOps and Enablement",            slug: "revops_and_enablement",           description: "Revenue operations, sales enablement, process documentation, and cross-team workflow optimization.", sortOrder: 9 },
+      ];
+      for (const t of trackSeeds) {
+        await storage.createServiceTrack({ ...t, status: "active" });
+      }
+      log(`Seeded ${trackSeeds.length} service tracks`);
+    }
+
+    // ── Retainer Templates ────────────────────────────────────────────────────
+    const existingRetainerTemplates = await storage.getRetainerTemplates();
+    if (existingRetainerTemplates.length === 0) {
+      const freshTracks = await storage.getServiceTracks();
+      const findTrackId = (fragment: string) =>
+        freshTracks.find(t => t.name.toLowerCase().includes(fragment.toLowerCase()))?.id ?? null;
+
+      const retainerSeeds = [
+        {
+          name: "Launch / Support",
+          slug: "launch_support",
+          status: "active" as const,
+          description: "Entry-level retainer for new clients getting started with foundational marketing support.",
+          suggestedMonthlyPrice: "3000",
+          monthlyCreditAllocation: 22,
+          recommendedClientType: "New clients, small businesses, or clients needing foundational support",
+          includedScopeSummary: "Monthly strategy call, performance reporting, basic content support, local SEO hygiene, and account management.",
+          excludedScopeSummary: "Paid ads management, full website builds, HubSpot automation, or multi-channel campaigns.",
+          overageRules: "Additional credits billed at standard rate. Overage discussed in advance with client.",
+          reportingCadence: "Monthly",
+          meetingCadence: "Monthly",
+          generationWindowDays: 60,
+          tracks: ["Account Management", "Reporting", "Local SEO"],
+        },
+        {
+          name: "Growth",
+          slug: "growth",
+          status: "active" as const,
+          description: "Mid-tier retainer for growing businesses scaling their marketing across multiple channels.",
+          suggestedMonthlyPrice: "6000",
+          monthlyCreditAllocation: 45,
+          recommendedClientType: "Growing SMBs scaling content, SEO, and lead generation",
+          includedScopeSummary: "Strategy, content engine, local SEO, GBP management, monthly reporting, email campaigns, and HubSpot support.",
+          excludedScopeSummary: "Paid ads management, full website builds, advanced RevOps.",
+          overageRules: "Overage at standard per-credit rate, pre-approved by account manager.",
+          reportingCadence: "Monthly",
+          meetingCadence: "Bi-weekly",
+          generationWindowDays: 60,
+          tracks: ["Account Management", "Content", "Local SEO", "HubSpot", "Reporting"],
+        },
+        {
+          name: "Scale",
+          slug: "scale",
+          status: "active" as const,
+          description: "High-output retainer for businesses running multi-channel campaigns and advanced automation.",
+          suggestedMonthlyPrice: "10000",
+          monthlyCreditAllocation: 67,
+          recommendedClientType: "Established businesses running paid ads, campaigns, and CRM automation",
+          includedScopeSummary: "Full strategy, content engine, local SEO, HubSpot automation, paid ads optimization, campaign management, and monthly deep-dive reporting.",
+          excludedScopeSummary: "Full website rebuilds, annual brand overhauls.",
+          overageRules: "Overage pre-approved in writing. Quarterly rollover available on annual contracts.",
+          reportingCadence: "Monthly + Quarterly deep-dive",
+          meetingCadence: "Weekly check-ins + monthly strategy",
+          generationWindowDays: 60,
+          tracks: ["Account Management", "Content", "Local SEO", "HubSpot", "Campaigns", "Paid Ads", "Reporting"],
+        },
+        {
+          name: "Accelerator",
+          slug: "accelerator",
+          status: "active" as const,
+          description: "Premium full-service retainer for high-growth clients requiring dedicated capacity across all channels.",
+          suggestedMonthlyPrice: "15000",
+          monthlyCreditAllocation: 105,
+          recommendedClientType: "High-growth brands or multi-location businesses needing full-service marketing",
+          includedScopeSummary: "All service tracks active. Dedicated account team, full content engine, paid ads, CRM, website support, RevOps, and executive-level reporting.",
+          excludedScopeSummary: "Custom software development, TV/radio production.",
+          overageRules: "Dedicated capacity model — overages handled via scoped add-ons, not per-credit billing.",
+          reportingCadence: "Monthly + Quarterly + Annual",
+          meetingCadence: "Weekly strategy + bi-weekly exec review",
+          generationWindowDays: 60,
+          tracks: ["Account Management", "Content", "Local SEO", "HubSpot", "Campaigns", "Paid Ads", "Website", "Reporting", "RevOps"],
+        },
+      ];
+
+      for (const seed of retainerSeeds) {
+        const { tracks, ...templateData } = seed;
+        const template = await storage.createRetainerTemplate(templateData as any);
+        const trackEntries = tracks
+          .map(fragment => {
+            const id = findTrackId(fragment);
+            return id ? { serviceTrackId: id, includedByDefault: true } : null;
+          })
+          .filter((e): e is { serviceTrackId: string; includedByDefault: boolean } => e !== null);
+        if (trackEntries.length > 0) {
+          await storage.setRetainerTemplateServiceTracks(template.id, trackEntries);
+        }
+      }
+      log(`Seeded ${retainerSeeds.length} retainer templates`);
+    }
+
+    // ── Task Templates ────────────────────────────────────────────────────────
+    const existingTaskTemplates = await storage.getTaskTemplates();
+    if (existingTaskTemplates.length === 0) {
+      const allTracks = await storage.getServiceTracks();
+      const findTrackId = (fragment: string) =>
+        allTracks.find(t => t.name.toLowerCase().includes(fragment.toLowerCase()))?.id ?? null;
+
+      const taskTemplateSeeds = [
+        { title: "Monthly Strategy & Priority Call",          serviceTrack: "Account Management", cadence: "monthly",    role: "account_manager",     credits: "3.00",  clientVisible: true,  approval: false, dueOffset: 30, sortOrder: 1,  desc: "Monthly check-in to review priorities, align on goals, and plan the upcoming month.", instructions: "Prepare agenda: last month wins, current KPIs, priorities for next 30 days." },
+        { title: "Monthly Performance Report",                serviceTrack: "Reporting",           cadence: "monthly",    role: "strategist",          credits: "4.00",  clientVisible: true,  approval: false, dueOffset: 5,  sortOrder: 2,  desc: "Comprehensive monthly report covering all active service tracks, KPIs, and recommendations.", instructions: "Include traffic, leads, campaign results, credit usage, and next-month recommendations." },
+        { title: "Content Calendar Planning (30–60 days)",    serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "2.00",  clientVisible: true,  approval: true,  dueOffset: 14, sortOrder: 3,  desc: "Plan and schedule content calendar for the next 30–60 days across all active channels.", instructions: "Map content themes, platforms, posting cadence, and assign production tasks." },
+        { title: "Blog / Content Piece",                      serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "5.00",  clientVisible: true,  approval: true,  dueOffset: 21, sortOrder: 4,  desc: "Research, write, and publish a long-form blog post or content piece.", instructions: "Include SEO keyword research, header structure, CTA, and meta description." },
+        { title: "Social Post (Graphic + Caption + Posting)", serviceTrack: "Content",             cadence: "weekly",     role: "content_lead",        credits: "0.25",  clientVisible: true,  approval: true,  dueOffset: 7,  sortOrder: 5,  desc: "Design graphic, write caption with hashtags, and schedule or publish to active social channels.", instructions: "Follow brand guidelines, include CTA, review caption for tone and engagement." },
+        { title: "Monthly Newsletter / Email Update",         serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "4.00",  clientVisible: true,  approval: true,  dueOffset: 20, sortOrder: 6,  desc: "Write, design, and send monthly email newsletter to subscriber list.", instructions: "Include key wins, promotions, content highlights, and upcoming news." },
+        { title: "Local SEO / GBP Update",                   serviceTrack: "Local SEO",           cadence: "monthly",    role: "account_manager",     credits: "2.00",  clientVisible: false, approval: false, dueOffset: 15, sortOrder: 7,  desc: "Update Google Business Profile posts, photos, Q&A, and review responses.", instructions: "Post 2–4 GBP updates, respond to new reviews, check NAP consistency." },
+        { title: "Directory / Link Tracker Update",           serviceTrack: "Local SEO",           cadence: "monthly",    role: "account_manager",     credits: "1.00",  clientVisible: false, approval: false, dueOffset: 20, sortOrder: 8,  desc: "Audit and update business directory listings and track backlink profile.", instructions: "Check top 20 directories for NAP accuracy, submit corrections as needed." },
+        { title: "HubSpot CRM / Workflow Hygiene",            serviceTrack: "HubSpot",             cadence: "monthly",    role: "hubspot_specialist",  credits: "4.00",  clientVisible: false, approval: false, dueOffset: 25, sortOrder: 9,  desc: "Review and clean CRM data, update workflows, check automation health.", instructions: "Audit contact properties, fix broken workflows, review enrollment criteria." },
+        { title: "Campaign Strategy & Asset Planning",        serviceTrack: "Campaigns",           cadence: "monthly",    role: "strategist",          credits: "3.00",  clientVisible: true,  approval: true,  dueOffset: 14, sortOrder: 10, desc: "Define campaign goals, audience, messaging, channel mix, and required assets.", instructions: "Create campaign brief including objective, offer, audience, timeline, and deliverables." },
+        { title: "Landing Page Update",                       serviceTrack: "Website",             cadence: "monthly",    role: "developer",           credits: "3.00",  clientVisible: false, approval: false, dueOffset: 21, sortOrder: 11, desc: "Update existing landing page content, CTAs, or design elements.", instructions: "Follow brand guidelines, test form submission, verify tracking is intact." },
+        { title: "Full Landing Page Build",                   serviceTrack: "Campaigns",           cadence: "once",       role: "developer",           credits: "5.00",  clientVisible: true,  approval: true,  dueOffset: 21, sortOrder: 12, desc: "Design and build a new conversion-focused landing page.", instructions: "Includes copy, design, build, form setup, CRM integration, and tracking." },
+        { title: "Email Campaign",                            serviceTrack: "Campaigns",           cadence: "monthly",    role: "content_lead",        credits: "4.00",  clientVisible: true,  approval: true,  dueOffset: 18, sortOrder: 13, desc: "Build and send a promotional or nurture email campaign.", instructions: "Segment list, write copy, design template, test links, schedule send." },
+        { title: "CRM Workflow Update",                       serviceTrack: "HubSpot",             cadence: "quarterly",  role: "hubspot_specialist",  credits: "4.00",  clientVisible: false, approval: false, dueOffset: 30, sortOrder: 14, desc: "Build or update an automation workflow in HubSpot or connected CRM.", instructions: "Document workflow logic, test branch conditions, confirm enrollment triggers." },
+        { title: "Paid Ad Optimization (Weekly)",             serviceTrack: "Paid Ads",            cadence: "weekly",     role: "ads_manager",         credits: "1.00",  clientVisible: false, approval: false, dueOffset: 7,  sortOrder: 15, desc: "Weekly review and optimization of active paid ad campaigns.", instructions: "Review CTR, CPC, ROAS, adjust bids/budgets, pause underperformers, test new creatives." },
+        { title: "Monthly Ads Report",                        serviceTrack: "Paid Ads",            cadence: "monthly",    role: "ads_manager",         credits: "2.00",  clientVisible: true,  approval: false, dueOffset: 5,  sortOrder: 16, desc: "Monthly paid ads performance summary with insights and recommendations.", instructions: "Cover spend, impressions, clicks, conversions, ROAS, and next-month recommendations." },
+        { title: "Quarterly Deep Dive & Roadmap Refresh",     serviceTrack: "Account Management",  cadence: "quarterly",  role: "strategist",          credits: "5.00",  clientVisible: true,  approval: false, dueOffset: 7,  sortOrder: 17, desc: "In-depth quarterly review of all service tracks with updated 90-day roadmap.", instructions: "Review all channel performance, revise priorities, document roadmap for next quarter." },
+        { title: "Year-End Report",                           serviceTrack: "Reporting",           cadence: "annual",     role: "strategist",          credits: "6.00",  clientVisible: true,  approval: false, dueOffset: 14, sortOrder: 18, desc: "Annual summary of all marketing activity, results, and strategic recommendations.", instructions: "Cover all service tracks, year-over-year metrics, key wins, and goals for next year." },
+      ];
+
+      for (const seed of taskTemplateSeeds) {
+        await storage.createTaskTemplate({
+          title: seed.title,
+          description: seed.desc,
+          defaultInstructions: seed.instructions,
+          serviceTrackId: findTrackId(seed.serviceTrack),
+          deliverableTypeId: null,
+          defaultCreditCost: seed.credits,
+          cadence: seed.cadence as any,
+          defaultDueOffsetDays: seed.dueOffset,
+          defaultStartOffsetDays: null,
+          defaultRoleOwner: seed.role as any,
+          defaultPriority: "medium",
+          requiresClientApproval: seed.approval,
+          createsClientVisibleTask: seed.clientVisible,
+          isActive: true,
+          sortOrder: seed.sortOrder,
+        });
+      }
+      log(`Seeded ${taskTemplateSeeds.length} task templates`);
+    }
+
   } catch (error) {
     console.error("Database seed error:", error);
   }
