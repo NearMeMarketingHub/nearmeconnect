@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { parseLocalDate } from "@/lib/utils";
+import { RetainerOverviewCard, ScopeOfWorkCard, RetainerTasksCard } from "@/components/retainer-plan-panel";
 import {
   AlertTriangle,
   ArrowRight,
@@ -1442,7 +1443,18 @@ export function CompanyCommandCenter({
         />
       </div>
 
-      {/* Row 2: This Week/Next Week + 30/60-Day Plan */}
+      {/* Row 2: Retainer Plan Overview + Scope of Work */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2">
+          <RetainerOverviewCard companyId={companyId} onNavigate={onNavigate} />
+        </div>
+        <ScopeOfWorkCard companyId={companyId} onNavigate={onNavigate} />
+      </div>
+
+      {/* Row 3: Retainer Tasks (full width) */}
+      <RetainerTasksCard companyId={companyId} onNavigate={onNavigate} />
+
+      {/* Row 4: This Week/Next Week + 30/60-Day Plan */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <ThisWeekCard tasks={tasks} meetings={meetings} onNavigate={onNavigate} />
         <PlanCard tasks={tasks} campaigns={campaigns} contentItems={contentItems} onNavigate={onNavigate} />

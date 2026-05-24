@@ -13067,6 +13067,85 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Retainer Overview ──────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/retainer-overview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const userId = req.user!.id;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const [assignment, credits, tasks, campaigns, contentItems] = await Promise.all([
+        storage.getClientRetainerAssignment(companyId),
+        storage.getCreditProjection(companyId),
+        storage.getTasks(companyId),
+        storage.getCampaignRequests(companyId),
+        storage.getContentCalendarItems({ companyId }),
+      ]);
+
+      let assignmentData = null;
+      if (assignment) {
+        const [template, serviceTracks] = await Promise.all([
+          storage.getRetainerTemplate(assignment.retainerTemplateId),
+          storage.getClientRetainerServiceTracks(assignment.id),
+        ]);
+        assignmentData = { ...assignment, template: template ?? null, serviceTracks };
+      }
+
+      const now = new Date();
+      const tStr = now.toISOString().slice(0, 10);
+      const d30 = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+      const d60 = new Date(now.getTime() + 60 * 86400000).toISOString().slice(0, 10);
+      const d90 = new Date(now.getTime() + 90 * 86400000).toISOString().slice(0, 10);
+
+      const activeTasks = tasks.filter(t =>
+        t.status !== "completed" && t.status !== "cancelled" && t.approvalStatus !== "rejected"
+      );
+      const taskCounts = {
+        next30: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d30).length,
+        next60: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d60).length,
+        next90: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d90).length,
+      };
+
+      const trackNameMap: Record<string, string> = {};
+      if (assignmentData?.serviceTracks) {
+        for (const st of assignmentData.serviceTracks as any[]) {
+          if (st.track) trackNameMap[st.serviceTrackId] = st.track.name;
+        }
+      }
+
+      const upcomingRetainerTasks = activeTasks
+        .filter(t => (t.retainerTemplateId || t.clientRetainerAssignmentId) && (!t.dueDate || t.dueDate >= tStr))
+        .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"))
+        .slice(0, 30)
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          dueDate: t.dueDate ?? null,
+          status: t.status,
+          approvalStatus: t.approvalStatus ?? null,
+          serviceTrackId: t.serviceTrackId ?? null,
+          serviceTrackName: t.serviceTrackId ? (trackNameMap[t.serviceTrackId] ?? null) : null,
+          assignedTo: t.assignedTo ?? null,
+          creditCost: t.creditCost,
+          campaignRequestId: t.campaignRequestId ?? null,
+        }));
+
+      res.json({
+        assignment: assignmentData,
+        credits,
+        taskCounts,
+        campaigns: { active: campaigns.filter(c => !["rejected", "cancelled"].includes(c.status)).length },
+        contentItems: { scheduled: contentItems.filter(c => c.status === "scheduled" || c.status === "approved" || c.status === "drafting").length },
+        upcomingRetainerTasks,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Credit Projection ──────────────────────────────────────────────────────
 
   app.get("/api/companies/:companyId/credit-projection", isAuthenticated, async (req: AuthenticatedRequest, res) => {
