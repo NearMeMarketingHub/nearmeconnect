@@ -344,6 +344,104 @@ export function registerHubSpotOAuthRoutes(app: Express) {
     }
   });
 
+  // ── Social channels ──────────────────────────────────────────────────────
+  app.get("/api/hubspot/crm/:companyId/social-channels", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const companyId = req.params.companyId as string;
+      const conn = await storage.getHubspotConnection(companyId);
+      if (!conn?.isActive || !conn.accessToken) {
+        return res.status(400).json({ error: "HubSpot not connected for this company" });
+      }
+
+      const accessToken = decryptSecret(conn.accessToken);
+      const resp = await fetch("https://api.hubapi.com/marketing/v3/social/channels", {
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        return res.status(resp.status).json({ error: `HubSpot API error: ${errText}` });
+      }
+
+      const data = await resp.json();
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Social publish ────────────────────────────────────────────────────────
+  app.post("/api/hubspot/crm/:companyId/social-publish", isAuthenticated, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const companyId = req.params.companyId as string;
+      const { calendarItemId, channelGuid, body, triggerAt } = req.body as {
+        calendarItemId: string;
+        channelGuid: string;
+        body: string;
+        triggerAt?: string;
+      };
+
+      if (!calendarItemId || !channelGuid || !body) {
+        return res.status(400).json({ error: "calendarItemId, channelGuid, and body are required" });
+      }
+
+      const conn = await storage.getHubspotConnection(companyId);
+      if (!conn?.isActive || !conn.accessToken) {
+        return res.status(400).json({ error: "HubSpot not connected for this company" });
+      }
+
+      const accessToken = decryptSecret(conn.accessToken);
+
+      const payload: Record<string, any> = {
+        channelGuid,
+        content: { body },
+        triggerAt: triggerAt || new Date().toISOString(),
+        status: "SCHEDULED",
+      };
+
+      const resp = await fetch("https://api.hubapi.com/marketing/v3/social/broadcasts", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        storage.createHubspotSyncLog({ companyId, action: "push_social", status: "error", details: errText }).catch(() => {});
+        return res.status(resp.status).json({ error: `HubSpot API error: ${errText}` });
+      }
+
+      const broadcast = await resp.json();
+      const broadcastId = String(broadcast.id || broadcast.broadcastGuid || "");
+      const newStatus = triggerAt ? "scheduled" : "published";
+
+      await storage.updateContentCalendarItem(calendarItemId, {
+        hubspotPostId: broadcastId,
+        status: newStatus,
+        publishedAt: new Date().toISOString(),
+      });
+
+      storage.createHubspotSyncLog({
+        companyId,
+        action: "push_social",
+        status: "success",
+        details: `Broadcast ${broadcastId} created for content item ${calendarItemId} (${newStatus})`,
+      }).catch(() => {});
+
+      res.json({ success: true, broadcast, broadcastId, status: newStatus });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Webhooks ──────────────────────────────────────────────────────────────
 
   app.post("/api/hubspot/webhooks", express.raw({ type: "*/*" }), (req: Request, res: Response) => {

@@ -17,8 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X, Video, Link, MapPin, ClipboardCopy } from "lucide-react";
+import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X, Video, Link, MapPin, ClipboardCopy, Share2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { HubspotSocialPublishDialog } from "./hubspot-social-publish-dialog";
 
 type FormValues = z.infer<typeof insertContentCalendarItemSchema>;
 
@@ -253,10 +254,16 @@ export function ContentItemModal({
 
   const onSubmit = form.handleSubmit((data) => saveMutation.mutate(data));
 
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+
+  const HUBSPOT_SOCIAL_PLATFORMS = ["facebook", "instagram", "linkedin", "youtube_video"];
+  const canPublishViaHubspot = !!item && HUBSPOT_SOCIAL_PLATFORMS.includes(platform);
+
   const platformCfg = PLATFORM_CONFIG[platform];
   const PlatformIcon = platformCfg?.Icon || Globe;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
         <DialogHeader className="px-6 pt-4 pb-2 border-b flex-shrink-0">
@@ -856,6 +863,21 @@ export function ContentItemModal({
         </div>
 
         <DialogFooter className="px-6 py-3 border-t flex-shrink-0">
+          <div className="flex items-center gap-2 flex-1">
+            {canPublishViaHubspot && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPublishDialogOpen(true)}
+                data-testid="button-hubspot-publish"
+                className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950/30"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                Publish via HubSpot
+              </Button>
+            )}
+          </div>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={onSubmit} disabled={saveMutation.isPending} data-testid="button-save-content-item">
             {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -864,6 +886,16 @@ export function ContentItemModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {canPublishViaHubspot && publishDialogOpen && (
+      <HubspotSocialPublishDialog
+        open={publishDialogOpen}
+        onOpenChange={setPublishDialogOpen}
+        item={item!}
+        companyId={companyId}
+      />
+    )}
+    </>
   );
 }
 
