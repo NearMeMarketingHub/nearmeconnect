@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
-import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
+import logoImage from "@assets/near-me-connect-logo.png";
 
 interface UserInfo {
   isAdmin: boolean;
@@ -224,8 +224,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         <Sidebar>
           <div className="p-4 border-b flex-shrink-0">
             <div className="flex items-center gap-2">
-              <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto" />
-              <span className="font-bold tracking-tight">Admin Portal</span>
+              <img src={logoImage} alt="Near Me Connect" className="w-[100px] h-auto dark:brightness-0 dark:invert" />
             </div>
           </div>
 

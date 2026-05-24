@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArrowLeft, CheckCircle } from "lucide-react";
-import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
+import logoImage from "@assets/near-me-connect-logo.png";
 
 export default function ResetPassword() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -60,8 +60,7 @@ export default function ResetPassword() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16 gap-4">
               <div className="flex items-center gap-2">
-                <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto" />
-                <span className="text-lg font-bold tracking-tight">Near Me Connect</span>
+                <img src={logoImage} alt="Near Me Connect" className="w-[100px] h-auto dark:brightness-0 dark:invert" />
               </div>
               <ThemeToggle />
             </div>
@@ -96,8 +95,7 @@ export default function ResetPassword() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 gap-4">
             <div className="flex items-center gap-2">
-              <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto" />
-              <span className="text-lg font-bold tracking-tight">Near Me Connect</span>
+              <img src={logoImage} alt="Near Me Connect" className="w-[100px] h-auto dark:brightness-0 dark:invert" />
             </div>
             <ThemeToggle />
           </div>
