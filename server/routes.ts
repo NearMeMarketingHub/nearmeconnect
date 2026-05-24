@@ -12656,6 +12656,104 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.get("/api/retainer-templates/:id/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const rows = await storage.getRetainerTemplateTaskTemplates(req.params.id as string);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/retainer-templates/:id/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { entries } = req.body;
+      await storage.setRetainerTemplateTaskTemplates(req.params.id as string, entries || []);
+      broadcastInvalidation([`/api/retainer-templates/${req.params.id}/task-templates`]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Task Templates ──────────────────────────────────────────────────────────
+
+  app.get("/api/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { serviceTrackId, isActive } = req.query;
+      const filters: any = {};
+      if (serviceTrackId) filters.serviceTrackId = serviceTrackId as string;
+      if (isActive !== undefined) filters.isActive = isActive === "true";
+      const templates = await storage.getTaskTemplates(filters);
+      res.json(templates);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const t = await storage.getTaskTemplate(req.params.id as string);
+      if (!t) return res.status(404).json({ error: "Not found" });
+      const retainerLinks = await storage.getTaskTemplateRetainerLinks(t.id);
+      res.json({ ...t, retainerLinks });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      if (!req.body.title?.trim()) return res.status(400).json({ error: "Title is required" });
+      const template = await storage.createTaskTemplate(req.body);
+      broadcastInvalidation(["/api/task-templates"]);
+      res.json(template);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const template = await storage.updateTaskTemplate(req.params.id as string, req.body);
+      if (!template) return res.status(404).json({ error: "Not found" });
+      broadcastInvalidation(["/api/task-templates", `/api/task-templates/${template.id}`]);
+      res.json(template);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteTaskTemplate(req.params.id as string);
+      broadcastInvalidation(["/api/task-templates"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/task-templates/seed", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const existing = await storage.getTaskTemplates();
+      if (existing.length > 0) return res.status(400).json({ error: "Task templates already exist. Use individual CRUD to add more." });
+      const tracks = await storage.getServiceTracks();
+      const findTrack = (name: string) => tracks.find(t => t.name.toLowerCase().includes(name.toLowerCase()))?.id ?? null;
+      const seeds = [
+        { title: "Monthly Strategy & Priority Call", description: "Monthly check-in to review priorities, align on goals, and plan the upcoming month.", defaultInstructions: "Prepare agenda with last month's wins, current KPIs, and priorities for next 30 days.", serviceTrackId: findTrack("Account Management"), cadence: "monthly", defaultRoleOwner: "account_manager", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: true, defaultDueOffsetDays: 30, sortOrder: 1 },
+        { title: "Monthly Performance Report", description: "Comprehensive monthly report covering all active service tracks, KPIs, and recommendations.", defaultInstructions: "Include traffic, leads, campaign results, credit usage, and next month recommendations.", serviceTrackId: findTrack("Reporting"), cadence: "monthly", defaultRoleOwner: "strategist", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: true, defaultDueOffsetDays: 5, sortOrder: 2 },
+        { title: "Content Calendar Planning (30–60 days)", description: "Plan and schedule content calendar for the next 30–60 days across all active channels.", defaultInstructions: "Map out content themes, platforms, posting cadence, and assign production tasks.", serviceTrackId: findTrack("Content"), cadence: "monthly", defaultRoleOwner: "content_lead", defaultPriority: "medium", requiresClientApproval: true, createsClientVisibleTask: true, defaultDueOffsetDays: 14, sortOrder: 3 },
+        { title: "GBP Post & Update Review", description: "Review and publish Google Business Profile posts, update business info, and respond to reviews.", defaultInstructions: "Check for unanswered reviews, update hours/photos if needed, publish 4–8 posts for the month.", serviceTrackId: findTrack("Local SEO"), cadence: "monthly", defaultRoleOwner: "strategist", defaultPriority: "medium", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 7, sortOrder: 4 },
+        { title: "Paid Ads Performance Audit", description: "Review ad performance, adjust budgets, refine targeting, and produce a summary report.", defaultInstructions: "Pull spend, CTR, CPA, ROAS. Flag underperforming campaigns and recommend changes.", serviceTrackId: findTrack("Paid Ads"), cadence: "monthly", defaultRoleOwner: "ads_manager", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 10, sortOrder: 5 },
+        { title: "HubSpot Pipeline & Workflow Audit", description: "Audit active HubSpot workflows, deal pipeline health, and contact list hygiene.", defaultInstructions: "Check workflow error rates, stale deals, unsubscribes, and suggest automations.", serviceTrackId: findTrack("HubSpot"), cadence: "monthly", defaultRoleOwner: "hubspot_specialist", defaultPriority: "medium", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 14, sortOrder: 6 },
+      ];
+      const created = [];
+      for (const seed of seeds) {
+        const t = await storage.createTaskTemplate({ ...seed, isActive: true, defaultCreditCost: null, defaultStartOffsetDays: null, deliverableTypeId: null } as any);
+        created.push(t);
+      }
+      broadcastInvalidation(["/api/task-templates"]);
+      res.json(created);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }
 

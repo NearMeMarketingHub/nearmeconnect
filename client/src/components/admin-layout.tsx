@@ -126,6 +126,7 @@ const NAV_GROUPS: NavGroup[] = [
       { title: "Campaign Types",     href: "/admin/campaign-types",     icon: Briefcase },
       { title: "Retainer Templates", href: "/admin/retainer-templates", icon: Package },
       { title: "Service Tracks",     href: "/admin/service-tracks",     icon: Briefcase },
+      { title: "Task Templates",     href: "/admin/task-templates",     icon: Package },
       { title: "Check-ins",          href: "/admin/check-ins",          icon: Shield },
     ],
   },

@@ -1986,6 +1986,54 @@ export const insertRetainerTemplateServiceTrackSchema = createInsertSchema(retai
 export type InsertRetainerTemplateServiceTrack = z.infer<typeof insertRetainerTemplateServiceTrackSchema>;
 export type RetainerTemplateServiceTrack = typeof retainerTemplateServiceTracks.$inferSelect;
 
+// ── Task Templates ────────────────────────────────────────────────────────────
+
+export const taskTemplateRoleOwnerEnum = ["account_manager", "strategist", "content_lead", "designer", "developer", "hubspot_specialist", "ads_manager"] as const;
+export type TaskTemplateRoleOwner = typeof taskTemplateRoleOwnerEnum[number];
+
+export const taskTemplateCadenceEnum = ["once", "weekly", "monthly", "quarterly", "annual", "custom"] as const;
+export type TaskTemplateCadence = typeof taskTemplateCadenceEnum[number];
+
+export const taskTemplates = pgTable("task_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  defaultInstructions: text("default_instructions"),
+  serviceTrackId: varchar("service_track_id"),
+  deliverableTypeId: varchar("deliverable_type_id"),
+  defaultCreditCost: decimal("default_credit_cost", { precision: 10, scale: 2 }),
+  cadence: text("cadence").$type<TaskTemplateCadence>(),
+  defaultDueOffsetDays: integer("default_due_offset_days"),
+  defaultStartOffsetDays: integer("default_start_offset_days"),
+  defaultRoleOwner: text("default_role_owner").$type<TaskTemplateRoleOwner>(),
+  defaultPriority: text("default_priority").$type<TaskPriority>().default("medium"),
+  requiresClientApproval: boolean("requires_client_approval").notNull().default(false),
+  createsClientVisibleTask: boolean("creates_client_visible_task").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertTaskTemplateSchema = createInsertSchema(taskTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTaskTemplate = z.infer<typeof insertTaskTemplateSchema>;
+export type TaskTemplate = typeof taskTemplates.$inferSelect;
+
+export const retainerTemplateTaskTemplates = pgTable("retainer_template_task_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  taskTemplateId: varchar("task_template_id").notNull(),
+  includedByDefault: boolean("included_by_default").notNull().default(true),
+  monthlyQuantity: integer("monthly_quantity"),
+  quarterlyQuantity: integer("quarterly_quantity"),
+  annualQuantity: integer("annual_quantity"),
+  creditOverride: decimal("credit_override", { precision: 10, scale: 2 }),
+});
+
+export const insertRetainerTemplateTaskTemplateSchema = createInsertSchema(retainerTemplateTaskTemplates).omit({ id: true });
+export type InsertRetainerTemplateTaskTemplate = z.infer<typeof insertRetainerTemplateTaskTemplateSchema>;
+export type RetainerTemplateTaskTemplate = typeof retainerTemplateTaskTemplates.$inferSelect;
+
 // ── Integration Health ────────────────────────────────────────────────────────
 export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
 export type IntegrationType = typeof integrationTypeEnum[number];

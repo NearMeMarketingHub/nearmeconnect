@@ -243,6 +243,38 @@ async function migrateCampaignWorkspaceColumns() {
       included_by_default boolean NOT NULL DEFAULT true
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS rtst_unique_idx ON retainer_template_service_tracks (retainer_template_id, service_track_id)`,
+    // Task Templates
+    `CREATE TABLE IF NOT EXISTS task_templates (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      title text NOT NULL,
+      description text,
+      default_instructions text,
+      service_track_id varchar,
+      deliverable_type_id varchar,
+      default_credit_cost decimal(10,2),
+      cadence text,
+      default_due_offset_days integer,
+      default_start_offset_days integer,
+      default_role_owner text,
+      default_priority text NOT NULL DEFAULT 'medium',
+      requires_client_approval boolean NOT NULL DEFAULT false,
+      creates_client_visible_task boolean NOT NULL DEFAULT true,
+      is_active boolean NOT NULL DEFAULT true,
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE TABLE IF NOT EXISTS retainer_template_task_templates (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      retainer_template_id varchar NOT NULL,
+      task_template_id varchar NOT NULL,
+      included_by_default boolean NOT NULL DEFAULT true,
+      monthly_quantity integer,
+      quarterly_quantity integer,
+      annual_quantity integer,
+      credit_override decimal(10,2)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS rttt_unique_idx ON retainer_template_task_templates (retainer_template_id, task_template_id)`,
     // GBP connection tracking columns on client_onboarding (schema has these, DB may not)
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_account_id text",
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_location_id text",

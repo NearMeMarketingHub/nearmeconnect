@@ -229,6 +229,11 @@ import {
   retainerTemplateServiceTracks,
   type RetainerTemplateServiceTrack,
   type InsertRetainerTemplateServiceTrack,
+  taskTemplates,
+  type TaskTemplate,
+  type InsertTaskTemplate,
+  retainerTemplateTaskTemplates,
+  type RetainerTemplateTaskTemplate,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -678,6 +683,16 @@ export interface IStorage {
   createServiceTrack(data: InsertServiceTrack): Promise<ServiceTrack>;
   updateServiceTrack(id: string, data: Partial<ServiceTrack>): Promise<ServiceTrack | undefined>;
   deleteServiceTrack(id: string): Promise<void>;
+
+  // Task Templates
+  getTaskTemplates(filters?: { serviceTrackId?: string; isActive?: boolean }): Promise<TaskTemplate[]>;
+  getTaskTemplate(id: string): Promise<TaskTemplate | undefined>;
+  createTaskTemplate(data: InsertTaskTemplate): Promise<TaskTemplate>;
+  updateTaskTemplate(id: string, data: Partial<TaskTemplate>): Promise<TaskTemplate | undefined>;
+  deleteTaskTemplate(id: string): Promise<void>;
+  getRetainerTemplateTaskTemplates(retainerTemplateId: string): Promise<(RetainerTemplateTaskTemplate & { template: TaskTemplate })[]>;
+  setRetainerTemplateTaskTemplates(retainerTemplateId: string, entries: Omit<RetainerTemplateTaskTemplate, "id" | "retainerTemplateId">[]): Promise<void>;
+  getTaskTemplateRetainerLinks(taskTemplateId: string): Promise<RetainerTemplateTaskTemplate[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3640,6 +3655,64 @@ export class DatabaseStorage implements IStorage {
   async deleteServiceTrack(id: string): Promise<void> {
     await db.delete(retainerTemplateServiceTracks).where(eq(retainerTemplateServiceTracks.serviceTrackId, id));
     await db.delete(serviceTracks).where(eq(serviceTracks.id, id));
+  }
+
+  // ── Task Templates ──────────────────────────────────────────────────────────
+
+  async getTaskTemplates(filters?: { serviceTrackId?: string; isActive?: boolean }): Promise<TaskTemplate[]> {
+    let q = db.select().from(taskTemplates).$dynamic();
+    if (filters?.serviceTrackId !== undefined) {
+      q = q.where(eq(taskTemplates.serviceTrackId, filters.serviceTrackId));
+    }
+    if (filters?.isActive !== undefined) {
+      q = q.where(eq(taskTemplates.isActive, filters.isActive));
+    }
+    return q.orderBy(taskTemplates.sortOrder, taskTemplates.title);
+  }
+
+  async getTaskTemplate(id: string): Promise<TaskTemplate | undefined> {
+    const [row] = await db.select().from(taskTemplates).where(eq(taskTemplates.id, id));
+    return row;
+  }
+
+  async createTaskTemplate(data: InsertTaskTemplate): Promise<TaskTemplate> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(taskTemplates).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateTaskTemplate(id: string, data: Partial<TaskTemplate>): Promise<TaskTemplate | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(taskTemplates).set({ ...(data as any), updatedAt: now }).where(eq(taskTemplates.id, id)).returning();
+    return row;
+  }
+
+  async deleteTaskTemplate(id: string): Promise<void> {
+    await db.delete(retainerTemplateTaskTemplates).where(eq(retainerTemplateTaskTemplates.taskTemplateId, id));
+    await db.delete(taskTemplates).where(eq(taskTemplates.id, id));
+  }
+
+  async getRetainerTemplateTaskTemplates(retainerTemplateId: string): Promise<(RetainerTemplateTaskTemplate & { template: TaskTemplate })[]> {
+    const rows = await db
+      .select({ join: retainerTemplateTaskTemplates, template: taskTemplates })
+      .from(retainerTemplateTaskTemplates)
+      .innerJoin(taskTemplates, eq(retainerTemplateTaskTemplates.taskTemplateId, taskTemplates.id))
+      .where(eq(retainerTemplateTaskTemplates.retainerTemplateId, retainerTemplateId))
+      .orderBy(taskTemplates.sortOrder, taskTemplates.title);
+    return rows.map(r => ({ ...r.join, template: r.template }));
+  }
+
+  async setRetainerTemplateTaskTemplates(retainerTemplateId: string, entries: Omit<RetainerTemplateTaskTemplate, "id" | "retainerTemplateId">[]): Promise<void> {
+    await db.delete(retainerTemplateTaskTemplates).where(eq(retainerTemplateTaskTemplates.retainerTemplateId, retainerTemplateId));
+    if (entries.length > 0) {
+      await db.insert(retainerTemplateTaskTemplates).values(
+        entries.map(e => ({ ...e, retainerTemplateId }))
+      );
+    }
+  }
+
+  async getTaskTemplateRetainerLinks(taskTemplateId: string): Promise<RetainerTemplateTaskTemplate[]> {
+    return db.select().from(retainerTemplateTaskTemplates).where(eq(retainerTemplateTaskTemplates.taskTemplateId, taskTemplateId));
   }
 }
 
