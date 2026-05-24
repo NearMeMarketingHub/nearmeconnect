@@ -205,6 +205,44 @@ async function migrateCampaignWorkspaceColumns() {
     )`,
     `CREATE INDEX IF NOT EXISTS email_logs_company_idx ON email_logs (company_id)`,
     `CREATE INDEX IF NOT EXISTS email_logs_idempotency_idx ON email_logs (idempotency_key) WHERE idempotency_key IS NOT NULL`,
+    // Retainer Templates & Service Tracks
+    `CREATE TABLE IF NOT EXISTS retainer_templates (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      slug text NOT NULL,
+      description text,
+      status text NOT NULL DEFAULT 'draft',
+      suggested_monthly_price decimal(10,2),
+      monthly_credit_allocation real,
+      recommended_client_type text,
+      included_scope_summary text,
+      excluded_scope_summary text,
+      overage_rules text,
+      reporting_cadence text,
+      meeting_cadence text,
+      generation_window_days integer NOT NULL DEFAULT 60,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS retainer_templates_slug_idx ON retainer_templates (slug)`,
+    `CREATE TABLE IF NOT EXISTS service_tracks (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      slug text NOT NULL,
+      description text,
+      status text NOT NULL DEFAULT 'active',
+      sort_order integer NOT NULL DEFAULT 0,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS service_tracks_slug_idx ON service_tracks (slug)`,
+    `CREATE TABLE IF NOT EXISTS retainer_template_service_tracks (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      retainer_template_id varchar NOT NULL,
+      service_track_id varchar NOT NULL,
+      included_by_default boolean NOT NULL DEFAULT true
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS rtst_unique_idx ON retainer_template_service_tracks (retainer_template_id, service_track_id)`,
     // GBP connection tracking columns on client_onboarding (schema has these, DB may not)
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_account_id text",
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_location_id text",

@@ -12544,6 +12544,118 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Service Tracks ──────────────────────────────────────────────────────────
+
+  app.get("/api/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const tracks = await storage.getServiceTracks();
+      res.json(tracks);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { name, slug, description, status, sortOrder } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+      const track = await storage.createServiceTrack({ name: name.trim(), slug: slug?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"), description: description || null, status: status || "active", sortOrder: sortOrder ?? 0 });
+      broadcastInvalidation(["/api/service-tracks"]);
+      res.json(track);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/service-tracks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const track = await storage.updateServiceTrack(req.params.id as string, req.body);
+      if (!track) return res.status(404).json({ error: "Not found" });
+      broadcastInvalidation(["/api/service-tracks"]);
+      res.json(track);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/service-tracks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteServiceTrack(req.params.id as string);
+      broadcastInvalidation(["/api/service-tracks"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Retainer Templates ──────────────────────────────────────────────────────
+
+  app.get("/api/retainer-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const templates = await storage.getRetainerTemplates();
+      res.json(templates);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const template = await storage.getRetainerTemplate(req.params.id as string);
+      if (!template) return res.status(404).json({ error: "Not found" });
+      const tracks = await storage.getRetainerTemplateServiceTracks(template.id);
+      res.json({ ...template, serviceTracks: tracks });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/retainer-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { serviceTracks: trackEntries, ...rest } = req.body;
+      if (!rest.name?.trim()) return res.status(400).json({ error: "Name is required" });
+      if (!rest.slug?.trim()) rest.slug = rest.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const template = await storage.createRetainerTemplate(rest);
+      if (Array.isArray(trackEntries) && trackEntries.length > 0) {
+        await storage.setRetainerTemplateServiceTracks(template.id, trackEntries);
+      }
+      broadcastInvalidation(["/api/retainer-templates"]);
+      res.json(template);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { serviceTracks: trackEntries, ...rest } = req.body;
+      const template = await storage.updateRetainerTemplate(req.params.id as string, rest);
+      if (!template) return res.status(404).json({ error: "Not found" });
+      if (Array.isArray(trackEntries)) {
+        await storage.setRetainerTemplateServiceTracks(template.id, trackEntries);
+      }
+      broadcastInvalidation(["/api/retainer-templates", `/api/retainer-templates/${template.id}`]);
+      res.json(template);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteRetainerTemplate(req.params.id as string);
+      broadcastInvalidation(["/api/retainer-templates"]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/retainer-templates/:id/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { entries } = req.body; // [{ serviceTrackId, includedByDefault }]
+      await storage.setRetainerTemplateServiceTracks(req.params.id as string, entries || []);
+      broadcastInvalidation([`/api/retainer-templates/${req.params.id}`]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }
 

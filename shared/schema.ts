@@ -1932,6 +1932,60 @@ export const insertEmailLogSchema = createInsertSchema(emailLogs).omit({ id: tru
 export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
 export type EmailLog = typeof emailLogs.$inferSelect;
 
+// ── Retainer Templates & Service Tracks ──────────────────────────────────────
+
+export const retainerTemplateStatusEnum = ["active", "inactive", "draft"] as const;
+export type RetainerTemplateStatus = typeof retainerTemplateStatusEnum[number];
+
+export const retainerTemplates = pgTable("retainer_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  status: text("status").$type<RetainerTemplateStatus>().notNull().default("draft"),
+  suggestedMonthlyPrice: decimal("suggested_monthly_price", { precision: 10, scale: 2 }),
+  monthlyCreditAllocation: real("monthly_credit_allocation"),
+  recommendedClientType: text("recommended_client_type"),
+  includedScopeSummary: text("included_scope_summary"),
+  excludedScopeSummary: text("excluded_scope_summary"),
+  overageRules: text("overage_rules"),
+  reportingCadence: text("reporting_cadence"),
+  meetingCadence: text("meeting_cadence"),
+  generationWindowDays: integer("generation_window_days").notNull().default(60),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertRetainerTemplateSchema = createInsertSchema(retainerTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRetainerTemplate = z.infer<typeof insertRetainerTemplateSchema>;
+export type RetainerTemplate = typeof retainerTemplates.$inferSelect;
+
+export const serviceTracks = pgTable("service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("active"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertServiceTrackSchema = createInsertSchema(serviceTracks).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertServiceTrack = z.infer<typeof insertServiceTrackSchema>;
+export type ServiceTrack = typeof serviceTracks.$inferSelect;
+
+export const retainerTemplateServiceTracks = pgTable("retainer_template_service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  serviceTrackId: varchar("service_track_id").notNull(),
+  includedByDefault: boolean("included_by_default").notNull().default(true),
+});
+
+export const insertRetainerTemplateServiceTrackSchema = createInsertSchema(retainerTemplateServiceTracks).omit({ id: true });
+export type InsertRetainerTemplateServiceTrack = z.infer<typeof insertRetainerTemplateServiceTrackSchema>;
+export type RetainerTemplateServiceTrack = typeof retainerTemplateServiceTracks.$inferSelect;
+
 // ── Integration Health ────────────────────────────────────────────────────────
 export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
 export type IntegrationType = typeof integrationTypeEnum[number];

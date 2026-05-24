@@ -220,6 +220,15 @@ import {
   emailLogs,
   type EmailLog,
   type InsertEmailLog,
+  retainerTemplates,
+  type RetainerTemplate,
+  type InsertRetainerTemplate,
+  serviceTracks,
+  type ServiceTrack,
+  type InsertServiceTrack,
+  retainerTemplateServiceTracks,
+  type RetainerTemplateServiceTrack,
+  type InsertRetainerTemplateServiceTrack,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -653,6 +662,22 @@ export interface IStorage {
   createEmailLog(data: InsertEmailLog): Promise<EmailLog>;
   updateEmailLog(id: string, data: Partial<EmailLog>): Promise<EmailLog | undefined>;
   deleteEmailLog(id: string): Promise<void>;
+
+  // Retainer Templates
+  getRetainerTemplates(): Promise<RetainerTemplate[]>;
+  getRetainerTemplate(id: string): Promise<RetainerTemplate | undefined>;
+  createRetainerTemplate(data: InsertRetainerTemplate): Promise<RetainerTemplate>;
+  updateRetainerTemplate(id: string, data: Partial<RetainerTemplate>): Promise<RetainerTemplate | undefined>;
+  deleteRetainerTemplate(id: string): Promise<void>;
+  getRetainerTemplateServiceTracks(templateId: string): Promise<(RetainerTemplateServiceTrack & { track: ServiceTrack })[]>;
+  setRetainerTemplateServiceTracks(templateId: string, entries: { serviceTrackId: string; includedByDefault: boolean }[]): Promise<void>;
+
+  // Service Tracks
+  getServiceTracks(): Promise<ServiceTrack[]>;
+  getServiceTrack(id: string): Promise<ServiceTrack | undefined>;
+  createServiceTrack(data: InsertServiceTrack): Promise<ServiceTrack>;
+  updateServiceTrack(id: string, data: Partial<ServiceTrack>): Promise<ServiceTrack | undefined>;
+  deleteServiceTrack(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3539,6 +3564,82 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEmailLog(id: string): Promise<void> {
     await db.delete(emailLogs).where(eq(emailLogs.id, id));
+  }
+
+  // ── Retainer Templates ──────────────────────────────────────────────────────
+
+  async getRetainerTemplates(): Promise<RetainerTemplate[]> {
+    return db.select().from(retainerTemplates).orderBy(retainerTemplates.name);
+  }
+
+  async getRetainerTemplate(id: string): Promise<RetainerTemplate | undefined> {
+    const [row] = await db.select().from(retainerTemplates).where(eq(retainerTemplates.id, id));
+    return row;
+  }
+
+  async createRetainerTemplate(data: InsertRetainerTemplate): Promise<RetainerTemplate> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(retainerTemplates).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateRetainerTemplate(id: string, data: Partial<RetainerTemplate>): Promise<RetainerTemplate | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(retainerTemplates).set({ ...(data as any), updatedAt: now }).where(eq(retainerTemplates.id, id)).returning();
+    return row;
+  }
+
+  async deleteRetainerTemplate(id: string): Promise<void> {
+    await db.delete(retainerTemplateServiceTracks).where(eq(retainerTemplateServiceTracks.retainerTemplateId, id));
+    await db.delete(retainerTemplates).where(eq(retainerTemplates.id, id));
+  }
+
+  async getRetainerTemplateServiceTracks(templateId: string): Promise<(RetainerTemplateServiceTrack & { track: ServiceTrack })[]> {
+    const rows = await db
+      .select({ join: retainerTemplateServiceTracks, track: serviceTracks })
+      .from(retainerTemplateServiceTracks)
+      .innerJoin(serviceTracks, eq(retainerTemplateServiceTracks.serviceTrackId, serviceTracks.id))
+      .where(eq(retainerTemplateServiceTracks.retainerTemplateId, templateId))
+      .orderBy(serviceTracks.sortOrder, serviceTracks.name);
+    return rows.map(r => ({ ...r.join, track: r.track }));
+  }
+
+  async setRetainerTemplateServiceTracks(templateId: string, entries: { serviceTrackId: string; includedByDefault: boolean }[]): Promise<void> {
+    await db.delete(retainerTemplateServiceTracks).where(eq(retainerTemplateServiceTracks.retainerTemplateId, templateId));
+    if (entries.length > 0) {
+      const now = new Date().toISOString();
+      await db.insert(retainerTemplateServiceTracks).values(
+        entries.map(e => ({ retainerTemplateId: templateId, serviceTrackId: e.serviceTrackId, includedByDefault: e.includedByDefault }))
+      );
+    }
+  }
+
+  // ── Service Tracks ──────────────────────────────────────────────────────────
+
+  async getServiceTracks(): Promise<ServiceTrack[]> {
+    return db.select().from(serviceTracks).orderBy(serviceTracks.sortOrder, serviceTracks.name);
+  }
+
+  async getServiceTrack(id: string): Promise<ServiceTrack | undefined> {
+    const [row] = await db.select().from(serviceTracks).where(eq(serviceTracks.id, id));
+    return row;
+  }
+
+  async createServiceTrack(data: InsertServiceTrack): Promise<ServiceTrack> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(serviceTracks).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateServiceTrack(id: string, data: Partial<ServiceTrack>): Promise<ServiceTrack | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(serviceTracks).set({ ...(data as any), updatedAt: now }).where(eq(serviceTracks.id, id)).returning();
+    return row;
+  }
+
+  async deleteServiceTrack(id: string): Promise<void> {
+    await db.delete(retainerTemplateServiceTracks).where(eq(retainerTemplateServiceTracks.serviceTrackId, id));
+    await db.delete(serviceTracks).where(eq(serviceTracks.id, id));
   }
 }
 
