@@ -1876,3 +1876,31 @@ export const seoDirectories = pgTable("seo_directories", {
 export const insertSeoDirectorySchema = createInsertSchema(seoDirectories).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertSeoDirectory = z.infer<typeof insertSeoDirectorySchema>;
 export type SeoDirectory = typeof seoDirectories.$inferSelect;
+
+// ── Integration Health ────────────────────────────────────────────────────────
+export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
+export type IntegrationType = typeof integrationTypeEnum[number];
+
+export const integrationStatusEnum = ["not_configured", "needs_credentials", "connected", "warning", "error", "disabled"] as const;
+export type IntegrationStatusValue = typeof integrationStatusEnum[number];
+
+export const integrationStatuses = pgTable("integration_statuses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  integrationType: text("integration_type").$type<IntegrationType>().notNull(),
+  status: text("status").$type<IntegrationStatusValue>().notNull().default("not_configured"),
+  externalAccountId: text("external_account_id"),
+  externalObjectId: text("external_object_id"),
+  lastSyncTime: text("last_sync_time"),
+  lastError: text("last_error"),
+  setupChecklistStatus: text("setup_checklist_status"),
+  notes: text("notes"),
+  updatedBy: varchar("updated_by").notNull(),
+  updatedByName: text("updated_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertIntegrationStatusSchema = createInsertSchema(integrationStatuses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
+export type IntegrationStatus = typeof integrationStatuses.$inferSelect;

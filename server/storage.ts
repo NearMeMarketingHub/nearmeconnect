@@ -214,6 +214,9 @@ import {
   seoDirectories,
   type SeoDirectory,
   type InsertSeoDirectory,
+  integrationStatuses,
+  type IntegrationStatus,
+  type InsertIntegrationStatus,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -443,6 +446,14 @@ export interface IStorage {
   createHillChart(data: InsertHillChart): Promise<HillChart>;
   updateHillChart(id: string, data: Partial<InsertHillChart>): Promise<HillChart | undefined>;
   deleteHillChart(id: string): Promise<void>;
+
+  // Integration Health
+  getIntegrationStatuses(companyId: string): Promise<IntegrationStatus[]>;
+  getAllIntegrationStatuses(): Promise<IntegrationStatus[]>;
+  getIntegrationStatus(id: string): Promise<IntegrationStatus | undefined>;
+  upsertIntegrationStatus(companyId: string, integrationType: string, data: Partial<InsertIntegrationStatus> & { updatedBy: string }): Promise<IntegrationStatus>;
+  updateIntegrationStatus(id: string, data: Partial<IntegrationStatus>): Promise<IntegrationStatus | undefined>;
+  deleteIntegrationStatus(id: string): Promise<void>;
 
   // Sandbox methods
   createCompanyWithId(id: string, company: InsertCompany): Promise<Company>;
@@ -3408,6 +3419,48 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSeoDirectory(id: string): Promise<void> {
     await db.delete(seoDirectories).where(eq(seoDirectories.id, id));
+  }
+
+  // ── Integration Health ──────────────────────────────────────────────────────
+  async getIntegrationStatuses(companyId: string): Promise<IntegrationStatus[]> {
+    return db.select().from(integrationStatuses).where(eq(integrationStatuses.companyId, companyId)).orderBy(integrationStatuses.integrationType);
+  }
+
+  async getAllIntegrationStatuses(): Promise<IntegrationStatus[]> {
+    return db.select().from(integrationStatuses).orderBy(integrationStatuses.companyId, integrationStatuses.integrationType);
+  }
+
+  async getIntegrationStatus(id: string): Promise<IntegrationStatus | undefined> {
+    const [row] = await db.select().from(integrationStatuses).where(eq(integrationStatuses.id, id));
+    return row;
+  }
+
+  async upsertIntegrationStatus(companyId: string, integrationType: string, data: Partial<InsertIntegrationStatus> & { updatedBy: string }): Promise<IntegrationStatus> {
+    const now = new Date().toISOString();
+    const existing = await db.select().from(integrationStatuses)
+      .where(and(eq(integrationStatuses.companyId, companyId), eq(integrationStatuses.integrationType, integrationType as any)));
+    if (existing.length > 0) {
+      const { companyId: _c, integrationType: _t, createdAt: _ca, ...updateData } = data as any;
+      const [row] = await db.update(integrationStatuses)
+        .set({ ...updateData, updatedAt: now } as any)
+        .where(and(eq(integrationStatuses.companyId, companyId), eq(integrationStatuses.integrationType, integrationType as any)))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(integrationStatuses)
+      .values({ ...data, companyId, integrationType: integrationType as any, createdAt: now, updatedAt: now } as any)
+      .returning();
+    return row;
+  }
+
+  async updateIntegrationStatus(id: string, data: Partial<IntegrationStatus>): Promise<IntegrationStatus | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(integrationStatuses).set({ ...data, updatedAt: now }).where(eq(integrationStatuses.id, id)).returning();
+    return row;
+  }
+
+  async deleteIntegrationStatus(id: string): Promise<void> {
+    await db.delete(integrationStatuses).where(eq(integrationStatuses.id, id));
   }
 
   async createClientResource(data: InsertClientResource): Promise<ClientResource> {

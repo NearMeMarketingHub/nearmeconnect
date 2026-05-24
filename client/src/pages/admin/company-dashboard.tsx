@@ -115,6 +115,7 @@ import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
 import { NotepadPanel } from "@/components/notepad-panel";
 import { MessageBoardPanel } from "@/components/message-board-panel";
 import { SeoPanel } from "@/components/seo-panel";
+import { IntegrationHealthPanel } from "@/components/integration-health-panel";
 import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -437,6 +438,7 @@ export default function CompanyDashboard() {
       { key: "credit-history", label: "Credit History" },
       { key: "reporting",      label: "Reporting" },
       { key: "details",        label: "Details" },
+      { key: "integrations",   label: "Integrations" },
     ], defaultSub: "users" },
   ];
   const TAB_TO_CATEGORY: Record<string, string> = {
@@ -445,7 +447,7 @@ export default function CompanyDashboard() {
     marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
-    users: "admin", "credit-history": "admin", reporting: "admin",
+    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin",
   };
 
   // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
@@ -4877,6 +4879,12 @@ export default function CompanyDashboard() {
 
           <TabsContent value="reporting" className="space-y-6">
             <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-4">
+            {companyId && (
+              <IntegrationHealthPanel companyId={companyId} isAdmin={true} />
+            )}
           </TabsContent>
 
           <TabsContent value="hubspot" className="space-y-6">

@@ -12237,6 +12237,67 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Integration Health ───────────────────────────────────────────────────────
+
+  // GET all statuses for a company
+  app.get("/api/companies/:id/integrations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.id as string;
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) {
+        const membership = await storage.getCompanyMembership(companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ error: "Access denied" });
+      }
+      const statuses = await storage.getIntegrationStatuses(companyId);
+      res.json(statuses);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PUT upsert a single integration status for a company (admin only)
+  app.put("/api/companies/:id/integrations/:type", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.id as string;
+      const intType = req.params.type as string;
+      const validTypes = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"];
+      if (!validTypes.includes(intType)) return res.status(400).json({ error: "Invalid integration type" });
+      const { status, externalAccountId, externalObjectId, lastSyncTime, lastError, setupChecklistStatus, notes } = req.body;
+      const record = await storage.upsertIntegrationStatus(companyId, intType, {
+        status, externalAccountId, externalObjectId, lastSyncTime, lastError, setupChecklistStatus, notes,
+        updatedBy: req.user!.id,
+        updatedByName: [req.user!.firstName, req.user!.lastName].filter(Boolean).join(" ") || (req.user!.email as string),
+      });
+      res.json(record);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // DELETE a single integration status (admin only)
+  app.delete("/api/companies/:companyId/integrations/:integrationId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteIntegrationStatus(req.params.integrationId as string);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // GET all integration statuses across all companies — for global dashboard
+  app.get("/api/admin/integrations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+      const [companies, statuses] = await Promise.all([
+        storage.getAllCompanies(),
+        storage.getAllIntegrationStatuses(),
+      ]);
+      res.json({
+        companies: companies.map(c => ({ id: c.id, name: c.name })),
+        statuses,
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // ─── SEO / Directory Tracking ────────────────────────────────────────────────
 
   // Global admin view (all companies)

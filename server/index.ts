@@ -165,6 +165,23 @@ async function migrateCampaignWorkspaceColumns() {
       created_at text NOT NULL,
       updated_at text
     )`,
+    `CREATE TABLE IF NOT EXISTS integration_statuses (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      integration_type text NOT NULL,
+      status text NOT NULL DEFAULT 'not_configured',
+      external_account_id text,
+      external_object_id text,
+      last_sync_time text,
+      last_error text,
+      setup_checklist_status text,
+      notes text,
+      updated_by varchar NOT NULL,
+      updated_by_name text,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS integration_statuses_company_type_idx ON integration_statuses (company_id, integration_type)`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);
