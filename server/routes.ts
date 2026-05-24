@@ -949,11 +949,11 @@ export async function registerRoutes(
             return res.status(403).json({ error: "Agency-managed tasks can only be updated by agency admins. Use approve/request changes for review tasks." });
           }
           const isPendingTask = existingTask.approvalStatus === "pending_internal_approval" || existingTask.approvalStatus === "pending_approval";
-          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost"] : ["status"];
+          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost", "categoryId"] : ["status", "categoryId"];
           const bodyKeys = Object.keys(req.body);
           const hasDisallowedFields = bodyKeys.some(k => !allowedFields.includes(k));
           if (hasDisallowedFields) {
-            return res.status(403).json({ error: isPendingTask ? "Company admins can only change status and deliverable type on pending tasks" : "Company admins can only change task status" });
+            return res.status(403).json({ error: isPendingTask ? "Company admins can only change status, deliverable type, and category on pending tasks" : "Company admins can only change task status and category" });
           }
         } else if (existingTask.taskOwnership === "client") {
           const allowedClientStatusChanges = ["pending", "in_progress", "review", "completed"];
@@ -4356,6 +4356,29 @@ export async function registerRoutes(
     }
   });
 
+  // Stream a media file that lives in Object Storage (used as SharePoint fallback)
+  app.get("/api/companies/:companyId/media-uploads/file", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      const companyId = (req.params.companyId as string);
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const objPath = String(req.query.path || "");
+      if (!objPath) return res.status(400).json({ error: "Missing path" });
+      const { downloadBuffer } = await import("./object-storage-helpers");
+      const { buffer, contentType } = await downloadBuffer(objPath);
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("[media-uploads/file] download error:", err);
+      res.status(404).json({ error: err.message || "File not found" });
+    }
+  });
+
   app.post("/api/companies/:id/media-uploads", isAuthenticated, upload.single('file'), async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -4390,8 +4413,28 @@ export async function registerRoutes(
         company.clientType as "marketing" | "government" || "marketing"
       );
 
+      let storedPath = result.path || '';
+      let storedUrl: string | undefined = result.webUrl;
+      let storageBackend: 'sharepoint' | 'object_storage' = 'sharepoint';
+
+      // Fallback to Object Storage if SharePoint fails (e.g. expired token, permissions, network)
       if (!result.success) {
-        return res.status(500).json({ error: result.error || "Failed to upload to SharePoint" });
+        console.warn('[media-upload] SharePoint failed, falling back to Object Storage:', result.error);
+        try {
+          const { uploadBuffer } = await import("./object-storage-helpers");
+          const safeCompany = company.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const relPath = `media/${safeCompany}/${Date.now()}-${safeName}`;
+          const fullPath = await uploadBuffer(relPath, req.file.buffer, req.file.mimetype);
+          storedPath = fullPath;
+          storedUrl = `/api/companies/${companyId}/media-uploads/file?path=${encodeURIComponent(fullPath)}`;
+          storageBackend = 'object_storage';
+        } catch (osErr: any) {
+          console.error('[media-upload] Object Storage fallback also failed:', osErr);
+          return res.status(500).json({
+            error: `Upload failed. SharePoint: ${result.error || 'unknown error'}. Object Storage fallback: ${osErr?.message || 'unknown error'}`,
+          });
+        }
       }
 
       const mediaUpload = await storage.createMediaUpload({
@@ -4400,12 +4443,12 @@ export async function registerRoutes(
         fileName: req.file.originalname,
         fileType: req.file.mimetype,
         fileSize: req.file.size,
-        sharepointPath: result.path || '',
-        sharepointUrl: result.webUrl,
+        sharepointPath: storedPath,
+        sharepointUrl: storedUrl,
         status: 'uploaded',
       });
 
-      res.status(201).json(mediaUpload);
+      res.status(201).json({ ...mediaUpload, storageBackend });
     } catch (error: any) {
       console.error('Media upload error:', error);
       res.status(500).json({ error: error.message || "Failed to upload file" });

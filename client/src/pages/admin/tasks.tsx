@@ -36,6 +36,8 @@ import {
 const QUICK_FILTER_LABELS: Record<string, string> = {
   overdue:         "Overdue Tasks",
   due_today:       "Due Today",
+  due_this_week:   "Due This Week",
+  stale:           "Stale Tasks (7d+)",
   awaiting_client: "Awaiting Client",
   pending_approval:"Pending Approval",
   no_category:     "No Category",
@@ -246,6 +248,19 @@ export default function AdminTasks() {
           const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
           return d.getTime() === today.getTime();
         }
+        if (activeQuickFilter === "due_this_week") {
+          // Include all incomplete tasks with a due date so we can bucket them
+          // (this week / prior week / this month / last month / older)
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          return true;
+        }
+        if (activeQuickFilter === "stale") {
+          if (["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const lastIso = (t as any).updatedAt || (t as any).createdAt;
+          if (!lastIso) return false;
+          const ageDays = (Date.now() - new Date(lastIso).getTime()) / 86400000;
+          return ageDays >= 7;
+        }
         if (activeQuickFilter === "awaiting_client") return t.status === "review";
         if (activeQuickFilter === "pending_approval") return t.approvalStatus === "pending_approval" || t.status === "approved";
         if (activeQuickFilter === "no_category") return !(t as any).categoryId && !["completed", "rejected", "cancelled"].includes(t.status);
@@ -313,6 +328,38 @@ export default function AdminTasks() {
   // Reset page when filters change
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
   const paginatedTasks = filteredTasks.slice((currentPage - 1) * TASKS_PER_PAGE, currentPage * TASKS_PER_PAGE);
+
+  // Week/month buckets — used when activeQuickFilter === "due_this_week"
+  const weekBuckets = useMemo(() => {
+    if (activeQuickFilter !== "due_this_week") return null;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const dayOfWeek = now.getDay(); // 0=Sun..6=Sat
+    const daysFromMonday = (dayOfWeek + 6) % 7;
+    const startOfThisWeek = new Date(now); startOfThisWeek.setDate(now.getDate() - daysFromMonday);
+    const startOfNextWeek = new Date(startOfThisWeek); startOfNextWeek.setDate(startOfThisWeek.getDate() + 7);
+    const startOfLastWeek = new Date(startOfThisWeek); startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const buckets: Array<{ id: string; label: string; tasks: Task[] }> = [
+      { id: "this_week",    label: "This Week",     tasks: [] },
+      { id: "prior_week",   label: "Prior Week",    tasks: [] },
+      { id: "this_month",   label: "Earlier This Month", tasks: [] },
+      { id: "last_month",   label: "Last Month",    tasks: [] },
+      { id: "older",        label: "Older",         tasks: [] },
+    ];
+
+    for (const t of filteredTasks) {
+      if (!t.dueDate) continue;
+      const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+      if (d >= startOfThisWeek && d < startOfNextWeek) buckets[0].tasks.push(t);
+      else if (d >= startOfLastWeek && d < startOfThisWeek) buckets[1].tasks.push(t);
+      else if (d >= startOfThisMonth && d < startOfLastWeek) buckets[2].tasks.push(t);
+      else if (d >= startOfLastMonth && d < startOfThisMonth) buckets[3].tasks.push(t);
+      else buckets[4].tasks.push(t);
+    }
+    return buckets.filter(b => b.tasks.length > 0);
+  }, [filteredTasks, activeQuickFilter]);
 
   const reviewableOnPage = useMemo(() => {
     return paginatedTasks.filter(t => t.status === "review" || t.approvalStatus === "pending_approval");
@@ -486,6 +533,130 @@ export default function AdminTasks() {
   }, [allTasks, selectedCompany, assignmentFilter, user, taskMonthDate]);
 
   const isLoading = companiesLoading || tasksLoading;
+
+  const renderTaskRow = (task: Task) => {
+    const isReviewable = task.status === "review" || task.approvalStatus === "pending_approval";
+    return (
+      <div
+        key={task.id}
+        className="flex items-center justify-between p-4 rounded-lg border hover-elevate cursor-pointer"
+        onClick={() => setSelectedTask(task)}
+        data-testid={`task-row-${task.id}`}
+      >
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          {isReviewable ? (
+            <Checkbox
+              checked={selectedTaskIds.has(task.id)}
+              onCheckedChange={() => toggleTaskSelection(task.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 flex-shrink-0"
+              data-testid={`checkbox-task-${task.id}`}
+            />
+          ) : (
+            <button
+              className="mt-0.5 flex-shrink-0 hover:scale-110 transition-transform"
+              data-testid={`button-complete-task-${task.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                const newStatus = task.status === "completed" ? "pending" : "completed";
+                updateTaskMutation.mutate({ taskId: task.id, updates: { status: newStatus } });
+              }}
+              title={task.status === "completed" ? "Mark as pending" : "Mark as completed"}
+            >
+              {getStatusIcon(task.status, task.approvalStatus)}
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium truncate">{task.title}</p>
+              {task.isRecurring && (
+                <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+              )}
+              {task.deliverableType && (
+                <Badge variant="outline" className="text-xs capitalize">
+                  {task.deliverableType.replace(/_/g, " ")}
+                </Badge>
+              )}
+              {(() => {
+                if (task.parentTaskId) return null;
+                const subs = allTasks?.filter(t => t.parentTaskId === task.id) ?? [];
+                if (subs.length === 0) return null;
+                const done = subs.filter(s => s.status === "completed").length;
+                return (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-muted-foreground" data-testid={`badge-subtasks-${task.id}`}>
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h4" /></svg>
+                    {done}/{subs.length}
+                  </Badge>
+                );
+              })()}
+            </div>
+            {task.description && (
+              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+            )}
+            <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
+              <Link
+                href={`/admin/companies/${task.companyId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="font-bold text-foreground dark:text-white hover:text-primary hover:underline"
+              >
+                {getCompanyName(task.companyId)}
+              </Link>
+              <span className="text-muted-foreground">•</span>
+              <span className={getDueDateColor(task.dueDate, task.status)}>
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {formatDueDate(task.dueDate, task.status)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <TaskAssigneeAvatars taskId={task.id} />
+          <Badge variant={getPriorityBadgeVariant(task.priority)}>
+            {task.priority}
+          </Badge>
+          <Badge variant={getStatusBadgeVariant(task.status)}>
+            {task.status.replace("_", " ")}
+          </Badge>
+          {task.categoryId && (() => {
+            const cat = (allCategories || []).find((c: any) => c.id === task.categoryId);
+            if (!cat) return null;
+            return (
+              <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
+                {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                {cat.name}
+              </Badge>
+            );
+          })()}
+          {task.campaignRequestId && getCampaignName(task.campaignRequestId) && (
+            <Badge
+              variant="outline"
+              className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                const campaign = getCampaignForTask(task.campaignRequestId);
+                if (campaign) setSelectedCampaign(campaign);
+              }}
+              data-testid={`badge-campaign-${task.id}`}
+            >
+              <Target className="w-3 h-3 mr-1" />
+              {getCampaignName(task.campaignRequestId)}
+            </Badge>
+          )}
+          {task.taskOwnership === "client" && (
+            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 text-xs">
+              Client
+            </Badge>
+          )}
+          {task.creditCost && parseFloat(task.creditCost.toString()) > 0 && (
+            <Badge variant="outline" className="font-mono">
+              {task.creditCost} cr
+            </Badge>
+          )}
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <AdminLayout>
@@ -785,7 +956,23 @@ export default function AdminTasks() {
               </div>
             ) : filteredTasks.length > 0 ? (
               <div className="space-y-2">
-                {reviewableOnPage.length > 0 && (
+                {weekBuckets && weekBuckets.length > 0 ? (
+                  weekBuckets.map(bucket => (
+                    <div key={bucket.id} className="space-y-2" data-testid={`bucket-${bucket.id}`}>
+                      <div className="flex items-center gap-2 pt-3 pb-1.5 sticky top-0 bg-card z-10">
+                        <h3 className="text-sm font-semibold text-foreground">{bucket.label}</h3>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
+                          {bucket.tasks.length}
+                        </Badge>
+                        {bucket.id === "prior_week" || bucket.id === "this_month" || bucket.id === "last_month" || bucket.id === "older" ? (
+                          <span className="text-xs text-destructive/80 ml-1">overdue</span>
+                        ) : null}
+                      </div>
+                      {bucket.tasks.map(task => renderTaskRow(task))}
+                    </div>
+                  ))
+                ) : null}
+                {!weekBuckets && reviewableOnPage.length > 0 && (
                   <div className="flex items-center gap-3 px-4 py-2 border-b">
                     <Checkbox
                       checked={allPageReviewableSelected}
@@ -798,130 +985,8 @@ export default function AdminTasks() {
                     </span>
                   </div>
                 )}
-                {paginatedTasks.map((task) => {
-                  const isReviewable = task.status === "review" || task.approvalStatus === "pending_approval";
-                  return (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between p-4 rounded-lg border hover-elevate cursor-pointer"
-                    onClick={() => setSelectedTask(task)}
-                    data-testid={`task-row-${task.id}`}
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      {isReviewable ? (
-                        <Checkbox
-                          checked={selectedTaskIds.has(task.id)}
-                          onCheckedChange={() => toggleTaskSelection(task.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-1 flex-shrink-0"
-                          data-testid={`checkbox-task-${task.id}`}
-                        />
-                      ) : (
-                      <button
-                        className="mt-0.5 flex-shrink-0 hover:scale-110 transition-transform"
-                        data-testid={`button-complete-task-${task.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const newStatus = task.status === "completed" ? "pending" : "completed";
-                          updateTaskMutation.mutate({ taskId: task.id, updates: { status: newStatus } });
-                        }}
-                        title={task.status === "completed" ? "Mark as pending" : "Mark as completed"}
-                      >
-                        {getStatusIcon(task.status, task.approvalStatus)}
-                      </button>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium truncate">{task.title}</p>
-                          {task.isRecurring && (
-                            <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                          )}
-                          {task.deliverableType && (
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {task.deliverableType.replace(/_/g, " ")}
-                            </Badge>
-                          )}
-                          {(() => {
-                            if (task.parentTaskId) return null;
-                            const subs = allTasks?.filter(t => t.parentTaskId === task.id) ?? [];
-                            if (subs.length === 0) return null;
-                            const done = subs.filter(s => s.status === "completed").length;
-                            return (
-                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-muted-foreground" data-testid={`badge-subtasks-${task.id}`}>
-                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h4" /></svg>
-                                {done}/{subs.length}
-                              </Badge>
-                            );
-                          })()}
-                        </div>
-                        {task.description && (
-                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
-                        )}
-                        <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
-                          <Link 
-                            href={`/admin/companies/${task.companyId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="font-bold text-foreground dark:text-white hover:text-primary hover:underline"
-                          >
-                            {getCompanyName(task.companyId)}
-                          </Link>
-                          <span className="text-muted-foreground">•</span>
-                          <span className={getDueDateColor(task.dueDate, task.status)}>
-                            <Calendar className="w-3 h-3 inline mr-1" />
-                            {formatDueDate(task.dueDate, task.status)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <TaskAssigneeAvatars taskId={task.id} />
-                      <Badge variant={getPriorityBadgeVariant(task.priority)}>
-                        {task.priority}
-                      </Badge>
-                      <Badge variant={getStatusBadgeVariant(task.status)}>
-                        {task.status.replace("_", " ")}
-                      </Badge>
-                      {task.categoryId && (() => {
-                        const cat = (allCategories || []).find((c: any) => c.id === task.categoryId);
-                        if (!cat) return null;
-                        return (
-                          <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
-                            {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
-                            {cat.name}
-                          </Badge>
-                        );
-                      })()}
-                      {task.campaignRequestId && getCampaignName(task.campaignRequestId) && (
-                        <Badge
-                          variant="outline"
-                          className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const campaign = getCampaignForTask(task.campaignRequestId);
-                            if (campaign) setSelectedCampaign(campaign);
-                          }}
-                          data-testid={`badge-campaign-${task.id}`}
-                        >
-                          <Target className="w-3 h-3 mr-1" />
-                          {getCampaignName(task.campaignRequestId)}
-                        </Badge>
-                      )}
-                      {task.taskOwnership === "client" && (
-                        <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 text-xs">
-                          Client
-                        </Badge>
-                      )}
-                      {task.creditCost && parseFloat(task.creditCost.toString()) > 0 && (
-                        <Badge variant="outline" className="font-mono">
-                          {task.creditCost} cr
-                        </Badge>
-                      )}
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                  </div>
-                  );
-                })}
-                {totalPages > 1 && (
+                {!weekBuckets && paginatedTasks.map((task) => renderTaskRow(task))}
+                {!weekBuckets && totalPages > 1 && (
                   <div className="flex items-center justify-between pt-4 border-t">
                     <p className="text-sm text-muted-foreground">
                       Showing {(currentPage - 1) * TASKS_PER_PAGE + 1}-{Math.min(currentPage * TASKS_PER_PAGE, filteredTasks.length)} of {filteredTasks.length} tasks
