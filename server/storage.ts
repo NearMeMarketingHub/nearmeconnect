@@ -239,6 +239,12 @@ import {
   type InsertClientRetainerAssignment,
   clientRetainerServiceTracks,
   type ClientRetainerServiceTrack,
+  retainerGeneratedTasks,
+  type RetainerGeneratedTask,
+  type InsertRetainerGeneratedTask,
+  creditReservations,
+  type CreditReservation,
+  type InsertCreditReservation,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -704,6 +710,16 @@ export interface IStorage {
   updateClientRetainerAssignment(id: string, data: Partial<ClientRetainerAssignment>): Promise<ClientRetainerAssignment | undefined>;
   getClientRetainerServiceTracks(assignmentId: string): Promise<(ClientRetainerServiceTrack & { track: ServiceTrack })[]>;
   setClientRetainerServiceTracks(assignmentId: string, tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[]): Promise<void>;
+  // Retainer Generated Task History
+  createRetainerGeneratedTask(data: InsertRetainerGeneratedTask): Promise<RetainerGeneratedTask>;
+  getRetainerGeneratedTaskByDedup(companyId: string, taskTemplateId: string, periodStart: string): Promise<RetainerGeneratedTask | undefined>;
+  getRetainerGeneratedTasksByPeriod(companyId: string, periodStart: string, periodEnd: string): Promise<RetainerGeneratedTask[]>;
+  // Credit Reservations
+  createCreditReservation(data: InsertCreditReservation): Promise<CreditReservation>;
+  getCreditReservationByTaskId(generatedTaskId: string): Promise<CreditReservation | undefined>;
+  getCreditReservationsByCompany(companyId: string, status?: string): Promise<CreditReservation[]>;
+  updateCreditReservation(id: string, data: Partial<CreditReservation>): Promise<CreditReservation | undefined>;
+  getCreditProjection(companyId: string): Promise<{ monthlyAllowance: number; usedCredits: number; reservedCredits: number; remainingCredits: number; hasOverage: boolean }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3764,6 +3780,87 @@ export class DatabaseStorage implements IStorage {
         notes: t.notes ?? null,
       })));
     }
+  }
+
+  // ── Retainer Generated Task History ─────────────────────────────────────────
+
+  async createRetainerGeneratedTask(data: InsertRetainerGeneratedTask): Promise<RetainerGeneratedTask> {
+    const [row] = await db.insert(retainerGeneratedTasks).values({
+      ...(data as any),
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async getRetainerGeneratedTaskByDedup(companyId: string, taskTemplateId: string, periodStart: string): Promise<RetainerGeneratedTask | undefined> {
+    const [row] = await db.select().from(retainerGeneratedTasks).where(
+      and(
+        eq(retainerGeneratedTasks.companyId, companyId),
+        eq(retainerGeneratedTasks.taskTemplateId, taskTemplateId),
+        eq(retainerGeneratedTasks.periodStart, periodStart),
+      )
+    );
+    return row;
+  }
+
+  async getRetainerGeneratedTasksByPeriod(companyId: string, periodStart: string, periodEnd: string): Promise<RetainerGeneratedTask[]> {
+    return db.select().from(retainerGeneratedTasks).where(
+      and(
+        eq(retainerGeneratedTasks.companyId, companyId),
+        eq(retainerGeneratedTasks.periodStart, periodStart),
+        eq(retainerGeneratedTasks.periodEnd, periodEnd),
+      )
+    );
+  }
+
+  // ── Credit Reservations ──────────────────────────────────────────────────────
+
+  async createCreditReservation(data: InsertCreditReservation): Promise<CreditReservation> {
+    const [row] = await db.insert(creditReservations).values({
+      ...(data as any),
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return row;
+  }
+
+  async getCreditReservationByTaskId(generatedTaskId: string): Promise<CreditReservation | undefined> {
+    const [row] = await db.select().from(creditReservations).where(eq(creditReservations.generatedTaskId, generatedTaskId));
+    return row;
+  }
+
+  async getCreditReservationsByCompany(companyId: string, status?: string): Promise<CreditReservation[]> {
+    if (status) {
+      return db.select().from(creditReservations).where(
+        and(eq(creditReservations.companyId, companyId), eq(creditReservations.status, status))
+      );
+    }
+    return db.select().from(creditReservations).where(eq(creditReservations.companyId, companyId));
+  }
+
+  async updateCreditReservation(id: string, data: Partial<CreditReservation>): Promise<CreditReservation | undefined> {
+    const [row] = await db.update(creditReservations)
+      .set({ ...data, updatedAt: new Date().toISOString() } as any)
+      .where(eq(creditReservations.id, id))
+      .returning();
+    return row;
+  }
+
+  async getCreditProjection(companyId: string): Promise<{ monthlyAllowance: number; usedCredits: number; reservedCredits: number; remainingCredits: number; hasOverage: boolean }> {
+    const company = await this.getCompany(companyId);
+    const monthlyAllowance = company?.monthlyCredits ?? 0;
+    const currentBalance = company?.credits ?? 0;
+
+    // Used = credits spent this month (monthly allowance minus current balance, clamped to 0)
+    const usedCredits = Math.max(0, monthlyAllowance - currentBalance);
+
+    // Reserved = sum of all "reserved" credit reservations for this company
+    const reservedRows = await this.getCreditReservationsByCompany(companyId, "reserved");
+    const reservedCredits = reservedRows.reduce((sum, r) => sum + parseFloat(r.reservedCredits), 0);
+
+    const remainingCredits = Math.max(0, currentBalance - reservedCredits);
+    const hasOverage = (usedCredits + reservedCredits) > monthlyAllowance;
+
+    return { monthlyAllowance, usedCredits, reservedCredits, remainingCredits, hasOverage };
   }
 }
 

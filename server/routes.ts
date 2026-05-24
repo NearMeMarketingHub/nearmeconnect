@@ -1039,6 +1039,13 @@ export async function registerRoutes(
           req.body.creditCostAtDeduction = String(creditCost);
           creditActionTaken = true;
 
+          // Consume any credit reservation linked to this task
+          storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
+            if (reservation && reservation.status === "reserved") {
+              storage.updateCreditReservation(reservation.id, { status: "consumed" }).catch(() => {});
+            }
+          }).catch(() => {});
+
           // Low credit warning
           const lowCreditThreshold = 10;
           if (newBalance <= lowCreditThreshold && company.credits > lowCreditThreshold) {
@@ -1091,6 +1098,13 @@ export async function registerRoutes(
           req.body.creditsDeductedAt = new Date().toISOString();
           req.body.creditCostAtDeduction = String(creditCost);
           creditActionTaken = true;
+
+          // Consume any credit reservation linked to this task
+          storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
+            if (reservation && reservation.status === "reserved") {
+              storage.updateCreditReservation(reservation.id, { status: "consumed" }).catch(() => {});
+            }
+          }).catch(() => {});
         }
       }
 
@@ -1114,6 +1128,13 @@ export async function registerRoutes(
             req.body.creditsDeductedAt = null;
             req.body.creditCostAtDeduction = null;
             creditActionTaken = true;
+
+            // Re-open the credit reservation if it exists
+            storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
+              if (reservation && reservation.status === "consumed") {
+                storage.updateCreditReservation(reservation.id, { status: "reserved" }).catch(() => {});
+              }
+            }).catch(() => {});
           }
         }
       }
@@ -1138,6 +1159,13 @@ export async function registerRoutes(
             req.body.creditsDeductedAt = null;
             req.body.creditCostAtDeduction = null;
             creditActionTaken = true;
+
+            // Release the credit reservation permanently
+            storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
+              if (reservation && reservation.status !== "released") {
+                storage.updateCreditReservation(reservation.id, { status: "released" }).catch(() => {});
+              }
+            }).catch(() => {});
           }
         }
       }
@@ -12949,27 +12977,103 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
       const companyId = req.params.companyId as string;
-      const { tasks } = req.body as { tasks: Array<{ title: string; dueDate: string; creditCost: number; roleOwner: string; taskTemplateId: string; clientVisible: boolean; requiresApproval: boolean; description?: string }> };
+      const { tasks, periodStart, periodEnd, retainerTemplateId, clientRetainerAssignmentId } = req.body as {
+        tasks: Array<{
+          title: string;
+          dueDate: string;
+          creditCost: number;
+          roleOwner: string;
+          taskTemplateId: string;
+          serviceTrackId?: string;
+          clientVisible: boolean;
+          requiresApproval: boolean;
+          description?: string;
+          isDuplicate?: boolean;
+        }>;
+        periodStart: string;
+        periodEnd: string;
+        retainerTemplateId: string;
+        clientRetainerAssignmentId?: string;
+      };
+
       const created = [];
+      const skipped = [];
+
       for (const t of tasks) {
+        // Skip duplicates — already-generated tasks for the same company+template+period
+        const existing = await storage.getRetainerGeneratedTaskByDedup(companyId, t.taskTemplateId, periodStart).catch(() => null);
+        if (existing) {
+          skipped.push({ taskTemplateId: t.taskTemplateId, reason: "already_generated" });
+          continue;
+        }
+
         const tpl = await storage.getTaskTemplate(t.taskTemplateId).catch(() => null);
+
         const task = await storage.createTask({
           companyId,
           title: t.title,
-          description: tpl?.description ?? t.description ?? null,
+          description: tpl?.defaultInstructions ?? tpl?.description ?? t.description ?? null,
           status: "pending",
           priority: tpl?.defaultPriority ?? "medium",
           creditCost: String(t.creditCost),
           type: "assigned",
           dueDate: t.dueDate,
+          billingPeriodStart: periodStart,
+          billingPeriodEnd: periodEnd,
           taskOwnership: "agency",
           approvalStatus: t.requiresApproval ? "pending" : "approved",
           noCredit: false,
+          source: "retainer_template",
+          taskTemplateId: t.taskTemplateId,
+          retainerTemplateId: retainerTemplateId ?? null,
+          clientRetainerAssignmentId: clientRetainerAssignmentId ?? null,
+          serviceTrackId: t.serviceTrackId ?? null,
+          clientVisible: t.clientVisible,
+        } as any);
+
+        // Record the generation history entry for dedup
+        await storage.createRetainerGeneratedTask({
+          companyId,
+          taskTemplateId: t.taskTemplateId,
+          retainerTemplateId: retainerTemplateId ?? "",
+          clientRetainerAssignmentId: clientRetainerAssignmentId ?? "",
+          generatedTaskId: task.id,
+          periodStart,
+          periodEnd,
         });
+
+        // Create credit reservation if this task has a credit cost
+        const creditCostNum = parseFloat(String(t.creditCost));
+        if (creditCostNum > 0) {
+          await storage.createCreditReservation({
+            companyId,
+            generatedTaskId: task.id,
+            billingPeriodStart: periodStart,
+            billingPeriodEnd: periodEnd,
+            reservedCredits: String(creditCostNum),
+            status: "reserved",
+          });
+        }
+
         created.push(task);
       }
-      broadcastInvalidation([`/api/tasks?companyId=${companyId}`, `/api/companies/${companyId}`]);
-      res.status(201).json({ created: created.length, tasks: created });
+
+      broadcastInvalidation([
+        `/api/tasks?companyId=${companyId}`,
+        `/api/companies/${companyId}`,
+        `/api/companies/${companyId}/credit-projection`,
+      ]);
+      res.status(201).json({ created: created.length, skipped: skipped.length, tasks: created, skippedTasks: skipped });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Credit Projection ──────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/credit-projection", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.params.companyId as string;
+      const projection = await storage.getCreditProjection(companyId);
+      res.json(projection);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

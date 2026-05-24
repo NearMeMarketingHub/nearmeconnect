@@ -171,6 +171,12 @@ export const tasks = pgTable("tasks", {
   completedByName: text("completed_by_name"),
   cadenceId: varchar("cadence_id"),
   categoryId: varchar("category_id").references(() => taskCategories.id, { onDelete: "set null" }),
+  source: text("source"),
+  taskTemplateId: varchar("task_template_id"),
+  retainerTemplateId: varchar("retainer_template_id"),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id"),
+  serviceTrackId: varchar("service_track_id"),
+  clientVisible: boolean("client_visible").notNull().default(true),
 });
 
 export const taskChecklistItems = pgTable("task_checklist_items", {
@@ -2069,6 +2075,40 @@ export const clientRetainerServiceTracks = pgTable("client_retainer_service_trac
 export const insertClientRetainerServiceTrackSchema = createInsertSchema(clientRetainerServiceTracks).omit({ id: true });
 export type InsertClientRetainerServiceTrack = z.infer<typeof insertClientRetainerServiceTrackSchema>;
 export type ClientRetainerServiceTrack = typeof clientRetainerServiceTracks.$inferSelect;
+
+// ── Retainer Generated Task History (dedup) ──────────────────────────────────
+export const retainerGeneratedTasks = pgTable("retainer_generated_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  taskTemplateId: varchar("task_template_id").notNull(),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id").notNull(),
+  generatedTaskId: varchar("generated_task_id").notNull(),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertRetainerGeneratedTaskSchema = createInsertSchema(retainerGeneratedTasks).omit({ id: true, createdAt: true });
+export type InsertRetainerGeneratedTask = z.infer<typeof insertRetainerGeneratedTaskSchema>;
+export type RetainerGeneratedTask = typeof retainerGeneratedTasks.$inferSelect;
+
+// ── Credit Reservations (projected credit tracking) ───────────────────────────
+export const creditReservations = pgTable("credit_reservations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  generatedTaskId: varchar("generated_task_id").notNull(),
+  billingPeriodStart: text("billing_period_start").notNull(),
+  billingPeriodEnd: text("billing_period_end").notNull(),
+  reservedCredits: decimal("reserved_credits", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull().default("reserved"), // reserved | consumed | released
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCreditReservationSchema = createInsertSchema(creditReservations).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCreditReservation = z.infer<typeof insertCreditReservationSchema>;
+export type CreditReservation = typeof creditReservations.$inferSelect;
 
 // ── Integration Health ────────────────────────────────────────────────────────
 export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;

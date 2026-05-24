@@ -35,6 +35,7 @@ import {
   Linkedin,
   Facebook,
   Instagram,
+  Lock,
 } from "lucide-react";
 import type {
   Company,
@@ -185,6 +186,52 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Credit Projection Mini-Widget ─────────────────────────────────────────────
+function CreditProjectionWidget({ companyId }: { companyId: string }) {
+  const { data, isLoading } = useQuery<{
+    monthlyAllowance: number;
+    usedCredits: number;
+    reservedCredits: number;
+    remainingCredits: number;
+    hasOverage: boolean;
+  }>({
+    queryKey: [`/api/companies/${companyId}/credit-projection`],
+    staleTime: 30000,
+  });
+
+  if (isLoading || !data) return null;
+  if (data.reservedCredits === 0) return null;
+
+  const usedPct = data.monthlyAllowance > 0 ? Math.min(100, (data.usedCredits / data.monthlyAllowance) * 100) : 0;
+  const reservedPct = data.monthlyAllowance > 0 ? Math.min(100 - usedPct, (data.reservedCredits / data.monthlyAllowance) * 100) : 0;
+
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="credit-projection-widget">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground flex items-center gap-1">
+          <Lock className="h-3 w-3" />
+          {data.reservedCredits.toFixed(1)} reserved
+        </span>
+        {data.hasOverage ? (
+          <span className="text-destructive font-medium flex items-center gap-0.5">
+            <AlertTriangle className="h-3 w-3" /> Overage projected
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{data.remainingCredits.toFixed(1)} free</span>
+        )}
+      </div>
+      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">
+        <div className="h-full bg-orange-500 rounded-l-full transition-all" style={{ width: `${usedPct}%` }} />
+        <div className="h-full bg-orange-300 transition-all" style={{ width: `${reservedPct}%` }} />
+      </div>
+      <div className="flex gap-3 text-[9px] text-muted-foreground">
+        <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-orange-500" /> Used</span>
+        <span className="flex items-center gap-0.5"><span className="inline-block w-2 h-2 rounded-sm bg-orange-300" /> Reserved</span>
+      </div>
+    </div>
+  );
+}
+
 // ── 1. Client Snapshot ────────────────────────────────────────────────────────
 function ClientSnapshotCard({
   company,
@@ -274,12 +321,13 @@ function ClientSnapshotCard({
               </span>
             </div>
           </div>
-          <div>
+          <div className="col-span-2">
             <SectionLabel>Credits</SectionLabel>
             <p className="text-sm font-semibold">
               {company.credits}
               <span className="text-muted-foreground font-normal text-xs"> / {company.monthlyCredits} mo</span>
             </p>
+            <CreditProjectionWidget companyId={company.id} />
           </div>
           <div>
             <SectionLabel>Active Tasks</SectionLabel>

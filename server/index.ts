@@ -320,6 +320,41 @@ async function migrateCampaignWorkspaceColumns() {
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_cta_type text",
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_published_url text",
     "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_published_post_id text",
+    // Retainer task-generation fields on tasks
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source text",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_template_id varchar",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS retainer_template_id varchar",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_retainer_assignment_id varchar",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS service_track_id varchar",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_visible boolean NOT NULL DEFAULT true",
+    // Retainer generated task history (dedup)
+    `CREATE TABLE IF NOT EXISTS retainer_generated_tasks (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      task_template_id varchar NOT NULL,
+      retainer_template_id varchar NOT NULL,
+      client_retainer_assignment_id varchar NOT NULL,
+      generated_task_id varchar NOT NULL,
+      period_start text NOT NULL,
+      period_end text NOT NULL,
+      created_at text NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS rgt_company_period_idx ON retainer_generated_tasks (company_id, period_start, period_end)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS rgt_dedup_idx ON retainer_generated_tasks (company_id, task_template_id, period_start)`,
+    // Credit reservations (projected credit tracking)
+    `CREATE TABLE IF NOT EXISTS credit_reservations (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      generated_task_id varchar NOT NULL,
+      billing_period_start text NOT NULL,
+      billing_period_end text NOT NULL,
+      reserved_credits decimal(10,2) NOT NULL,
+      status text NOT NULL DEFAULT 'reserved',
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE INDEX IF NOT EXISTS cr_company_status_idx ON credit_reservations (company_id, status)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS cr_task_unique_idx ON credit_reservations (generated_task_id)`,
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

@@ -278,15 +278,22 @@ function PreviewTasksDialog({
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
+      const periodEnd = new Date(new Date(periodStart).getTime() + periodDays * 86400000).toISOString().split("T")[0];
       const r = await apiRequest("POST", `/api/companies/${companyId}/retainer-assignment/confirm-tasks`, {
         tasks: previewResult?.tasks || [],
+        periodStart,
+        periodEnd,
+        retainerTemplateId: assignment?.retainerTemplateId ?? "",
+        clientRetainerAssignmentId: assignment?.id ?? "",
       });
       return r.json();
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: [`/api/tasks`] });
       qc.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
-      toast({ title: `Created ${data.created} task${data.created !== 1 ? "s" : ""}` });
+      qc.invalidateQueries({ queryKey: [`/api/companies/${companyId}/credit-projection`] });
+      const skippedMsg = data.skipped > 0 ? ` (${data.skipped} skipped — already generated)` : "";
+      toast({ title: `Created ${data.created} task${data.created !== 1 ? "s" : ""}${skippedMsg}` });
       setConfirmOpen(false);
       onOpenChange(false);
     },
