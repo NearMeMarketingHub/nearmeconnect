@@ -45,7 +45,6 @@ import {
   MessageSquare,
   Video,
   ClipboardList,
-  Repeat,
   Target,
   UserPlus,
   Shield,
@@ -89,7 +88,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "All Tasks",        href: "/admin/tasks",            icon: ClipboardList },
       { title: "Content Calendar", href: "/admin/content-calendar", icon: Calendar },
-      { title: "Cadences",         href: "/admin/cadences",         icon: Repeat },
       { title: "Campaigns",        href: "/admin/campaigns",        icon: Target },
     ],
   },
