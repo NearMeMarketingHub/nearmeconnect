@@ -14,7 +14,7 @@ import {
   Palette, Link2, KeyRound, Lightbulb, BarChart2,
   Plus, Trash2, Eye, EyeOff, Copy, Check, Save, X,
   ExternalLink, Globe, AlertTriangle, Clock, ArrowRight,
-  ChevronDown, GripVertical, Pencil,
+  ChevronDown, GripVertical, Pencil, RefreshCw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -164,6 +164,24 @@ const BRAND_BLANK = {
   brandGuidelinesUrl: "", competitorNotes: "",
 };
 
+interface HubSpotBrandData {
+  brandVoiceSummary: string;
+  geographicFocus: string;
+  website: string;
+  phone: string;
+  facebookPage: string;
+  linkedinPage: string;
+  linkedinBio: string;
+}
+
+const HS_FIELD_LABELS: Array<{ key: keyof HubSpotBrandData; label: string; mapsTo: string }> = [
+  { key: "brandVoiceSummary", label: "About Us / Description", mapsTo: "Brand Voice Summary" },
+  { key: "geographicFocus",   label: "City / State / Country",  mapsTo: "Geographic Focus" },
+  { key: "website",           label: "Website Domain",           mapsTo: "Website (Links)" },
+  { key: "facebookPage",      label: "Facebook Page",            mapsTo: "Facebook Link" },
+  { key: "linkedinPage",      label: "LinkedIn Page",            mapsTo: "LinkedIn Link" },
+];
+
 function BrandProfileSection({ companyId }: { companyId: string }) {
   const { toast } = useToast();
   const { data: profile, isLoading } = useQuery<BrandProfile | null>({
@@ -180,6 +198,27 @@ function BrandProfileSection({ companyId }: { companyId: string }) {
   const [form, setForm] = useState(BRAND_BLANK);
   const [phrases, setPhrases] = useState<string[]>([]);
   const initialized = useRef(false);
+  const [hsImported, setHsImported] = useState(false);
+
+  // Lazy-fetch HubSpot brand data only when user requests it
+  const {
+    data: hsData,
+    isFetching: hsFetching,
+    error: hsError,
+    refetch: fetchHs,
+  } = useQuery<HubSpotBrandData>({
+    queryKey: ["/api/companies", companyId, "hubspot-brand"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/hubspot-brand`);
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error || "Failed to fetch HubSpot data");
+      }
+      return r.json();
+    },
+    enabled: false,
+    retry: false,
+  });
 
   useEffect(() => {
     if (profile !== undefined && !initialized.current) {
@@ -209,6 +248,17 @@ function BrandProfileSection({ companyId }: { companyId: string }) {
 
   const set = (k: keyof typeof BRAND_BLANK, v: string) => setForm(p => ({ ...p, [k]: v }));
 
+  const applyHubSpotData = () => {
+    if (!hsData) return;
+    setForm(prev => ({
+      ...prev,
+      brandVoiceSummary: hsData.brandVoiceSummary || prev.brandVoiceSummary,
+      geographicFocus: hsData.geographicFocus || prev.geographicFocus,
+    }));
+    setHsImported(true);
+    toast({ title: "HubSpot data applied", description: "Review the filled fields and save when ready." });
+  };
+
   const save = useMutation({
     mutationFn: () => apiRequest("PUT", `/api/companies/${companyId}/brand-profile`, { ...form, doNotUsePhrases: JSON.stringify(phrases) }),
     onSuccess: () => {
@@ -221,6 +271,8 @@ function BrandProfileSection({ companyId }: { companyId: string }) {
 
   if (isLoading) return <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-16" />)}</div>;
 
+  const hasHsContent = hsData && HS_FIELD_LABELS.some(f => !!hsData[f.key]);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -228,10 +280,73 @@ function BrandProfileSection({ companyId }: { companyId: string }) {
           <h3 className="font-semibold">Brand Profile</h3>
           <p className="text-sm text-muted-foreground">Visual identity, voice, and positioning</p>
         </div>
-        <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-brand-profile">
-          <Save className="w-3.5 h-3.5 mr-1.5" />{save.isPending ? "Saving..." : "Save Brand Profile"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fetchHs()}
+            disabled={hsFetching}
+            data-testid="button-fetch-hubspot-brand"
+            className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${hsFetching ? "animate-spin" : ""}`} />
+            {hsFetching ? "Loading HubSpot…" : "Pull from HubSpot"}
+          </Button>
+          <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-brand-profile">
+            <Save className="w-3.5 h-3.5 mr-1.5" />{save.isPending ? "Saving..." : "Save Brand Profile"}
+          </Button>
+        </div>
       </div>
+
+      {/* HubSpot import panel */}
+      {(hsError || hasHsContent !== undefined) && (
+        <>
+          {hsError && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 text-sm" data-testid="hubspot-brand-error">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium text-amber-800 dark:text-amber-300">Couldn't load HubSpot data</p>
+                <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">{(hsError as Error).message}</p>
+                <p className="text-amber-700 dark:text-amber-400 text-xs mt-0.5">Make sure a HubSpot Company ID is linked on the HubSpot tab.</p>
+              </div>
+            </div>
+          )}
+          {hsData && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 overflow-hidden" data-testid="hubspot-brand-panel">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">HubSpot Data</span>
+                  {hsImported && <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-green-300">Applied</Badge>}
+                </div>
+                {hasHsContent && !hsImported && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300"
+                    onClick={applyHubSpotData}
+                    data-testid="button-apply-hubspot-brand"
+                  >
+                    Apply to form
+                  </Button>
+                )}
+              </div>
+              <div className="px-4 py-3 space-y-2">
+                {HS_FIELD_LABELS.map(({ key, label, mapsTo }) => {
+                  const val = hsData[key];
+                  return (
+                    <div key={key} className="flex items-start gap-3 text-sm">
+                      <span className="text-blue-600 dark:text-blue-400 w-44 shrink-0 text-xs pt-0.5">{label} → <span className="font-medium">{mapsTo}</span></span>
+                      <span className={`flex-1 text-xs ${val ? "text-foreground" : "text-muted-foreground italic"}`}>
+                        {val || "Not set in HubSpot"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       <Card>
         <CardHeader className="pb-3"><CardTitle className="text-sm">Brand Colors</CardTitle></CardHeader>

@@ -15,7 +15,7 @@ import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificati
 import multer from "multer";
 import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail, buildApprovalRequestEmail, buildMeetingRecapEmail, buildTaskReminderEmail, buildMonthlyReportReadyEmail, buildMonthlyReportClientEmail, buildPlanningGapAlertEmail, sendWorkflowEmail } from "./email";
 import { generateOnboardingPdf } from "./pdf-generator";
-import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById } from "./hubspot";
+import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById, getHubSpotBrandData } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
 
 import type { InsertNotification } from "@shared/schema";
@@ -3942,6 +3942,22 @@ export async function registerRoutes(
       res.json(profile);
     } catch (error) {
       res.status(500).json({ error: "Failed to save brand profile" });
+    }
+  });
+
+  // GET HubSpot brand data for a portal company (uses the linked hubspotCompanyId)
+  app.get("/api/companies/:id/hubspot-brand", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const company = await storage.getCompany(req.params.id as string);
+      if (!company) return res.status(404).json({ error: "Company not found" });
+      if (!company.hubspotCompanyId) return res.status(404).json({ error: "No HubSpot company linked" });
+      const result = await getHubSpotBrandData(company.hubspotCompanyId);
+      if (!result.success) return res.status(502).json({ error: result.error });
+      res.json(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to fetch HubSpot brand data" });
     }
   });
 
