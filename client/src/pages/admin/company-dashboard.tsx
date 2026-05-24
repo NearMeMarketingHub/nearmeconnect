@@ -4548,7 +4548,7 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           {/* Content Calendar Tab */}
-          <TabsContent value="content-calendar" className="h-[calc(100vh-220px)] min-h-0 flex flex-col">
+          <TabsContent value="content-calendar" className="data-[state=active]:h-[calc(100vh-220px)] data-[state=active]:flex data-[state=active]:flex-col min-h-0">
             {companyId && (
               <>
                 <div className="flex justify-end px-4 pt-2 pb-1 shrink-0">
