@@ -26,8 +26,6 @@ function buildAuthUrl(companyId: string): string {
     'crm.objects.companies.write',
     'crm.objects.deals.read',
     'crm.objects.deals.write',
-    'crm.objects.tasks.read',
-    'crm.objects.tasks.write',
     'crm.objects.leads.read',
     'crm.objects.leads.write',
     'crm.objects.quotes.read',
@@ -46,9 +44,6 @@ function buildAuthUrl(companyId: string): string {
     'automation',
     'crm.lists.read',
     'crm.lists.write',
-    'conversations.read',
-    'marketing.campaigns.read',
-    'marketing.campaigns.write',
   ].join(' ');
 
   const state = Buffer.from(JSON.stringify({ companyId })).toString("base64url");
