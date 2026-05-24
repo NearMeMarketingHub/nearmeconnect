@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X, Video, Link, MapPin } from "lucide-react";
+import { Globe, Mail, Briefcase, Camera, BookOpen, FileText, Loader2, CheckCircle2, ExternalLink, ImageIcon, History, Hash, UploadCloud, X, Video, Link, MapPin, ClipboardCopy } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type FormValues = z.infer<typeof insertContentCalendarItemSchema>;
@@ -46,6 +46,9 @@ export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   approved: { label: "Approved", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
   scheduled: { label: "Scheduled", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
   published: { label: "Published", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300" },
+  manually_published: { label: "Manually Published", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  api_published: { label: "API Published", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300" },
+  failed: { label: "Failed", color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
   repurpose_syndicate: { label: "Repurpose / Syndicate", color: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" },
   cancelled: { label: "Cancelled", color: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
   archived: { label: "Archived", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
@@ -115,6 +118,9 @@ export function ContentItemModal({
     gbpProductName: item?.gbpProductName || "",
     gbpProductPrice: item?.gbpProductPrice || "",
     gbpProductDescription: item?.gbpProductDescription || "",
+    gbpCtaType: (item?.gbpCtaType as any) || undefined,
+    gbpPublishedUrl: item?.gbpPublishedUrl || "",
+    gbpPublishedPostId: item?.gbpPublishedPostId || "",
   });
 
   const form = useForm<FormValues>({
@@ -132,6 +138,9 @@ export function ContentItemModal({
   const bodyContent = form.watch("bodyContent") || "";
   const gbpPostType = form.watch("gbpPostType");
   const title = form.watch("title") || "";
+  const status = form.watch("status");
+  const gbpPublishedUrl = form.watch("gbpPublishedUrl") || "";
+  const gbpPublishedPostId = form.watch("gbpPublishedPostId") || "";
 
   const charLimit = CHAR_LIMITS[platform] ?? Infinity;
   const charCount = bodyContent.length;
@@ -544,6 +553,82 @@ export function ContentItemModal({
                               <FormField control={form.control} name="gbpProductDescription" render={({ field }) => (
                                 <FormItem className="col-span-2"><FormLabel>Description</FormLabel><FormControl><Textarea {...field} value={field.value ?? ""} className="min-h-[60px]" /></FormControl></FormItem>
                               )} />
+                            </div>
+                          )}
+
+                          {/* CTA type (all GBP posts) */}
+                          <FormField control={form.control} name="gbpCtaType" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>CTA Button Type</FormLabel>
+                              <Select value={field.value || "_none"} onValueChange={v => field.onChange(v === "_none" ? undefined : v)}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-gbp-cta-type">
+                                    <SelectValue placeholder="None" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="_none">None</SelectItem>
+                                  <SelectItem value="book">Book</SelectItem>
+                                  <SelectItem value="order">Order Online</SelectItem>
+                                  <SelectItem value="shop">Shop</SelectItem>
+                                  <SelectItem value="learn_more">Learn More</SelectItem>
+                                  <SelectItem value="sign_up">Sign Up</SelectItem>
+                                  <SelectItem value="call">Call Now</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormItem>
+                          )} />
+
+                          {/* Publishing fields for manually/api published */}
+                          {(status === "manually_published" || status === "api_published") && (
+                            <div className="grid grid-cols-2 gap-4">
+                              <FormField control={form.control} name="gbpPublishedUrl" render={({ field }) => (
+                                <FormItem className="col-span-2">
+                                  <FormLabel>Published URL</FormLabel>
+                                  <FormControl><Input {...field} value={field.value ?? ""} placeholder="https://maps.google.com/..." data-testid="input-gbp-published-url" /></FormControl>
+                                </FormItem>
+                              )} />
+                              <FormField control={form.control} name="gbpPublishedPostId" render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>External Post ID</FormLabel>
+                                  <FormControl><Input {...field} value={field.value ?? ""} placeholder="GBP post ID" data-testid="input-gbp-published-post-id" /></FormControl>
+                                </FormItem>
+                              )} />
+                            </div>
+                          )}
+
+                          {/* Export for manual publishing */}
+                          {item && (status === "approved" || status === "scheduled" || status === "manually_published") && (
+                            <div className="border rounded-lg p-3 bg-muted/40 space-y-2">
+                              <p className="text-xs font-medium text-muted-foreground">Manual Publishing</p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="w-full gap-2 text-xs"
+                                data-testid="button-gbp-copy-post"
+                                onClick={() => {
+                                  const postType = gbpPostType || "whats_new";
+                                  const ctaLabel: Record<string, string> = { book: "Book", order: "Order Online", shop: "Shop", learn_more: "Learn More", sign_up: "Sign Up", call: "Call Now" };
+                                  const ctaLine = item.gbpCtaType ? `\nCTA: ${ctaLabel[item.gbpCtaType] || item.gbpCtaType}` : "";
+                                  const ctaUrlLine = item.ctaUrl ? `\nCTA URL: ${item.ctaUrl}` : "";
+                                  const mediaLine = item.mediaUrls && JSON.parse(item.mediaUrls || "[]").length > 0 ? `\nMedia: ${JSON.parse(item.mediaUrls).join(", ")}` : "";
+                                  let extraLines = "";
+                                  if (postType === "event") extraLines = `\nEvent: ${item.gbpEventTitle || ""}\nStart: ${item.gbpEventStart || ""}\nEnd: ${item.gbpEventEnd || ""}`;
+                                  else if (postType === "offer") extraLines = `\nOffer: ${item.gbpOfferTitle || ""}\nCoupon: ${item.gbpOfferCoupon || ""}\nRedeem: ${item.gbpRedeemUrl || ""}`;
+                                  else if (postType === "product") extraLines = `\nProduct: ${item.gbpProductName || ""}\nPrice: ${item.gbpProductPrice || ""}`;
+                                  const text = `${item.title}\n\n${item.bodyContent || ""}${ctaLine}${ctaUrlLine}${extraLines}${mediaLine}`.trim();
+                                  navigator.clipboard.writeText(text).then(() => {
+                                    toast({ title: "Copied to clipboard", description: "Paste into Google Business Profile to publish manually." });
+                                  }).catch(() => {
+                                    toast({ title: "Copy failed", description: "Please select the text manually.", variant: "destructive" });
+                                  });
+                                }}
+                              >
+                                <ClipboardCopy className="h-3.5 w-3.5" />
+                                Copy Post Content
+                              </Button>
+                              <p className="text-xs text-muted-foreground">Copy content and paste directly into GBP dashboard to publish manually. Then update status to "Manually Published" and record the post URL above.</p>
                             </div>
                           )}
                         </div>

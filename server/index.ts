@@ -205,6 +205,28 @@ async function migrateCampaignWorkspaceColumns() {
     )`,
     `CREATE INDEX IF NOT EXISTS email_logs_company_idx ON email_logs (company_id)`,
     `CREATE INDEX IF NOT EXISTS email_logs_idempotency_idx ON email_logs (idempotency_key) WHERE idempotency_key IS NOT NULL`,
+    // GBP connection tracking columns on client_onboarding (schema has these, DB may not)
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_account_id text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_location_id text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_location_name text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_connected_status text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_permission_status text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_last_sync_time text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_last_publish_status text",
+    "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_connection_notes text",
+    // GBP connection tracking on companies
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_account_id text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_location_id text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_location_name text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_connected_status text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_permission_status text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_last_sync_time text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_last_publish_status text",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS gbp_connection_notes text",
+    // GBP publishing fields on content calendar items
+    "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_cta_type text",
+    "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_published_url text",
+    "ALTER TABLE content_calendar_items ADD COLUMN IF NOT EXISTS gbp_published_post_id text",
   ];
   for (const stmt of alterations) {
     await pool.query(stmt);

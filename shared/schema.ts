@@ -26,6 +26,15 @@ export const companies = pgTable("companies", {
   hubspotCompanyId: text("hubspot_company_id"),
   bonusCredits: real("bonus_credits").notNull().default(0),
   createdAt: text("created_at").notNull(),
+  // GBP Connection Tracking
+  gbpAccountId: text("gbp_account_id"),
+  gbpLocationId: text("gbp_location_id"),
+  gbpLocationName: text("gbp_location_name"),
+  gbpConnectedStatus: text("gbp_connected_status"),
+  gbpPermissionStatus: text("gbp_permission_status"),
+  gbpLastSyncTime: text("gbp_last_sync_time"),
+  gbpLastPublishStatus: text("gbp_last_publish_status"),
+  gbpConnectionNotes: text("gbp_connection_notes"),
 });
 
 export const insertCompanySchema = createInsertSchema(companies).omit({
@@ -462,7 +471,17 @@ export const clientOnboarding = pgTable("client_onboarding", {
   gbpContactEmail: text("gbp_contact_email"),
   gbpContactPhone: text("gbp_contact_phone"),
   gbpAdditionalContext: text("gbp_additional_context"),
-  
+
+  // GBP Connection Tracking
+  gbpAccountId: text("gbp_account_id"),
+  gbpLocationId: text("gbp_location_id"),
+  gbpLocationName: text("gbp_location_name"),
+  gbpConnectedStatus: text("gbp_connected_status"), // connected | disconnected | pending
+  gbpPermissionStatus: text("gbp_permission_status"), // owner | manager | site_manager | none
+  gbpLastSyncTime: text("gbp_last_sync_time"),
+  gbpLastPublishStatus: text("gbp_last_publish_status"),
+  gbpConnectionNotes: text("gbp_connection_notes"),
+
   // Brand Assets
   brandAssetLinks: text("brand_asset_links"),
   brandAssetFiles: text("brand_asset_files"), // JSON array of { name, objectPath, uploadedAt }
@@ -1479,7 +1498,7 @@ export type ContentPlatform = typeof contentPlatformEnum[number];
 export const contentTypeEnum = ["post", "story", "reel", "article", "newsletter", "ad", "event", "offer", "product"] as const;
 export type ContentType = typeof contentTypeEnum[number];
 
-export const contentStatusEnum = ["placeholder", "drafting", "internal_review", "client_review", "draft", "in_review", "approved", "scheduled", "published", "repurpose_syndicate", "cancelled", "archived"] as const;
+export const contentStatusEnum = ["placeholder", "drafting", "internal_review", "client_review", "draft", "in_review", "approved", "scheduled", "published", "manually_published", "api_published", "failed", "repurpose_syndicate", "cancelled", "archived"] as const;
 export type ContentStatus = typeof contentStatusEnum[number];
 
 export const gbpPostTypeEnum = ["whats_new", "event", "offer", "product"] as const;
@@ -1549,6 +1568,9 @@ export const contentCalendarItems = pgTable("content_calendar_items", {
   gbpProductName: text("gbp_product_name"),
   gbpProductPrice: text("gbp_product_price"),
   gbpProductDescription: text("gbp_product_description"),
+  gbpCtaType: text("gbp_cta_type"), // book | order | shop | learn_more | sign_up | call
+  gbpPublishedUrl: text("gbp_published_url"),
+  gbpPublishedPostId: text("gbp_published_post_id"),
   linkedTaskId: varchar("linked_task_id"),
   campaignRequestId: varchar("campaign_request_id"),
   cadenceId: varchar("cadence_id"),

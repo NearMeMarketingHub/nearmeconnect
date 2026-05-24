@@ -429,6 +429,7 @@ export default function CompanyDashboard() {
       { key: "workflows",  label: "Workflows" },
       { key: "notes",      label: "Notes" },
       { key: "seo",        label: "SEO / Directories" },
+      { key: "gbp",        label: "GBP" },
     ], defaultSub: "marketing" },
     { key: "communicate", label: "Communicate", subTabs: [
       { key: "chat",     label: "Chat" },
@@ -447,7 +448,7 @@ export default function CompanyDashboard() {
   const TAB_TO_CATEGORY: Record<string, string> = {
     details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
     calendar: "work", cadences: "work", pending_approval: "work",
-    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing",
+    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing", gbp: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
     users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin",
@@ -4591,6 +4592,13 @@ export default function CompanyDashboard() {
             )}
           </TabsContent>
 
+          {/* GBP Tab */}
+          <TabsContent value="gbp" className="space-y-4">
+            {companyId && company && (
+              <GbpConnectionPanel companyId={companyId} company={company} />
+            )}
+          </TabsContent>
+
           {/* Cadences Tab */}
           <TabsContent value="cadences" className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -6574,6 +6582,175 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
         <Avatar className="h-6 w-6 border-2 border-background">
           <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
         </Avatar>
+      )}
+    </div>
+  );
+}
+
+// ── GBP Connection Panel ──────────────────────────────────────────────────────
+
+interface GbpConnectionPanelProps {
+  companyId: string;
+  company: Company;
+}
+
+function GbpConnectionPanel({ companyId, company }: GbpConnectionPanelProps) {
+  const { toast } = useToast();
+  const [accountId, setAccountId] = useState(company.gbpAccountId ?? "");
+  const [locationId, setLocationId] = useState(company.gbpLocationId ?? "");
+  const [locationName, setLocationName] = useState(company.gbpLocationName ?? "");
+  const [connectedStatus, setConnectedStatus] = useState(company.gbpConnectedStatus ?? "disconnected");
+  const [permissionStatus, setPermissionStatus] = useState(company.gbpPermissionStatus ?? "");
+  const [notes, setNotes] = useState(company.gbpConnectionNotes ?? "");
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/companies/${companyId}`, {
+        gbpAccountId: accountId || null,
+        gbpLocationId: locationId || null,
+        gbpLocationName: locationName || null,
+        gbpConnectedStatus: connectedStatus || null,
+        gbpPermissionStatus: permissionStatus || null,
+        gbpConnectionNotes: notes || null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: "GBP connection saved" });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    connected:    { label: "Connected",    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+    disconnected: { label: "Disconnected", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+    pending:      { label: "Pending",      className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+    needs_reauth: { label: "Needs Reauth", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  };
+  const currentStatus = statusConfig[connectedStatus] ?? statusConfig.disconnected;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              Google Business Profile Connection
+            </span>
+            <Badge className={`text-xs font-medium ${currentStatus.className}`}>
+              {currentStatus.label}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">GBP Account ID</Label>
+              <Input
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                placeholder="e.g. accounts/123456789"
+                className="font-mono text-sm"
+                data-testid="input-gbp-account-id"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Location ID</Label>
+              <Input
+                value={locationId}
+                onChange={e => setLocationId(e.target.value)}
+                placeholder="e.g. locations/987654321"
+                className="font-mono text-sm"
+                data-testid="input-gbp-location-id"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Location Name</Label>
+              <Input
+                value={locationName}
+                onChange={e => setLocationName(e.target.value)}
+                placeholder="Business name as shown on GBP"
+                data-testid="input-gbp-location-name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Connection Status</Label>
+              <Select value={connectedStatus} onValueChange={setConnectedStatus}>
+                <SelectTrigger data-testid="select-gbp-connected-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disconnected">Disconnected</SelectItem>
+                  <SelectItem value="connected">Connected</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="needs_reauth">Needs Reauth</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Permission Level</Label>
+              <Select value={permissionStatus || "_none"} onValueChange={v => setPermissionStatus(v === "_none" ? "" : v)}>
+                <SelectTrigger data-testid="select-gbp-permission-status">
+                  <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Not set</SelectItem>
+                  <SelectItem value="owner">Owner</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="site_manager">Site Manager</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Connection Notes</Label>
+            <Textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Any notes about this GBP connection, access issues, or credentials location…"
+              rows={3}
+              data-testid="textarea-gbp-notes"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+            data-testid="btn-save-gbp-connection"
+          >
+            {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+            Save Connection
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Read-only sync / publish status */}
+      {(company.gbpLastSyncTime || company.gbpLastPublishStatus) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Last Activity</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4 text-sm">
+            {company.gbpLastSyncTime && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Last Sync</p>
+                <p className="font-medium">{new Date(company.gbpLastSyncTime).toLocaleString()}</p>
+              </div>
+            )}
+            {company.gbpLastPublishStatus && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Last Publish Status</p>
+                <p className="font-medium capitalize">{company.gbpLastPublishStatus}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
