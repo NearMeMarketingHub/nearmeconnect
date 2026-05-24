@@ -26,7 +26,7 @@ import {
 import { LayoutDashboard, ListTodo, CreditCard, Settings, LogOut, Building2, Upload, Calendar, MessageCircle, Megaphone, Video, GraduationCap, AlertTriangle, Users, FolderOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotificationBell } from "@/components/notification-bell";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import type { Company, CustomRole } from "@shared/schema";
 

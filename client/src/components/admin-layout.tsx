@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
 
 interface UserInfo {
   isAdmin: boolean;

@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Building2, Shield } from "lucide-react";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
 
 type UserType = "client" | "admin";
 

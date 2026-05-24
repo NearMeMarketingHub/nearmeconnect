@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArrowLeft, CheckCircle } from "lucide-react";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo_1779623746839.png";
 
 export default function ResetPassword() {
   const urlParams = new URLSearchParams(window.location.search);
