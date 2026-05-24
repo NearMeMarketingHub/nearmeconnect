@@ -234,6 +234,11 @@ import {
   type InsertTaskTemplate,
   retainerTemplateTaskTemplates,
   type RetainerTemplateTaskTemplate,
+  clientRetainerAssignments,
+  type ClientRetainerAssignment,
+  type InsertClientRetainerAssignment,
+  clientRetainerServiceTracks,
+  type ClientRetainerServiceTrack,
 } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
@@ -693,6 +698,12 @@ export interface IStorage {
   getRetainerTemplateTaskTemplates(retainerTemplateId: string): Promise<(RetainerTemplateTaskTemplate & { template: TaskTemplate })[]>;
   setRetainerTemplateTaskTemplates(retainerTemplateId: string, entries: Omit<RetainerTemplateTaskTemplate, "id" | "retainerTemplateId">[]): Promise<void>;
   getTaskTemplateRetainerLinks(taskTemplateId: string): Promise<RetainerTemplateTaskTemplate[]>;
+  // Client Retainer Assignments
+  getClientRetainerAssignment(companyId: string): Promise<ClientRetainerAssignment | undefined>;
+  createClientRetainerAssignment(data: InsertClientRetainerAssignment): Promise<ClientRetainerAssignment>;
+  updateClientRetainerAssignment(id: string, data: Partial<ClientRetainerAssignment>): Promise<ClientRetainerAssignment | undefined>;
+  getClientRetainerServiceTracks(assignmentId: string): Promise<(ClientRetainerServiceTrack & { track: ServiceTrack })[]>;
+  setClientRetainerServiceTracks(assignmentId: string, tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3713,6 +3724,46 @@ export class DatabaseStorage implements IStorage {
 
   async getTaskTemplateRetainerLinks(taskTemplateId: string): Promise<RetainerTemplateTaskTemplate[]> {
     return db.select().from(retainerTemplateTaskTemplates).where(eq(retainerTemplateTaskTemplates.taskTemplateId, taskTemplateId));
+  }
+
+  async getClientRetainerAssignment(companyId: string): Promise<ClientRetainerAssignment | undefined> {
+    const [row] = await db.select().from(clientRetainerAssignments)
+      .where(eq(clientRetainerAssignments.companyId, companyId))
+      .orderBy(desc(clientRetainerAssignments.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async createClientRetainerAssignment(data: InsertClientRetainerAssignment): Promise<ClientRetainerAssignment> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(clientRetainerAssignments).values({ ...(data as any), createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+
+  async updateClientRetainerAssignment(id: string, data: Partial<ClientRetainerAssignment>): Promise<ClientRetainerAssignment | undefined> {
+    const now = new Date().toISOString();
+    const [row] = await db.update(clientRetainerAssignments).set({ ...(data as any), updatedAt: now }).where(eq(clientRetainerAssignments.id, id)).returning();
+    return row;
+  }
+
+  async getClientRetainerServiceTracks(assignmentId: string): Promise<(ClientRetainerServiceTrack & { track: ServiceTrack })[]> {
+    const rows = await db.select({ join: clientRetainerServiceTracks, track: serviceTracks })
+      .from(clientRetainerServiceTracks)
+      .innerJoin(serviceTracks, eq(clientRetainerServiceTracks.serviceTrackId, serviceTracks.id))
+      .where(eq(clientRetainerServiceTracks.clientRetainerAssignmentId, assignmentId));
+    return rows.map(r => ({ ...r.join, track: r.track }));
+  }
+
+  async setClientRetainerServiceTracks(assignmentId: string, tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[]): Promise<void> {
+    await db.delete(clientRetainerServiceTracks).where(eq(clientRetainerServiceTracks.clientRetainerAssignmentId, assignmentId));
+    if (tracks.length > 0) {
+      await db.insert(clientRetainerServiceTracks).values(tracks.map(t => ({
+        clientRetainerAssignmentId: assignmentId,
+        serviceTrackId: t.serviceTrackId,
+        isActive: t.isActive,
+        notes: t.notes ?? null,
+      })));
+    }
   }
 }
 

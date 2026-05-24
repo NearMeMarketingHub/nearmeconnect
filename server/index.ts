@@ -275,6 +275,29 @@ async function migrateCampaignWorkspaceColumns() {
       credit_override decimal(10,2)
     )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS rttt_unique_idx ON retainer_template_task_templates (retainer_template_id, task_template_id)`,
+    `CREATE TABLE IF NOT EXISTS client_retainer_assignments (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      company_id varchar NOT NULL,
+      retainer_template_id varchar NOT NULL,
+      status text NOT NULL DEFAULT 'draft',
+      start_date text NOT NULL,
+      billing_day_of_month integer NOT NULL DEFAULT 1,
+      monthly_credit_allocation_override real,
+      monthly_price_override decimal(10,2),
+      generation_window_days_override integer,
+      notes text,
+      created_at text NOT NULL,
+      updated_at text
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS cra_company_unique_idx ON client_retainer_assignments (company_id) WHERE status IN ('draft','active','paused')`,
+    `CREATE TABLE IF NOT EXISTS client_retainer_service_tracks (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      client_retainer_assignment_id varchar NOT NULL,
+      service_track_id varchar NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      notes text
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS crst_unique_idx ON client_retainer_service_tracks (client_retainer_assignment_id, service_track_id)`,
     // GBP connection tracking columns on client_onboarding (schema has these, DB may not)
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_account_id text",
     "ALTER TABLE client_onboarding ADD COLUMN IF NOT EXISTS gbp_location_id text",

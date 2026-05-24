@@ -118,6 +118,7 @@ import { SeoPanel } from "@/components/seo-panel";
 import { IntegrationHealthPanel } from "@/components/integration-health-panel";
 import { EmailComposerDialog } from "@/components/email-composer-dialog";
 import { EmailHistory } from "@/components/email-history";
+import { CompanyRetainerTab } from "@/components/company-retainer-tab";
 import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
@@ -443,6 +444,7 @@ export default function CompanyDashboard() {
       { key: "emails",         label: "Emails" },
       { key: "details",        label: "Details" },
       { key: "integrations",   label: "Integrations" },
+      { key: "retainer",       label: "Retainer" },
     ], defaultSub: "users" },
   ];
   const TAB_TO_CATEGORY: Record<string, string> = {
@@ -451,7 +453,7 @@ export default function CompanyDashboard() {
     marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing", gbp: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
-    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin",
+    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin", retainer: "admin",
   };
 
   // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
@@ -2419,6 +2421,7 @@ export default function CompanyDashboard() {
               { value: "marketing", label: "Marketing Hub" },
               { value: "content-calendar", label: "Content Calendar" },
               { value: "workflows", label: "Workflows" },
+              { value: "retainer", label: "Retainer" },
             ]}
             activeTab={activeTab}
             onTabChange={(tab) => {
@@ -4918,6 +4921,13 @@ export default function CompanyDashboard() {
           <TabsContent value="integrations" className="space-y-4">
             {companyId && (
               <IntegrationHealthPanel companyId={companyId} isAdmin={true} />
+            )}
+          </TabsContent>
+
+          {/* Retainer Tab */}
+          <TabsContent value="retainer" className="space-y-4">
+            {companyId && (
+              <CompanyRetainerTab companyId={companyId} companyName={company?.name} />
             )}
           </TabsContent>
 

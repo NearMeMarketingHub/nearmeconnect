@@ -12754,6 +12754,225 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Client Retainer Assignment routes ─────────────────────────────────────
+
+  // GET current assignment for a company
+  app.get("/api/companies/:companyId/retainer-assignment", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const assignment = await storage.getClientRetainerAssignment(req.params.companyId as string);
+      if (!assignment) return res.json(null);
+      const tracks = await storage.getClientRetainerServiceTracks(assignment.id);
+      const template = await storage.getRetainerTemplate(assignment.retainerTemplateId);
+      res.json({ ...assignment, serviceTracks: tracks, template });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PUT upsert assignment
+  app.put("/api/companies/:companyId/retainer-assignment", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const existing = await storage.getClientRetainerAssignment(companyId);
+      const { retainerTemplateId, status, startDate, billingDayOfMonth, monthlyCreditAllocationOverride, monthlyPriceOverride, generationWindowDaysOverride, notes } = req.body;
+      let assignment;
+      if (existing) {
+        assignment = await storage.updateClientRetainerAssignment(existing.id, {
+          retainerTemplateId, status, startDate, billingDayOfMonth,
+          monthlyCreditAllocationOverride: monthlyCreditAllocationOverride ?? null,
+          monthlyPriceOverride: monthlyPriceOverride ?? null,
+          generationWindowDaysOverride: generationWindowDaysOverride ?? null,
+          notes: notes ?? null,
+        });
+      } else {
+        assignment = await storage.createClientRetainerAssignment({
+          companyId, retainerTemplateId,
+          status: status || "draft",
+          startDate, billingDayOfMonth: billingDayOfMonth || 1,
+          monthlyCreditAllocationOverride: monthlyCreditAllocationOverride ?? null,
+          monthlyPriceOverride: monthlyPriceOverride ?? null,
+          generationWindowDaysOverride: generationWindowDaysOverride ?? null,
+          notes: notes ?? null,
+        });
+      }
+      broadcastInvalidation([`/api/companies/${companyId}/retainer-assignment`]);
+      res.json(assignment);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // PUT service tracks for an assignment
+  app.put("/api/companies/:companyId/retainer-assignment/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const assignment = await storage.getClientRetainerAssignment(companyId);
+      if (!assignment) return res.status(404).json({ error: "No retainer assignment found for this company" });
+      const { tracks } = req.body as { tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[] };
+      await storage.setClientRetainerServiceTracks(assignment.id, tracks || []);
+      broadcastInvalidation([`/api/companies/${companyId}/retainer-assignment`]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST preview retainer tasks (dry run — no tasks created)
+  app.post("/api/companies/:companyId/retainer-assignment/preview-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const { retainerTemplateId, serviceTrackIds, periodStart, periodDays, includeMonthly, includeQuarterly, includeAnnual } = req.body as {
+        retainerTemplateId: string;
+        serviceTrackIds?: string[];
+        periodStart: string;
+        periodDays: 30 | 60 | 90;
+        includeMonthly: boolean;
+        includeQuarterly: boolean;
+        includeAnnual: boolean;
+      };
+
+      const start = new Date(periodStart);
+      const end = new Date(start.getTime() + (periodDays || 30) * 24 * 60 * 60 * 1000);
+
+      // Load all task templates linked to this retainer template
+      const linked = await storage.getRetainerTemplateTaskTemplates(retainerTemplateId);
+
+      // Load service track info for names
+      const allTracks = await storage.getServiceTracks();
+      const trackMap: Record<string, string> = {};
+      for (const t of allTracks) trackMap[t.id] = t.name;
+
+      // Load existing tasks for this company in the period (for duplicate detection)
+      const existingTasks = await storage.getTasks(companyId);
+      const periodTaskTitles = existingTasks
+        .filter(t => {
+          if (!t.dueDate) return false;
+          const d = new Date(t.dueDate);
+          return d >= start && d <= end;
+        })
+        .map(t => t.title.toLowerCase().trim());
+
+      const previewTasks: any[] = [];
+
+      for (const link of linked) {
+        const tpl = link.template;
+        if (!tpl.isActive) continue;
+
+        // Service track filter
+        if (serviceTrackIds && serviceTrackIds.length > 0 && tpl.serviceTrackId) {
+          if (!serviceTrackIds.includes(tpl.serviceTrackId)) continue;
+        }
+
+        // Cadence filter — determine how many instances to generate
+        const cadence = tpl.cadence || "once";
+        let instances = 0;
+        let monthlyQty = link.monthlyQuantity ?? 1;
+        let quarterlyQty = link.quarterlyQuantity ?? 1;
+        let annualQty = link.annualQuantity ?? 1;
+
+        if (cadence === "monthly" && includeMonthly) {
+          // Count full months in the period
+          const months = Math.floor(periodDays / 30);
+          instances = Math.max(1, months) * monthlyQty;
+        } else if (cadence === "quarterly" && includeQuarterly) {
+          instances = Math.floor(periodDays / 90) > 0 ? quarterlyQty : (periodDays >= 60 ? quarterlyQty : 0);
+          if (instances === 0) instances = 1; // always show at least 1 if included
+        } else if (cadence === "annual" && includeAnnual) {
+          instances = annualQty;
+        } else if (cadence === "once") {
+          instances = 1;
+        } else if (cadence === "weekly" && includeMonthly) {
+          instances = Math.floor(periodDays / 7) * monthlyQty;
+        }
+
+        if (instances <= 0) continue;
+
+        const creditCost = parseFloat(String(link.creditOverride ?? tpl.defaultCreditCost ?? 1));
+        const dueOffsetDays = tpl.defaultDueOffsetDays ?? Math.floor(periodDays / 2);
+
+        for (let i = 0; i < instances; i++) {
+          const dueDate = new Date(start.getTime() + (dueOffsetDays + i * 30) * 24 * 60 * 60 * 1000);
+          if (dueDate > end) break;
+          const dueDateStr = dueDate.toISOString().split("T")[0];
+          const titleLower = tpl.title.toLowerCase().trim();
+          const isDuplicate = periodTaskTitles.includes(titleLower);
+
+          previewTasks.push({
+            taskTemplateId: tpl.id,
+            title: tpl.title,
+            serviceTrackId: tpl.serviceTrackId,
+            serviceTrackName: tpl.serviceTrackId ? (trackMap[tpl.serviceTrackId] || "—") : "—",
+            cadence,
+            dueDate: dueDateStr,
+            roleOwner: tpl.defaultRoleOwner || "—",
+            creditCost,
+            clientVisible: tpl.createsClientVisibleTask,
+            requiresApproval: tpl.requiresClientApproval,
+            templateName: tpl.title,
+            isDuplicate,
+            instanceIndex: i + 1,
+          });
+        }
+      }
+
+      // Compute totals
+      const totalCredits = previewTasks.reduce((sum, t) => sum + t.creditCost, 0);
+      const company = await storage.getCompany(companyId);
+      const retainerTemplate = await storage.getRetainerTemplate(retainerTemplateId);
+      const assignment = await storage.getClientRetainerAssignment(companyId);
+      const monthlyAllowance = assignment?.monthlyCreditAllocationOverride ?? retainerTemplate?.monthlyCreditAllocation ?? company?.monthlyCredits ?? 0;
+
+      const byServiceTrack: Record<string, number> = {};
+      for (const t of previewTasks) {
+        const key = t.serviceTrackName;
+        byServiceTrack[key] = (byServiceTrack[key] || 0) + t.creditCost;
+      }
+
+      res.json({
+        tasks: previewTasks,
+        totals: {
+          totalCredits,
+          monthlyAllowance,
+          projectedOverage: Math.max(0, totalCredits - monthlyAllowance),
+          remainingCredits: Math.max(0, monthlyAllowance - totalCredits),
+          byServiceTrack,
+        },
+      });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // POST confirm-tasks — actually create the tasks from the preview
+  app.post("/api/companies/:companyId/retainer-assignment/confirm-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const companyId = req.params.companyId as string;
+      const { tasks } = req.body as { tasks: Array<{ title: string; dueDate: string; creditCost: number; roleOwner: string; taskTemplateId: string; clientVisible: boolean; requiresApproval: boolean; description?: string }> };
+      const created = [];
+      for (const t of tasks) {
+        const tpl = await storage.getTaskTemplate(t.taskTemplateId).catch(() => null);
+        const task = await storage.createTask({
+          companyId,
+          title: t.title,
+          description: tpl?.description ?? t.description ?? null,
+          status: "pending",
+          priority: tpl?.defaultPriority ?? "medium",
+          creditCost: String(t.creditCost),
+          type: "assigned",
+          dueDate: t.dueDate,
+          taskOwnership: "agency",
+          approvalStatus: t.requiresApproval ? "pending" : "approved",
+          noCredit: false,
+        });
+        created.push(task);
+      }
+      broadcastInvalidation([`/api/tasks?companyId=${companyId}`, `/api/companies/${companyId}`]);
+      res.status(201).json({ created: created.length, tasks: created });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }
 

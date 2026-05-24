@@ -2034,6 +2034,42 @@ export const insertRetainerTemplateTaskTemplateSchema = createInsertSchema(retai
 export type InsertRetainerTemplateTaskTemplate = z.infer<typeof insertRetainerTemplateTaskTemplateSchema>;
 export type RetainerTemplateTaskTemplate = typeof retainerTemplateTaskTemplates.$inferSelect;
 
+// ── Client Retainer Assignments ───────────────────────────────────────────────
+
+export const clientRetainerAssignmentStatusEnum = ["draft", "active", "paused", "cancelled"] as const;
+export type ClientRetainerAssignmentStatus = typeof clientRetainerAssignmentStatusEnum[number];
+
+export const clientRetainerAssignments = pgTable("client_retainer_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  status: text("status").$type<ClientRetainerAssignmentStatus>().notNull().default("draft"),
+  startDate: text("start_date").notNull(),
+  billingDayOfMonth: integer("billing_day_of_month").notNull().default(1),
+  monthlyCreditAllocationOverride: real("monthly_credit_allocation_override"),
+  monthlyPriceOverride: decimal("monthly_price_override", { precision: 10, scale: 2 }),
+  generationWindowDaysOverride: integer("generation_window_days_override"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertClientRetainerAssignmentSchema = createInsertSchema(clientRetainerAssignments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClientRetainerAssignment = z.infer<typeof insertClientRetainerAssignmentSchema>;
+export type ClientRetainerAssignment = typeof clientRetainerAssignments.$inferSelect;
+
+export const clientRetainerServiceTracks = pgTable("client_retainer_service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id").notNull(),
+  serviceTrackId: varchar("service_track_id").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+});
+
+export const insertClientRetainerServiceTrackSchema = createInsertSchema(clientRetainerServiceTracks).omit({ id: true });
+export type InsertClientRetainerServiceTrack = z.infer<typeof insertClientRetainerServiceTrackSchema>;
+export type ClientRetainerServiceTrack = typeof clientRetainerServiceTracks.$inferSelect;
+
 // ── Integration Health ────────────────────────────────────────────────────────
 export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
 export type IntegrationType = typeof integrationTypeEnum[number];
