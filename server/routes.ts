@@ -12115,6 +12115,128 @@ export async function registerRoutes(
     } catch { res.status(500).json({ error: "Failed to delete hill chart" }); }
   });
 
+  // ─── Agency Overview (aggregated command center endpoint) ───────────────────
+
+  app.get("/api/admin/agency-overview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [companies, allTasks, allCampaigns, allContent, allSeo, allMeetings] = await Promise.all([
+        storage.getAllCompanies(),
+        storage.getAllTasks(),
+        storage.getAllCampaignRequests(),
+        storage.getContentCalendarItems({}),
+        storage.getAllSeoDirectories(),
+        storage.getAllMeetingRequests(),
+      ]);
+
+      const companyMap: Record<string, string> = {};
+      for (const c of companies) companyMap[c.id] = c.name;
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const in14 = new Date(today); in14.setDate(today.getDate() + 14);
+      const in30 = new Date(today); in30.setDate(today.getDate() + 30);
+      const in60 = new Date(today); in60.setDate(today.getDate() + 60);
+      const ago7 = new Date(today); ago7.setDate(today.getDate() - 7);
+
+      // ── Approval queue ──
+      const taskApprovals = allTasks
+        .filter(t => t.approvalStatus === "pending_internal_approval" || t.approvalStatus === "pending_approval")
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .slice(0, 20)
+        .map(t => ({ id: t.id, title: t.title, companyId: t.companyId, companyName: companyMap[t.companyId] ?? t.companyId, status: t.status, approvalStatus: t.approvalStatus, dueDate: t.dueDate, createdAt: t.createdAt, priority: t.priority }));
+
+      const campaignApprovals = allCampaigns
+        .filter(c => c.status === "pending")
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .slice(0, 10)
+        .map(c => ({ id: c.id, title: c.name || "Campaign Request", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, createdAt: c.createdAt, isRush: c.isRush }));
+
+      const contentApprovals = allContent
+        .filter(c => c.status === "in_review")
+        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""))
+        .slice(0, 15)
+        .map(c => ({ id: c.id, title: c.title, companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, platform: c.platform, scheduledDate: c.scheduledDate }));
+
+      // ── Campaign health ──
+      const activeCampaigns = allCampaigns
+        .filter(c => c.status === "approved" || c.status === "in_progress")
+        .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+        .slice(0, 25)
+        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, isRush: c.isRush, launchDate: c.launchDate, ownerName: c.ownerName }));
+
+      const atRiskCampaigns = allCampaigns
+        .filter(c => ["approved", "in_progress"].includes(c.status) && c.dueDate && new Date(c.dueDate + "T00:00:00") < today)
+        .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+        .slice(0, 15)
+        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, isRush: c.isRush }));
+
+      const launchingSoon = allCampaigns
+        .filter(c => c.launchDate && !["completed", "cancelled"].includes(c.status) && new Date(c.launchDate + "T00:00:00") >= today && new Date(c.launchDate + "T00:00:00") <= in14)
+        .sort((a, b) => (a.launchDate ?? "").localeCompare(b.launchDate ?? ""))
+        .slice(0, 10)
+        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, launchDate: c.launchDate, dueDate: c.dueDate }));
+
+      // ── SEO queue ──
+      const seoByStatus: Record<string, number> = {};
+      const seoOverdue: Array<{ id: string; name: string; companyId: string; companyName: string; status: string; dueDate: string }> = [];
+      for (const item of allSeo) {
+        seoByStatus[item.status] = (seoByStatus[item.status] || 0) + 1;
+        if (item.dueDate && new Date(item.dueDate + "T00:00:00") < today && item.status !== "live" && item.status !== "archived") {
+          seoOverdue.push({ id: item.id, name: item.name, companyId: item.companyId, companyName: companyMap[item.companyId] ?? item.companyId, status: item.status, dueDate: item.dueDate });
+        }
+      }
+      seoOverdue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+      // ── 30/60-day readiness ──
+      const readiness = companies.map(company => {
+        const co = allContent.filter(c => c.companyId === company.id);
+        const contentNext30 = co.filter(c => {
+          if (!c.scheduledDate || c.status === "published") return false;
+          const d = new Date(c.scheduledDate + "T00:00:00");
+          return d >= today && d <= in30;
+        }).length;
+        const contentNext60 = co.filter(c => {
+          if (!c.scheduledDate || c.status === "published") return false;
+          const d = new Date(c.scheduledDate + "T00:00:00");
+          return d >= today && d <= in60;
+        }).length;
+        const campaignsActive = allCampaigns.filter(c => c.companyId === company.id && ["approved", "in_progress"].includes(c.status)).length;
+        const status = (contentNext30 === 0 && campaignsActive === 0) ? "no_schedule" : (contentNext30 < 3) ? "under_planned" : "well_planned";
+        return { companyId: company.id, companyName: company.name, contentNext30, contentNext60, campaignsActive, status };
+      });
+
+      // ── Recent activity ──
+      const activity: Array<{ type: string; id: string; title: string; companyId: string; companyName: string; ts: string; meta?: string }> = [];
+
+      allTasks.filter(t => t.status === "completed").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8)
+        .forEach(t => activity.push({ type: "task_completed", id: t.id, title: t.title, companyId: t.companyId, companyName: companyMap[t.companyId] ?? t.companyId, ts: t.createdAt }));
+
+      allContent.filter(c => c.status === "published").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 6)
+        .forEach(c => activity.push({ type: "content_published", id: c.id, title: c.title, companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, ts: c.createdAt, meta: c.platform }));
+
+      allCampaigns.filter(c => c.status === "approved").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
+        .forEach(c => activity.push({ type: "campaign_approved", id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, ts: c.createdAt }));
+
+      allMeetings.filter(m => m.status === "scheduled").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
+        .forEach(m => activity.push({ type: "meeting_scheduled", id: m.id, title: m.title, companyId: m.companyId, companyName: companyMap[m.companyId] ?? m.companyId, ts: m.createdAt }));
+
+      activity.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+
+      res.json({
+        approvalQueue: { tasks: taskApprovals, campaigns: campaignApprovals, content: contentApprovals },
+        campaignHealth: { active: activeCampaigns, atRisk: atRiskCampaigns, launchingSoon },
+        seoQueue: { byStatus: seoByStatus, overdue: seoOverdue.slice(0, 10), total: allSeo.length },
+        readiness,
+        recentActivity: activity.slice(0, 20),
+      });
+    } catch (e: any) {
+      console.error("agency-overview error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── SEO / Directory Tracking ────────────────────────────────────────────────
 
   // Global admin view (all companies)
