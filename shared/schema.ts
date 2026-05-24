@@ -152,6 +152,7 @@ export const tasks = pgTable("tasks", {
   billingPeriodStart: text("billing_period_start"),
   billingPeriodEnd: text("billing_period_end"),
   parentTaskId: varchar("parent_task_id"),
+  sortOrder: integer("sort_order").notNull().default(0),
   approvalStatus: text("approval_status").notNull().default("approved"),
   noCredit: boolean("no_credit").notNull().default(false),
   timerStartedAt: text("timer_started_at"),

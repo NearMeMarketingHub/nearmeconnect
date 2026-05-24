@@ -1001,6 +1001,22 @@ export async function registerRoutes(
       }
 
       const newStatus = req.body.status;
+
+      // Sequential subtask blocking: if this is a subtask and status is changing, ensure all previous subtasks are completed
+      if (newStatus && newStatus !== existingTask.status && existingTask.parentTaskId) {
+        const siblings = await storage.getSubtasks(existingTask.parentTaskId);
+        const sorted = [...siblings].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const myIndex = sorted.findIndex(s => s.id === existingTask.id);
+        if (myIndex > 0) {
+          const blockers = sorted.slice(0, myIndex).filter(s => s.status !== "completed");
+          if (blockers.length > 0) {
+            return res.status(400).json({
+              error: `This subtask is blocked. ${blockers.length} previous subtask${blockers.length > 1 ? "s" : ""} must be completed first.`,
+            });
+          }
+        }
+      }
+
       if (newStatus === "completed" && existingTask.status !== "completed") {
         req.body.completedAt = new Date().toISOString();
         req.body.completedBy = userId;
@@ -2918,6 +2934,70 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to update member role:", error);
       res.status(500).json({ error: "Failed to update role" });
+    }
+  });
+
+  // ── Subtask routes ─────────────────────────────────────────────────────────
+  app.get("/api/tasks/:id/subtasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const task = await storage.getTask(req.params.id as string);
+      if (!task) return res.status(404).json({ error: "Task not found" });
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, task.companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const subtasks = await storage.getSubtasks(req.params.id as string);
+      res.json(subtasks);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch subtasks" });
+    }
+  });
+
+  app.post("/api/tasks/:id/subtasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const parentTask = await storage.getTask(req.params.id as string);
+      if (!parentTask) return res.status(404).json({ error: "Parent task not found" });
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Only admins can create subtasks" });
+      const { title, assignedTo, dueDate, creditCost, priority } = req.body;
+      if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
+      const existingSubtasks = await storage.getSubtasks(req.params.id as string);
+      const sortOrder = existingSubtasks.length;
+      const subtask = await storage.createTask({
+        companyId: parentTask.companyId,
+        title: title.trim(),
+        assignedTo: assignedTo || null,
+        assignedBy: userId,
+        dueDate: dueDate || null,
+        creditCost: creditCost ?? parentTask.creditCost,
+        priority: priority || parentTask.priority,
+        status: "pending",
+        type: parentTask.type,
+        taskOwnership: parentTask.taskOwnership,
+        parentTaskId: parentTask.id,
+        sortOrder,
+        categoryId: parentTask.categoryId || null,
+      });
+      res.json(subtask);
+    } catch {
+      res.status(500).json({ error: "Failed to create subtask" });
+    }
+  });
+
+  app.patch("/api/tasks/:id/subtasks/reorder", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Only admins can reorder subtasks" });
+      const { orderedIds } = req.body as { orderedIds: string[] };
+      if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds must be an array" });
+      await Promise.all(orderedIds.map((id, index) => storage.updateTask(id, { sortOrder: index } as any)));
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Failed to reorder subtasks" });
     }
   });
 

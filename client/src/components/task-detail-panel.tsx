@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
-import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target, Mail } from "lucide-react";
+import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target, Mail, ListTodo, Lock } from "lucide-react";
 import { EmailHistory } from "@/components/email-history";
 import { EmailComposerDialog } from "@/components/email-composer-dialog";
 import { ChatMemberSelector } from "@/components/chat-member-selector";
@@ -55,9 +55,10 @@ interface TaskDetailPanelProps {
   onNavigateToChat?: (threadId: string, companyId: string) => void;
   onNavigateToMediaUploads?: () => void;
   onViewCampaign?: (campaignRequestId: string) => void;
+  onOpenTask?: (task: Task) => void;
 }
 
-export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign, onOpenTask }: TaskDetailPanelProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const currentUserId = user?.id;
@@ -86,6 +87,9 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [recurrenceDay, setRecurrenceDay] = useState("1");
   const [recurrenceWeekday, setRecurrenceWeekday] = useState("1");
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState("1");
+  const [showAddSubtask, setShowAddSubtask] = useState(false);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [newSubtaskAssignee, setNewSubtaskAssignee] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch fresh task data to stay in sync
@@ -110,6 +114,28 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       return response.json();
     },
     enabled: !!task,
+  });
+
+  const { data: subtasks } = useQuery<Task[]>({
+    queryKey: ["/api/tasks", task?.id, "subtasks"],
+    queryFn: async () => {
+      if (!task) return [];
+      const r = await fetch(`/api/tasks/${task.id}/subtasks`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!task && !task.parentTaskId,
+  });
+
+  const { data: parentTask } = useQuery<Task | null>({
+    queryKey: ["/api/tasks", task?.parentTaskId],
+    queryFn: async () => {
+      if (!task?.parentTaskId) return null;
+      const r = await fetch(`/api/tasks/${task.parentTaskId}`);
+      if (!r.ok) return null;
+      return r.json();
+    },
+    enabled: !!task?.parentTaskId,
   });
 
   const { data: membershipData } = useQuery<any>({
@@ -424,6 +450,23 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     onError: () => {
       toast({ title: "Failed to reject task", variant: "destructive" });
     },
+  });
+
+  const createSubtaskMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/tasks/${task?.id}/subtasks`, {
+        title: newSubtaskTitle.trim(),
+        assignedTo: newSubtaskAssignee || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id, "subtasks"] });
+      setNewSubtaskTitle("");
+      setNewSubtaskAssignee("");
+      setShowAddSubtask(false);
+      toast({ title: "Subtask created" });
+    },
+    onError: (e: any) => toast({ title: "Failed to create subtask", description: e.message, variant: "destructive" }),
   });
 
   const createChecklistItemMutation = useMutation({
@@ -1899,6 +1942,139 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               </div>
             )}
           </div>
+
+          {/* Parent Task link */}
+          {task.parentTaskId && parentTask && (
+            <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg border text-sm" data-testid="parent-task-link">
+              <ListTodo className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Part of:</span>
+              <button
+                className="font-medium hover:underline text-foreground truncate"
+                onClick={() => onOpenTask?.(parentTask)}
+                data-testid="button-open-parent-task"
+              >
+                {parentTask.title}
+              </button>
+            </div>
+          )}
+
+          {/* Subtasks section */}
+          {!task.parentTaskId && (
+            <div className="space-y-3" data-testid="subtasks-section">
+              <div className="flex items-center justify-between">
+                <Label className="text-muted-foreground text-xs flex items-center gap-1.5">
+                  <ListTodo className="w-3.5 h-3.5" />
+                  Subtasks
+                  {subtasks && subtasks.length > 0 && (
+                    <span className="ml-1">
+                      {subtasks.filter(s => s.status === "completed").length} / {subtasks.length}
+                    </span>
+                  )}
+                </Label>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs px-2"
+                    onClick={() => setShowAddSubtask(!showAddSubtask)}
+                    data-testid="button-add-subtask"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                )}
+              </div>
+
+              {subtasks && subtasks.length > 0 && (
+                <div className="space-y-1.5" data-testid="subtasks-list">
+                  {subtasks.map((st, idx) => {
+                    const prevDone = idx === 0 || subtasks[idx - 1]?.status === "completed";
+                    const isBlocked = !prevDone && st.status === "pending";
+                    return (
+                      <div
+                        key={st.id}
+                        className="flex items-center gap-2.5 p-2.5 rounded-md border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition-colors group"
+                        onClick={() => onOpenTask?.(st)}
+                        data-testid={`subtask-row-${st.id}`}
+                      >
+                        <span className="text-xs text-muted-foreground w-4 text-center shrink-0 font-mono">{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-medium truncate text-sm ${isBlocked ? "text-muted-foreground" : ""}`}>{st.title}</p>
+                          {st.assignedTo && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {assignableUsers.find(u => u.id === st.assignedTo)?.name || "Assigned"}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isBlocked && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700">
+                              <Lock className="w-2.5 h-2.5 mr-0.5" />
+                              Blocked
+                            </Badge>
+                          )}
+                          <Badge
+                            variant={st.status === "completed" ? "secondary" : "outline"}
+                            className={`text-[10px] px-1.5 py-0 ${st.status === "in_progress" ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700" : ""}`}
+                          >
+                            {st.status.replace(/_/g, " ")}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {isAdmin && showAddSubtask && (
+                <div className="p-3 border rounded-lg space-y-2 bg-muted/20" data-testid="add-subtask-form">
+                  <p className="text-xs font-medium text-muted-foreground">New Subtask</p>
+                  <Input
+                    placeholder="Subtask title"
+                    value={newSubtaskTitle}
+                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    className="h-8 text-sm"
+                    data-testid="input-new-subtask-title"
+                    onKeyDown={(e) => { if (e.key === "Enter" && newSubtaskTitle.trim()) createSubtaskMutation.mutate(); }}
+                  />
+                  <Select value={newSubtaskAssignee || "unassigned"} onValueChange={(v) => setNewSubtaskAssignee(v === "unassigned" ? "" : v)}>
+                    <SelectTrigger className="h-8 text-sm" data-testid="select-new-subtask-assignee">
+                      <SelectValue placeholder="Assignee (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">No assignee</SelectItem>
+                      {assignableUsers.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="h-7"
+                      disabled={!newSubtaskTitle.trim() || createSubtaskMutation.isPending}
+                      onClick={() => createSubtaskMutation.mutate()}
+                      data-testid="button-save-subtask"
+                    >
+                      {createSubtaskMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add Subtask"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7"
+                      onClick={() => { setShowAddSubtask(false); setNewSubtaskTitle(""); setNewSubtaskAssignee(""); }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {subtasks?.length === 0 && !showAddSubtask && isAdmin && (
+                <p className="text-xs text-muted-foreground italic" data-testid="text-no-subtasks">No subtasks yet — click Add to create one</p>
+              )}
+            </div>
+          )}
 
           <Separator />
 

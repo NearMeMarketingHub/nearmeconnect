@@ -841,6 +841,18 @@ export default function AdminTasks() {
                               {task.deliverableType.replace(/_/g, " ")}
                             </Badge>
                           )}
+                          {(() => {
+                            if (task.parentTaskId) return null;
+                            const subs = allTasks?.filter(t => t.parentTaskId === task.id) ?? [];
+                            if (subs.length === 0) return null;
+                            const done = subs.filter(s => s.status === "completed").length;
+                            return (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-muted-foreground" data-testid={`badge-subtasks-${task.id}`}>
+                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h4" /></svg>
+                                {done}/{subs.length}
+                              </Badge>
+                            );
+                          })()}
                         </div>
                         {task.description && (
                           <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
@@ -992,6 +1004,7 @@ export default function AdminTasks() {
               setSelectedCampaign(campaign);
             }
           }}
+          onOpenTask={(t) => setSelectedTask(t)}
         />
       </ErrorBoundary>
 

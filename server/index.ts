@@ -358,6 +358,7 @@ async function migrateCampaignWorkspaceColumns() {
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_retainer_assignment_id varchar",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS service_track_id varchar",
     "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS client_visible boolean NOT NULL DEFAULT true",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0",
     // Retainer generated task history (dedup)
     `CREATE TABLE IF NOT EXISTS retainer_generated_tasks (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),

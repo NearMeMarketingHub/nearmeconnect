@@ -4995,6 +4995,7 @@ export default function CompanyDashboard() {
           setSelectedThreadId(threadId);
           setLocation(`/admin/companies/${companyId}?tab=communicate&sub=chat&thread=${threadId}`);
         }}
+        onOpenTask={(t) => setSelectedTask(t)}
       />
       {/* Campaign Detail Panel */}
       <CampaignDetailPanel
