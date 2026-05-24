@@ -830,36 +830,105 @@ async function seedDatabase() {
       log(`Seeded ${retainerSeeds.length} retainer templates`);
     }
 
-    // ── Task Templates ────────────────────────────────────────────────────────
-    const existingTaskTemplates = await storage.getTaskTemplates();
-    if (existingTaskTemplates.length === 0) {
+    // ── Task Templates (package-specific, linked via retainerTemplateTaskTemplates) ─
+    // Determine whether junction table already populated for any retainer template
+    const allRetainerTemplatesForTasks = await storage.getRetainerTemplates();
+    let hasLinkedTaskTemplates = false;
+    if (allRetainerTemplatesForTasks.length > 0) {
+      const firstLinks = await storage.getRetainerTemplateTaskTemplates(allRetainerTemplatesForTasks[0].id);
+      hasLinkedTaskTemplates = firstLinks.length > 0;
+    }
+
+    if (!hasLinkedTaskTemplates) {
+      // Clear any previously seeded generic templates before re-seeding package-specific ones
+      const existingGenericTemplates = await storage.getTaskTemplates();
+      for (const t of existingGenericTemplates) {
+        await storage.deleteTaskTemplate(t.id);
+      }
+
       const allTracks = await storage.getServiceTracks();
       const findTrackId = (fragment: string) =>
         allTracks.find(t => t.name.toLowerCase().includes(fragment.toLowerCase()))?.id ?? null;
 
-      const taskTemplateSeeds = [
-        { title: "Monthly Strategy & Priority Call",          serviceTrack: "Account Management", cadence: "monthly",    role: "account_manager",     credits: "3.00",  clientVisible: true,  approval: false, dueOffset: 30, sortOrder: 1,  desc: "Monthly check-in to review priorities, align on goals, and plan the upcoming month.", instructions: "Prepare agenda: last month wins, current KPIs, priorities for next 30 days." },
-        { title: "Monthly Performance Report",                serviceTrack: "Reporting",           cadence: "monthly",    role: "strategist",          credits: "4.00",  clientVisible: true,  approval: false, dueOffset: 5,  sortOrder: 2,  desc: "Comprehensive monthly report covering all active service tracks, KPIs, and recommendations.", instructions: "Include traffic, leads, campaign results, credit usage, and next-month recommendations." },
-        { title: "Content Calendar Planning (30–60 days)",    serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "2.00",  clientVisible: true,  approval: true,  dueOffset: 14, sortOrder: 3,  desc: "Plan and schedule content calendar for the next 30–60 days across all active channels.", instructions: "Map content themes, platforms, posting cadence, and assign production tasks." },
-        { title: "Blog / Content Piece",                      serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "5.00",  clientVisible: true,  approval: true,  dueOffset: 21, sortOrder: 4,  desc: "Research, write, and publish a long-form blog post or content piece.", instructions: "Include SEO keyword research, header structure, CTA, and meta description." },
-        { title: "Social Post (Graphic + Caption + Posting)", serviceTrack: "Content",             cadence: "weekly",     role: "content_lead",        credits: "0.25",  clientVisible: true,  approval: true,  dueOffset: 7,  sortOrder: 5,  desc: "Design graphic, write caption with hashtags, and schedule or publish to active social channels.", instructions: "Follow brand guidelines, include CTA, review caption for tone and engagement." },
-        { title: "Monthly Newsletter / Email Update",         serviceTrack: "Content",             cadence: "monthly",    role: "content_lead",        credits: "4.00",  clientVisible: true,  approval: true,  dueOffset: 20, sortOrder: 6,  desc: "Write, design, and send monthly email newsletter to subscriber list.", instructions: "Include key wins, promotions, content highlights, and upcoming news." },
-        { title: "Local SEO / GBP Update",                   serviceTrack: "Local SEO",           cadence: "monthly",    role: "account_manager",     credits: "2.00",  clientVisible: false, approval: false, dueOffset: 15, sortOrder: 7,  desc: "Update Google Business Profile posts, photos, Q&A, and review responses.", instructions: "Post 2–4 GBP updates, respond to new reviews, check NAP consistency." },
-        { title: "Directory / Link Tracker Update",           serviceTrack: "Local SEO",           cadence: "monthly",    role: "account_manager",     credits: "1.00",  clientVisible: false, approval: false, dueOffset: 20, sortOrder: 8,  desc: "Audit and update business directory listings and track backlink profile.", instructions: "Check top 20 directories for NAP accuracy, submit corrections as needed." },
-        { title: "HubSpot CRM / Workflow Hygiene",            serviceTrack: "HubSpot",             cadence: "monthly",    role: "hubspot_specialist",  credits: "4.00",  clientVisible: false, approval: false, dueOffset: 25, sortOrder: 9,  desc: "Review and clean CRM data, update workflows, check automation health.", instructions: "Audit contact properties, fix broken workflows, review enrollment criteria." },
-        { title: "Campaign Strategy & Asset Planning",        serviceTrack: "Campaigns",           cadence: "monthly",    role: "strategist",          credits: "3.00",  clientVisible: true,  approval: true,  dueOffset: 14, sortOrder: 10, desc: "Define campaign goals, audience, messaging, channel mix, and required assets.", instructions: "Create campaign brief including objective, offer, audience, timeline, and deliverables." },
-        { title: "Landing Page Update",                       serviceTrack: "Website",             cadence: "monthly",    role: "developer",           credits: "3.00",  clientVisible: false, approval: false, dueOffset: 21, sortOrder: 11, desc: "Update existing landing page content, CTAs, or design elements.", instructions: "Follow brand guidelines, test form submission, verify tracking is intact." },
-        { title: "Full Landing Page Build",                   serviceTrack: "Campaigns",           cadence: "once",       role: "developer",           credits: "5.00",  clientVisible: true,  approval: true,  dueOffset: 21, sortOrder: 12, desc: "Design and build a new conversion-focused landing page.", instructions: "Includes copy, design, build, form setup, CRM integration, and tracking." },
-        { title: "Email Campaign",                            serviceTrack: "Campaigns",           cadence: "monthly",    role: "content_lead",        credits: "4.00",  clientVisible: true,  approval: true,  dueOffset: 18, sortOrder: 13, desc: "Build and send a promotional or nurture email campaign.", instructions: "Segment list, write copy, design template, test links, schedule send." },
-        { title: "CRM Workflow Update",                       serviceTrack: "HubSpot",             cadence: "quarterly",  role: "hubspot_specialist",  credits: "4.00",  clientVisible: false, approval: false, dueOffset: 30, sortOrder: 14, desc: "Build or update an automation workflow in HubSpot or connected CRM.", instructions: "Document workflow logic, test branch conditions, confirm enrollment triggers." },
-        { title: "Paid Ad Optimization (Weekly)",             serviceTrack: "Paid Ads",            cadence: "weekly",     role: "ads_manager",         credits: "1.00",  clientVisible: false, approval: false, dueOffset: 7,  sortOrder: 15, desc: "Weekly review and optimization of active paid ad campaigns.", instructions: "Review CTR, CPC, ROAS, adjust bids/budgets, pause underperformers, test new creatives." },
-        { title: "Monthly Ads Report",                        serviceTrack: "Paid Ads",            cadence: "monthly",    role: "ads_manager",         credits: "2.00",  clientVisible: true,  approval: false, dueOffset: 5,  sortOrder: 16, desc: "Monthly paid ads performance summary with insights and recommendations.", instructions: "Cover spend, impressions, clicks, conversions, ROAS, and next-month recommendations." },
-        { title: "Quarterly Deep Dive & Roadmap Refresh",     serviceTrack: "Account Management",  cadence: "quarterly",  role: "strategist",          credits: "5.00",  clientVisible: true,  approval: false, dueOffset: 7,  sortOrder: 17, desc: "In-depth quarterly review of all service tracks with updated 90-day roadmap.", instructions: "Review all channel performance, revise priorities, document roadmap for next quarter." },
-        { title: "Year-End Report",                           serviceTrack: "Reporting",           cadence: "annual",     role: "strategist",          credits: "6.00",  clientVisible: true,  approval: false, dueOffset: 14, sortOrder: 18, desc: "Annual summary of all marketing activity, results, and strategic recommendations.", instructions: "Cover all service tracks, year-over-year metrics, key wins, and goals for next year." },
+      const findRetainerTemplateId = (fragment: string) =>
+        allRetainerTemplatesForTasks.find(t =>
+          t.name.toLowerCase().includes(fragment.toLowerCase()) ||
+          (t.slug ?? "").toLowerCase().includes(fragment.toLowerCase())
+        )?.id ?? null;
+
+      // Each entry: { pkg, title, serviceTrack, cadence, role, credits, clientVisible, approval, dueOffset, sort, desc, instructions }
+      type TaskSeed = {
+        pkg: string; title: string; serviceTrack: string; cadence: string;
+        role: string; credits: string; clientVisible: boolean; approval: boolean;
+        dueOffset: number; sort: number; desc: string; instructions: string;
+      };
+
+      const taskTemplateSeeds: TaskSeed[] = [
+        // ── Launch / Support ────────────────────────────────────────────────────
+        { pkg: "launch", title: "Monthly client check-in and priority review",     serviceTrack: "Account Management", cadence: "monthly",   role: "account_manager",    credits: "1.50",  clientVisible: true,  approval: false, dueOffset: 28, sort: 1,  desc: "Monthly check-in to align on priorities, review progress, and plan the next 30 days.", instructions: "Prepare agenda: previous month wins, current goals, blockers, and next-month priorities." },
+        { pkg: "launch", title: "Basic performance snapshot",                        serviceTrack: "Reporting",          cadence: "monthly",   role: "strategist",         credits: "2.00",  clientVisible: true,  approval: false, dueOffset: 5,  sort: 2,  desc: "Lightweight monthly snapshot of key metrics and activity across active service tracks.", instructions: "Cover top 3–5 KPIs, notable wins or issues, and a brief next-steps note." },
+        { pkg: "launch", title: "Website and portal maintenance review",             serviceTrack: "Website",            cadence: "monthly",   role: "developer",          credits: "2.50",  clientVisible: false, approval: false, dueOffset: 20, sort: 3,  desc: "Monthly review of website health, portal settings, and technical maintenance items.", instructions: "Check for broken links, plugin updates, form submissions, and hosting status." },
+        { pkg: "launch", title: "Light content or listing update",                   serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "1.50",  clientVisible: true,  approval: true,  dueOffset: 21, sort: 4,  desc: "One light content update, GBP post, or directory listing change per month.", instructions: "Coordinate with client on content preference; publish and confirm live." },
+        { pkg: "launch", title: "CRM or HubSpot hygiene review",                     serviceTrack: "HubSpot",            cadence: "monthly",   role: "hubspot_specialist", credits: "1.50",  clientVisible: false, approval: false, dueOffset: 25, sort: 5,  desc: "Quick CRM hygiene pass: contact deduplication, workflow health check, and list review.", instructions: "Flag any broken workflows or data issues; document findings in the task notes." },
+        { pkg: "launch", title: "Quarterly planning mini-review",                    serviceTrack: "Account Management", cadence: "quarterly", role: "strategist",         credits: "3.50",  clientVisible: true,  approval: false, dueOffset: 7,  sort: 6,  desc: "Brief quarterly retrospective and priority refresh to align on next quarter's focus.", instructions: "Review what worked, what didn't, and set 1–3 key goals for the next 90 days." },
+
+        // ── Growth ─────────────────────────────────────────────────────────────
+        { pkg: "growth", title: "Monthly strategy and priority call",                serviceTrack: "Account Management", cadence: "monthly",   role: "account_manager",    credits: "2.50",  clientVisible: true,  approval: false, dueOffset: 30, sort: 1,  desc: "Monthly strategy call to review performance, set priorities, and align on upcoming work.", instructions: "Prepare prior-month recap, KPI dashboard, and 30-day priority list before call." },
+        { pkg: "growth", title: "Monthly performance report",                        serviceTrack: "Reporting",          cadence: "monthly",   role: "strategist",         credits: "4.00",  clientVisible: true,  approval: false, dueOffset: 5,  sort: 2,  desc: "Full monthly performance report covering all active service tracks with insights and next steps.", instructions: "Include traffic, leads, campaign results, credit usage, and recommendations." },
+        { pkg: "growth", title: "Content calendar planning (30–60 days)",            serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "2.00",  clientVisible: true,  approval: true,  dueOffset: 14, sort: 3,  desc: "Plan and schedule the content calendar for the next 30–60 days.", instructions: "Map content themes, platforms, posting cadence, and assign production tasks." },
+        { pkg: "growth", title: "Two blog or content pieces",                        serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "7.00",  clientVisible: true,  approval: true,  dueOffset: 21, sort: 4,  desc: "Research, write, and publish two long-form blog posts or equivalent content pieces.", instructions: "Each piece: keyword research, outline, draft, client review, revisions, and publish." },
+        { pkg: "growth", title: "Four social posts with graphics, captions, and publishing", serviceTrack: "Content",  cadence: "monthly",   role: "content_lead",       credits: "3.00",  clientVisible: true,  approval: true,  dueOffset: 21, sort: 5,  desc: "Create and publish four branded social posts with custom graphics and captions.", instructions: "Follow brand guidelines, include CTA, get client approval before publishing." },
+        { pkg: "growth", title: "Monthly newsletter or email update",                serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "3.00",  clientVisible: true,  approval: true,  dueOffset: 20, sort: 6,  desc: "Write, design, and send the monthly email newsletter to the subscriber list.", instructions: "Include key wins, promotions, content highlights, and a clear CTA." },
+        { pkg: "growth", title: "Local SEO and GBP updates",                        serviceTrack: "Local SEO",          cadence: "monthly",   role: "account_manager",    credits: "3.00",  clientVisible: false, approval: false, dueOffset: 15, sort: 7,  desc: "Monthly Google Business Profile updates including posts, photos, and review responses.", instructions: "Post 2–4 GBP updates, respond to reviews, verify NAP consistency." },
+        { pkg: "growth", title: "Directory and link tracker update",                 serviceTrack: "Local SEO",          cadence: "monthly",   role: "account_manager",    credits: "1.50",  clientVisible: false, approval: false, dueOffset: 20, sort: 8,  desc: "Audit and update business directory listings and backlink tracker.", instructions: "Check top 20 directories for NAP accuracy, submit corrections, log in tracker." },
+        { pkg: "growth", title: "Light HubSpot CRM and workflow maintenance",        serviceTrack: "HubSpot",            cadence: "monthly",   role: "hubspot_specialist", credits: "3.00",  clientVisible: false, approval: false, dueOffset: 25, sort: 9,  desc: "Light monthly CRM hygiene: contact cleanup, list refresh, and workflow health check.", instructions: "Deduplicate contacts, fix broken workflows, review active sequences." },
+        { pkg: "growth", title: "Quarterly roadmap and campaign planning",           serviceTrack: "Account Management", cadence: "quarterly", role: "strategist",         credits: "7.00",  clientVisible: true,  approval: false, dueOffset: 7,  sort: 10, desc: "Quarterly planning session to set campaign priorities and build the 90-day roadmap.", instructions: "Review prior quarter results, define 1–2 campaigns, set service track goals." },
+        { pkg: "growth", title: "One campaign refresh or small campaign build",      serviceTrack: "Campaigns",          cadence: "quarterly", role: "strategist",         credits: "10.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 11, desc: "Refresh an existing campaign or build a lightweight new campaign each quarter.", instructions: "Define offer, audience, copy, landing page or email, CRM workflow, and tracking." },
+
+        // ── Scale ──────────────────────────────────────────────────────────────
+        { pkg: "scale",  title: "Monthly strategy and project management call",      serviceTrack: "Account Management", cadence: "monthly",   role: "account_manager",    credits: "3.00",  clientVisible: true,  approval: false, dueOffset: 30, sort: 1,  desc: "Monthly strategy and project management call covering all active service tracks.", instructions: "Prepare full-service recap, roadmap status, blockers, and 30-day action plan." },
+        { pkg: "scale",  title: "Monthly performance report and action summary",     serviceTrack: "Reporting",          cadence: "monthly",   role: "strategist",         credits: "4.50",  clientVisible: true,  approval: false, dueOffset: 5,  sort: 2,  desc: "Detailed monthly report with channel-by-channel analysis, KPIs, and recommended actions.", instructions: "Cover all tracks, highlight wins and gaps, include next-month priority actions." },
+        { pkg: "scale",  title: "60-day content calendar planning",                  serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "3.00",  clientVisible: true,  approval: true,  dueOffset: 14, sort: 3,  desc: "Build and align on a 60-day content calendar across all active channels.", instructions: "Include blog, social, email, and video themes; assign tasks and deadlines." },
+        { pkg: "scale",  title: "Four blog or content pieces",                       serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "14.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 4,  desc: "Research, write, optimize, and publish four content pieces per month.", instructions: "SEO keyword brief, outline, draft, client review, final revisions, publish." },
+        { pkg: "scale",  title: "Eight social posts with graphics, captions, and publishing", serviceTrack: "Content",  cadence: "monthly",   role: "content_lead",       credits: "6.00",  clientVisible: true,  approval: true,  dueOffset: 21, sort: 5,  desc: "Produce and publish eight branded social posts monthly across active platforms.", instructions: "Brand-compliant graphics, platform-appropriate captions, scheduled publishing." },
+        { pkg: "scale",  title: "Monthly newsletter plus nurture email touchpoint",  serviceTrack: "HubSpot",            cadence: "monthly",   role: "hubspot_specialist", credits: "5.00",  clientVisible: true,  approval: true,  dueOffset: 20, sort: 6,  desc: "Monthly newsletter plus one nurture or re-engagement email touchpoint.", instructions: "Newsletter: highlights and CTA. Nurture: segment-specific message with personalization." },
+        { pkg: "scale",  title: "Local SEO and GBP posting and optimization",        serviceTrack: "Local SEO",          cadence: "monthly",   role: "account_manager",    credits: "5.00",  clientVisible: false, approval: false, dueOffset: 15, sort: 7,  desc: "Monthly local SEO optimization: GBP posts, photo updates, review responses, and NAP audit.", instructions: "4+ GBP posts, review all new reviews, check category/service accuracy." },
+        { pkg: "scale",  title: "SEO optimization and directory progress review",    serviceTrack: "Local SEO",          cadence: "monthly",   role: "account_manager",    credits: "4.00",  clientVisible: false, approval: false, dueOffset: 20, sort: 8,  desc: "Monthly SEO on-page review, keyword ranking check, and directory tracker update.", instructions: "Review ranking changes, update top 30 directories, flag any citation errors." },
+        { pkg: "scale",  title: "HubSpot CRM, workflow hygiene, and improvement",   serviceTrack: "HubSpot",            cadence: "monthly",   role: "hubspot_specialist", credits: "6.00",  clientVisible: false, approval: false, dueOffset: 25, sort: 9,  desc: "Monthly HubSpot maintenance: CRM cleanup, workflow improvements, and list hygiene.", instructions: "Audit contacts, fix workflows, improve automation logic, document changes." },
+        { pkg: "scale",  title: "Campaign asset production or optimization block",   serviceTrack: "Campaigns",          cadence: "monthly",   role: "strategist",         credits: "10.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 10, desc: "Monthly campaign work block: build new assets or optimize existing campaign components.", instructions: "Could include landing page, email sequence, ad creative, or lead magnet work." },
+        { pkg: "scale",  title: "Website and landing page update block",             serviceTrack: "Website",            cadence: "monthly",   role: "developer",          credits: "4.50",  clientVisible: false, approval: false, dueOffset: 21, sort: 11, desc: "Monthly website work block: copy updates, landing page edits, or technical fixes.", instructions: "Review client request queue, execute updates, verify tracking and form functionality." },
+        { pkg: "scale",  title: "Quarterly deep dive and roadmap refresh",           serviceTrack: "Reporting",          cadence: "quarterly", role: "strategist",         credits: "8.00",  clientVisible: true,  approval: false, dueOffset: 7,  sort: 12, desc: "Quarterly deep-dive review of all service tracks with updated 90-day roadmap.", instructions: "Cover all channels, compare to prior quarter, define goals and campaigns for next 90 days." },
+        { pkg: "scale",  title: "One major campaign build or funnel refresh",        serviceTrack: "Campaigns",          cadence: "quarterly", role: "strategist",         credits: "20.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 13, desc: "Build a full campaign or refresh an existing funnel each quarter.", instructions: "Includes strategy, copy, landing page, email sequence, CRM workflow, tracking, and QA." },
+
+        // ── Accelerator ────────────────────────────────────────────────────────
+        { pkg: "accelerator", title: "Weekly account and project leadership touchpoint",          serviceTrack: "Account Management", cadence: "weekly",    role: "account_manager",    credits: "2.50",  clientVisible: true,  approval: false, dueOffset: 7,  sort: 1,  desc: "Weekly leadership touchpoint to track project status, unblock work, and align on priorities.", instructions: "Review open tasks, escalations, upcoming deadlines, and client feedback." },
+        { pkg: "accelerator", title: "Executive performance report and recommendations",          serviceTrack: "Reporting",          cadence: "monthly",   role: "strategist",         credits: "5.50",  clientVisible: true,  approval: false, dueOffset: 5,  sort: 2,  desc: "Executive-grade monthly report with channel analysis, revenue attribution, and strategic recommendations.", instructions: "Include all service track KPIs, revenue impact, anomalies, and top 3 priority actions." },
+        { pkg: "accelerator", title: "60-day and 90-day roadmap management",                      serviceTrack: "Account Management", cadence: "monthly",   role: "strategist",         credits: "5.00",  clientVisible: true,  approval: false, dueOffset: 14, sort: 3,  desc: "Maintain and update the 60-day and 90-day strategic roadmap for all active tracks.", instructions: "Review progress against roadmap, update milestones, identify dependencies and risks." },
+        { pkg: "accelerator", title: "Six to eight content pieces or equivalent",                 serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "24.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 4,  desc: "Full content production cycle: six to eight long-form pieces or equivalent content assets.", instructions: "SEO-optimized briefs, drafts, client review, revisions, CMS upload, and publish." },
+        { pkg: "accelerator", title: "Twelve or more social posts and publishing tasks",          serviceTrack: "Content",            cadence: "monthly",   role: "content_lead",       credits: "9.00",  clientVisible: true,  approval: true,  dueOffset: 21, sort: 5,  desc: "Produce and publish twelve or more branded social posts across all active platforms.", instructions: "Includes graphics, captions, scheduling, and platform-specific optimizations." },
+        { pkg: "accelerator", title: "Newsletter plus segmented email and nurture campaign work", serviceTrack: "HubSpot",            cadence: "monthly",   role: "hubspot_specialist", credits: "9.00",  clientVisible: true,  approval: true,  dueOffset: 20, sort: 6,  desc: "Monthly newsletter plus segmented email campaigns and nurture sequence work.", instructions: "Newsletter, 1–2 segment-specific nurture emails, and sequence health review." },
+        { pkg: "accelerator", title: "GBP, local SEO, and content distribution system",          serviceTrack: "Local SEO",          cadence: "monthly",   role: "account_manager",    credits: "8.00",  clientVisible: false, approval: false, dueOffset: 15, sort: 7,  desc: "Full local SEO system: GBP management, citation building, content distribution, and tracking.", instructions: "6+ GBP posts, citation audit, local content distribution, review generation prompts." },
+        { pkg: "accelerator", title: "HubSpot workflows, CRM hygiene, dashboards, and optimization", serviceTrack: "HubSpot",       cadence: "monthly",   role: "hubspot_specialist", credits: "11.50", clientVisible: false, approval: false, dueOffset: 25, sort: 8,  desc: "Full HubSpot operations: workflow builds, CRM hygiene, dashboard updates, and optimization.", instructions: "Audit all active workflows, clean contacts, update dashboards, improve automation logic." },
+        { pkg: "accelerator", title: "Campaign and funnel build or optimization sprint",          serviceTrack: "Campaigns",          cadence: "monthly",   role: "strategist",         credits: "20.00", clientVisible: true,  approval: true,  dueOffset: 21, sort: 9,  desc: "Monthly campaign or funnel sprint: build new assets or optimize existing campaigns.", instructions: "Full sprint: strategy, copy, design, build, CRM, tracking, QA checklist." },
+        { pkg: "accelerator", title: "Website, landing page, and CRO improvement block",         serviceTrack: "Website",            cadence: "monthly",   role: "developer",          credits: "9.00",  clientVisible: false, approval: false, dueOffset: 21, sort: 10, desc: "Monthly website and CRO improvement block: pages, copy, conversion tracking, and technical fixes.", instructions: "Prioritize conversion rate improvements; document all changes with before/after notes." },
+        { pkg: "accelerator", title: "Paid ads creative, optimization, and reporting",            serviceTrack: "Paid Ads",           cadence: "monthly",   role: "ads_manager",        credits: "11.50", clientVisible: false, approval: false, dueOffset: 21, sort: 11, desc: "Monthly paid ads management: creative refresh, bid optimization, and performance reporting.", instructions: "Review CTR/CPC/ROAS, update creatives, adjust audiences and budgets, report results." },
+        { pkg: "accelerator", title: "Quarterly strategic deep dive and executive roadmap",       serviceTrack: "Reporting",          cadence: "quarterly", role: "strategist",         credits: "10.00", clientVisible: true,  approval: false, dueOffset: 7,  sort: 12, desc: "Quarterly executive deep-dive with strategic roadmap for the next 90 days.", instructions: "Full cross-channel review, revenue analysis, competitive notes, and updated roadmap." },
+        { pkg: "accelerator", title: "Year-end report and next-year growth plan",                 serviceTrack: "Reporting",          cadence: "annual",    role: "strategist",         credits: "12.50", clientVisible: true,  approval: false, dueOffset: 14, sort: 13, desc: "Annual report covering full-year performance with strategic growth plan for the next year.", instructions: "Include all service track YoY data, key milestones, lessons learned, and growth plan." },
       ];
 
+      // Map pkg slug fragment → retainerTemplateId
+      const pkgIds: Record<string, string | null> = {
+        launch:      findRetainerTemplateId("launch"),
+        growth:      findRetainerTemplateId("growth"),
+        scale:       findRetainerTemplateId("scale"),
+        accelerator: findRetainerTemplateId("accelerator"),
+      };
+
+      // Group junction entries by retainer template id
+      const junctionMap: Record<string, { taskTemplateId: string; includedByDefault: boolean; monthlyQuantity: number | null; quarterlyQuantity: number | null; annualQuantity: number | null; creditOverride: string | null }[]> = {};
+
       for (const seed of taskTemplateSeeds) {
-        await storage.createTaskTemplate({
+        const created = await storage.createTaskTemplate({
           title: seed.title,
           description: seed.desc,
           defaultInstructions: seed.instructions,
@@ -874,10 +943,30 @@ async function seedDatabase() {
           requiresClientApproval: seed.approval,
           createsClientVisibleTask: seed.clientVisible,
           isActive: true,
-          sortOrder: seed.sortOrder,
+          sortOrder: seed.sort,
         });
+
+        const retainerTplId = pkgIds[seed.pkg];
+        if (retainerTplId) {
+          if (!junctionMap[retainerTplId]) junctionMap[retainerTplId] = [];
+          junctionMap[retainerTplId].push({
+            taskTemplateId: created.id,
+            includedByDefault: true,
+            monthlyQuantity: 1,
+            quarterlyQuantity: 1,
+            annualQuantity: 1,
+            creditOverride: null,
+          });
+        }
       }
-      log(`Seeded ${taskTemplateSeeds.length} task templates`);
+
+      // Persist junction entries per retainer template
+      for (const [retainerTplId, entries] of Object.entries(junctionMap)) {
+        await storage.setRetainerTemplateTaskTemplates(retainerTplId, entries);
+      }
+
+      const linkedCount = Object.values(junctionMap).reduce((s, arr) => s + arr.length, 0);
+      log(`Seeded ${taskTemplateSeeds.length} task templates, ${linkedCount} package links`);
     }
 
   } catch (error) {

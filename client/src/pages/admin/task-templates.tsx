@@ -49,6 +49,22 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: "text-red-600",
 };
 
+const PACKAGE_BADGE_CLASSES: Record<string, string> = {
+  launch:      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  launch_support: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  growth:      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  scale:       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  accelerator: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+};
+
+function getPackageBadgeClass(rt: RetainerTemplate): string {
+  const slug = (rt.slug ?? rt.name ?? "").toLowerCase();
+  if (slug.includes("accelerator")) return PACKAGE_BADGE_CLASSES.accelerator;
+  if (slug.includes("scale")) return PACKAGE_BADGE_CLASSES.scale;
+  if (slug.includes("growth")) return PACKAGE_BADGE_CLASSES.growth;
+  return PACKAGE_BADGE_CLASSES.launch;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Template Form (used in both create and edit dialogs)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -373,6 +389,7 @@ export default function AdminTaskTemplates() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTrack, setFilterTrack] = useState("_all");
   const [filterStatus, setFilterStatus] = useState("active");
+  const [filterPackage, setFilterPackage] = useState("_all");
 
   const { data: templates = [], isLoading } = useQuery<TaskTemplate[]>({
     queryKey: ["/api/task-templates"],
@@ -386,6 +403,33 @@ export default function AdminTaskTemplates() {
   const { data: retainerTemplates = [] } = useQuery<RetainerTemplate[]>({
     queryKey: ["/api/retainer-templates"],
   });
+
+  const retainerTemplateIds = retainerTemplates.map(t => t.id);
+  const { data: packageLinksData = [] } = useQuery<{ retainerTemplateId: string; taskTemplateId: string }[]>({
+    queryKey: ["/api/retainer-template-task-links-all", retainerTemplateIds],
+    queryFn: async () => {
+      const results = await Promise.all(
+        retainerTemplates.map(async rt => {
+          const res = await fetch(`/api/retainer-templates/${rt.id}/task-templates`);
+          const entries = await res.json() as { taskTemplateId: string }[];
+          return entries.map(e => ({ retainerTemplateId: rt.id, taskTemplateId: e.taskTemplateId }));
+        })
+      );
+      return results.flat();
+    },
+    enabled: retainerTemplates.length > 0,
+  });
+
+  const templatePackageMap = useMemo(() => {
+    const map: Record<string, RetainerTemplate[]> = {};
+    for (const link of packageLinksData) {
+      const rt = retainerTemplates.find(r => r.id === link.retainerTemplateId);
+      if (!rt) continue;
+      if (!map[link.taskTemplateId]) map[link.taskTemplateId] = [];
+      map[link.taskTemplateId].push(rt);
+    }
+    return map;
+  }, [packageLinksData, retainerTemplates]);
 
   const createMutation = useMutation({
     mutationFn: async (f: TemplateFormState) => {
@@ -483,10 +527,14 @@ export default function AdminTaskTemplates() {
       if (filterStatus === "active" && !t.isActive) return false;
       if (filterStatus === "inactive" && t.isActive) return false;
       if (filterTrack !== "_all" && t.serviceTrackId !== filterTrack) return false;
+      if (filterPackage !== "_all") {
+        const pkgs = templatePackageMap[t.id] ?? [];
+        if (!pkgs.some(p => p.id === filterPackage)) return false;
+      }
       if (q) return t.title.toLowerCase().includes(q) || (t.description ?? "").toLowerCase().includes(q);
       return true;
     });
-  }, [templates, searchQuery, filterTrack, filterStatus]);
+  }, [templates, searchQuery, filterTrack, filterStatus, filterPackage, templatePackageMap]);
 
   // Group by service track
   const grouped = useMemo(() => {
@@ -514,7 +562,9 @@ export default function AdminTaskTemplates() {
     </AdminLayout>
   );
 
-  const renderRow = (t: TaskTemplate) => (
+  const renderRow = (t: TaskTemplate) => {
+    const pkgs = templatePackageMap[t.id] ?? [];
+    return (
     <div key={t.id} className={`flex items-start justify-between gap-4 py-3.5 ${t.isActive ? "" : "opacity-50"}`} data-testid={`tt-row-${t.id}`}>
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <Switch
@@ -534,7 +584,7 @@ export default function AdminTaskTemplates() {
             {!t.createsClientVisibleTask && <Badge variant="outline" className="text-xs text-muted-foreground">Internal</Badge>}
           </div>
           {t.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{t.description}</p>}
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             {t.defaultRoleOwner && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <User className="h-3 w-3" />{ROLE_OWNER_LABELS[t.defaultRoleOwner] ?? t.defaultRoleOwner}
@@ -542,16 +592,29 @@ export default function AdminTaskTemplates() {
             )}
             {t.defaultCreditCost && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Coins className="h-3 w-3" />{t.defaultCreditCost} credits
+                <Coins className="h-3 w-3" />{t.defaultCreditCost} cr
               </span>
             )}
             {t.defaultDueOffsetDays != null && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />Due +{t.defaultDueOffsetDays}d
+                <Clock className="h-3 w-3" />+{t.defaultDueOffsetDays}d
               </span>
             )}
             {t.deliverableTypeId && deliverableMap[t.deliverableTypeId] && (
               <span className="text-xs text-muted-foreground">{deliverableMap[t.deliverableTypeId]}</span>
+            )}
+            {pkgs.length > 0 && (
+              <span className="flex items-center gap-1 flex-wrap">
+                {pkgs.map(p => (
+                  <span
+                    key={p.id}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getPackageBadgeClass(p)}`}
+                    data-testid={`badge-pkg-${t.id}-${p.id}`}
+                  >
+                    {p.name}
+                  </span>
+                ))}
+              </span>
             )}
           </div>
         </div>
@@ -580,6 +643,7 @@ export default function AdminTaskTemplates() {
       </div>
     </div>
   );
+  };
 
   return (
     <AdminLayout>
@@ -632,6 +696,19 @@ export default function AdminTaskTemplates() {
               <SelectItem value="__none">No Track Assigned</SelectItem>
             </SelectContent>
           </Select>
+          {retainerTemplates.length > 0 && (
+            <Select value={filterPackage} onValueChange={setFilterPackage}>
+              <SelectTrigger className="w-[175px]" data-testid="select-filter-package">
+                <SelectValue placeholder="All packages" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All Packages</SelectItem>
+                {retainerTemplates.map(rt => (
+                  <SelectItem key={rt.id} value={rt.id}>{rt.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-[130px]" data-testid="select-filter-status">
               <SelectValue />
