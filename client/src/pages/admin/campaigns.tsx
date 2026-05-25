@@ -85,7 +85,9 @@ export default function AdminCampaigns() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
-  const urlTab = params.get("tab") || "requests";
+  const VALID_TABS = ["requests", "approved", "completed", "types"];
+  const rawTab = params.get("tab") || "requests";
+  const urlTab = VALID_TABS.includes(rawTab) ? rawTab : "requests";
   const [activeTab, setActiveTab] = useState(urlTab);
   const [campaignPages, setCampaignPages] = useState<Record<string, number>>({});
   const [campaignMonthDate, setCampaignMonthDate] = useState(() => new Date());
