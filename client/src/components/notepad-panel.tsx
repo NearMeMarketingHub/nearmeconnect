@@ -123,7 +123,7 @@ export function NotepadPanel({ companyId, currentUserId, currentUserName, isAdmi
       setTaskTitle(""); setTaskDesc("");
       toast({ title: "Task created", description: "Follow-up task created successfully." });
     },
-    onError: () => toast({ title: "Failed to create task", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to create task", description: e?.message || String(e), variant: "destructive" }),
   });
 
   const selected = notes.find(n => n.id === selectedId) ?? null;

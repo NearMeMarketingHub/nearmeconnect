@@ -1088,8 +1088,8 @@ export default function CompanyDashboard() {
       resetTaskForm();
       toast({ title: "Task assigned successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to assign task", variant: "destructive" });
+    onError: (e: any) => {
+      toast({ title: "Failed to assign task", description: e?.message || String(e), variant: "destructive" });
     },
   });
 
