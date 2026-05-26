@@ -559,6 +559,55 @@ export async function sendTaskAssignmentEmail(data: TaskAssignmentEmailData): Pr
   }
 }
 
+export interface NextTaskActivatedEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  taskTitle: string;
+  taskDescription?: string;
+  dueDate?: string;
+  previousTaskTitle: string;
+  companyName: string;
+  portalUrl: string;
+}
+
+export async function sendNextTaskActivatedEmail(data: NextTaskActivatedEmailData): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const dueDateSection = data.dueDate ? `<p><strong>Due Date:</strong> ${formatDateET(data.dueDate)}</p>` : '';
+    const descSection = data.taskDescription ? `<p>${data.taskDescription}</p>` : '';
+    const html = `
+      <!DOCTYPE html><html><head><style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #ea580c; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #ffffff; padding: 20px; border: 1px solid #e5e7eb; }
+        .task-details { background-color: #fff7ed; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ea580c; }
+        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+      </style></head><body><div class="container">
+        <div class="header"><h1>You're Up Next!</h1></div>
+        <div class="content">
+          <p>Hi ${data.recipientName},</p>
+          <p>The task <strong>"${data.previousTaskTitle}"</strong> has just been completed for ${data.companyName}, which means your task is now ready to start.</p>
+          <div class="task-details">
+            <h3 style="margin-top: 0;">${data.taskTitle}</h3>
+            ${descSection}
+            ${dueDateSection}
+          </div>
+          <p>Head to the portal to begin:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 10px 0;"><tr><td style="border-radius: 5px; background-color: #ea580c;" align="center"><a href="${data.portalUrl}" target="_blank" style="background-color: #ea580c; border: 8px solid #ea580c; border-radius: 5px; color: #ffffff; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; text-decoration: none;">Open Task</a></td></tr></table>
+        </div>
+        <div class="footer"><p>Near Me Marketing Hub</p><p>This is an automated notification from your client portal.</p></div>
+      </div></body></html>
+    `;
+    await client.emails.send({ from: fromEmail, to: data.recipientEmail, subject: `You're up next: ${data.taskTitle}`, html });
+    console.log(`Next-task activation email sent to ${data.recipientEmail}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send next-task activation email:', error);
+    return false;
+  }
+}
+
 export interface TaskStatusChangeEmailData {
   recipientEmail: string;
   recipientName: string;

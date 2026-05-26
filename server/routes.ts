@@ -13,7 +13,7 @@ import { registerHubSpotOAuthRoutes } from "./hubspot-oauth/routes";
 import { uploadToSharePoint, uploadToSharePointWithIds, downloadFromSharePoint, deleteFromSharePoint } from "./sharepoint";
 import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificationToUsers } from "./websocket";
 import multer from "multer";
-import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail, buildApprovalRequestEmail, buildMeetingRecapEmail, buildTaskReminderEmail, buildMonthlyReportReadyEmail, buildMonthlyReportClientEmail, buildPlanningGapAlertEmail, sendWorkflowEmail } from "./email";
+import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendNextTaskActivatedEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail, buildApprovalRequestEmail, buildMeetingRecapEmail, buildTaskReminderEmail, buildMonthlyReportReadyEmail, buildMonthlyReportClientEmail, buildPlanningGapAlertEmail, sendWorkflowEmail } from "./email";
 import { generateOnboardingPdf } from "./pdf-generator";
 import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById, getHubSpotBrandData } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
@@ -978,6 +978,28 @@ export async function registerRoutes(
         }
       }
 
+      if (req.body.nextTaskId !== undefined && req.body.nextTaskId !== null) {
+        const candidateId = req.body.nextTaskId as string;
+        if (candidateId === existingTask.id) {
+          return res.status(400).json({ error: "A task cannot link to itself as next task" });
+        }
+        const candidate = await storage.getTask(candidateId);
+        if (!candidate || candidate.companyId !== existingTask.companyId) {
+          return res.status(400).json({ error: "Next task must belong to the same company" });
+        }
+        // Cycle prevention: walk forward chain from candidate; bail if we reach existingTask.id
+        const visited = new Set<string>();
+        let cursor: string | null | undefined = candidate.nextTaskId;
+        while (cursor && !visited.has(cursor)) {
+          if (cursor === existingTask.id) {
+            return res.status(400).json({ error: "Linking would create a cycle in the task chain" });
+          }
+          visited.add(cursor);
+          const node = await storage.getTask(cursor);
+          cursor = node?.nextTaskId ?? null;
+        }
+      }
+
       // Check if assignee is being changed and send notification
       const newAssignee = req.body.assignedTo;
       const assigneeChanged = newAssignee && newAssignee !== existingTask.assignedTo;
@@ -1581,6 +1603,52 @@ export async function registerRoutes(
             checkProjectedUsageAndNotify(existingTask.companyId).catch(err => console.error("Projected usage check failed:", err));
           }
 
+          // Next-task activation: if a linked next task is set, activate it + email assignee
+          if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.nextTaskId) {
+            try {
+              const nextTask = await storage.getTask(existingTask.nextTaskId);
+              if (nextTask && (nextTask.status === "pending" || nextTask.status === "blocked")) {
+                if (nextTask.status === "blocked") {
+                  await storage.updateTask(nextTask.id, { status: "pending" });
+                }
+                const nextCompany = await storage.getCompany(nextTask.companyId);
+                const recipientIds = new Set<string>();
+                if (nextTask.assignedTo) recipientIds.add(nextTask.assignedTo);
+                try {
+                  const extras = await storage.getTaskAssignees(nextTask.id);
+                  for (const a of extras) if (a.userId) recipientIds.add(a.userId);
+                } catch {}
+                for (const rid of Array.from(recipientIds)) {
+                  await createAndBroadcastNotification({
+                    userId: rid,
+                    type: "task_assigned",
+                    title: "Task Ready to Start",
+                    message: `"${existingTask.title}" was completed — you can now start "${nextTask.title}".`,
+                    link: `/client/tasks?taskId=${nextTask.id}`,
+                    createdBy: userId,
+                    relatedTaskId: nextTask.id,
+                  });
+                  const u = await storage.getUser(rid);
+                  if (u?.email && nextCompany) {
+                    sendNextTaskActivatedEmail({
+                      recipientEmail: u.email,
+                      recipientName: [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Team Member',
+                      taskTitle: nextTask.title,
+                      taskDescription: nextTask.description || undefined,
+                      dueDate: nextTask.dueDate || undefined,
+                      previousTaskTitle: existingTask.title,
+                      companyName: nextCompany.name,
+                      portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${nextTask.id}`,
+                    }).catch(err => console.error("Failed to send next-task email:", err));
+                  }
+                }
+                broadcastInvalidation(["/api/tasks", "/api/notifications"]);
+              }
+            } catch (nextErr) {
+              console.error("Failed to activate next task:", nextErr);
+            }
+          }
+
           // Campaign auto-complete: targeted query replaces full table scan
           if (newStatus === "completed" && existingTask.campaignRequestId) {
             try {
@@ -1602,6 +1670,39 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Failed to update task:", error?.message || error, error?.stack);
       res.status(500).json({ error: "Failed to update task" });
+    }
+  });
+
+  // Strategy Board (freeform whiteboard, one per company)
+  app.get("/api/companies/:companyId/strategy-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const board = await storage.getStrategyBoard(companyId);
+      res.json(board || null);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch strategy board" });
+    }
+  });
+
+  app.put("/api/companies/:companyId/strategy-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { snapshot } = req.body || {};
+      const board = await storage.upsertStrategyBoard(companyId, snapshot ?? null, userId);
+      broadcastInvalidation([`/api/companies/${companyId}/strategy-board`]);
+      res.json(board);
+    } catch (error: any) {
+      console.error("Failed to save strategy board:", error?.message || error);
+      res.status(500).json({ error: "Failed to save strategy board" });
     }
   });
 

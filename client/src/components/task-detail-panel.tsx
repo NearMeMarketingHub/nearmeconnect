@@ -1062,6 +1062,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
             </div>
           </div>
 
+          <NextTaskLinker task={task} isAdmin={isAdmin} companyId={companyId} onUpdate={(nextTaskId) => updateTaskMutation.mutate({ nextTaskId })} onOpenTask={onOpenTask} />
+
           {(taskCategoriesData || []).length > 0 && (
             <div className="space-y-2">
               <Label className="text-muted-foreground text-xs">Category</Label>
@@ -2694,5 +2696,73 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
         </DialogContent>
       </Dialog>
     </Sheet>
+  );
+}
+
+function NextTaskLinker({ task, isAdmin, companyId, onUpdate, onOpenTask }: {
+  task: Task;
+  isAdmin: boolean;
+  companyId: string;
+  onUpdate: (nextTaskId: string | null) => void;
+  onOpenTask?: (task: Task) => void;
+}) {
+  const { data: companyTasks = [] } = useQuery<Task[]>({
+    queryKey: ["/api/tasks", { companyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/tasks?companyId=${companyId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!companyId,
+  });
+
+  const candidates = useMemo(
+    () => companyTasks.filter(t => t.id !== task.id && t.status !== "completed"),
+    [companyTasks, task.id]
+  );
+  const linked = task.nextTaskId ? companyTasks.find(t => t.id === task.nextTaskId) : null;
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-foreground text-xs flex items-center gap-1">
+        <Link2 className="w-3 h-3" /> Next task (auto-activates on completion)
+      </Label>
+      {isAdmin ? (
+        <Select
+          value={task.nextTaskId || "none"}
+          onValueChange={(val) => onUpdate(val === "none" ? null : val)}
+        >
+          <SelectTrigger className="h-9" data-testid="select-next-task">
+            <SelectValue placeholder="No next task" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No next task</SelectItem>
+            {candidates.map(t => (
+              <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex items-center gap-2 h-9 px-3 border rounded-md text-sm">
+          {linked ? (
+            <button
+              type="button"
+              className="text-primary hover:underline truncate"
+              onClick={() => onOpenTask?.(linked)}
+              data-testid="link-next-task"
+            >
+              {linked.title}
+            </button>
+          ) : (
+            <span className="text-muted-foreground">No next task</span>
+          )}
+        </div>
+      )}
+      {isAdmin && linked && (
+        <p className="text-xs text-muted-foreground">
+          When this task is completed, "{linked.title}" will be set to pending and its assignee will be emailed.
+        </p>
+      )}
+    </div>
   );
 }

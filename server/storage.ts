@@ -255,7 +255,9 @@ import {
   retainerGenerationLogs,
   type RetainerGenerationLog,
   type InsertRetainerGenerationLog,
+  type StrategyBoard,
 } from "@shared/schema";
+import { strategyBoards } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray, or } from "drizzle-orm";
@@ -322,6 +324,9 @@ export interface IStorage {
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<Task>): Promise<Task | undefined>;
   deleteTask(id: string): Promise<void>;
+
+  getStrategyBoard(companyId: string): Promise<StrategyBoard | undefined>;
+  upsertStrategyBoard(companyId: string, snapshot: unknown, updatedBy: string): Promise<StrategyBoard>;
   deleteOldCompletedTasks(daysOld: number): Promise<number>;
   deleteOldCompletedCampaigns(daysOld: number): Promise<number>;
   deleteOldCompletedMeetings(daysOld: number): Promise<number>;
@@ -1062,6 +1067,27 @@ export class DatabaseStorage implements IStorage {
   async getTask(id: string): Promise<Task | undefined> {
     const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
     return task;
+  }
+
+  async getStrategyBoard(companyId: string): Promise<StrategyBoard | undefined> {
+    const [row] = await db.select().from(strategyBoards).where(eq(strategyBoards.companyId, companyId));
+    return row;
+  }
+
+  async upsertStrategyBoard(companyId: string, snapshot: unknown, updatedBy: string): Promise<StrategyBoard> {
+    const now = new Date().toISOString();
+    const existing = await this.getStrategyBoard(companyId);
+    if (existing) {
+      const [row] = await db.update(strategyBoards)
+        .set({ snapshot: snapshot as any, updatedAt: now, updatedBy })
+        .where(eq(strategyBoards.companyId, companyId))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(strategyBoards)
+      .values({ companyId, snapshot: snapshot as any, updatedAt: now, updatedBy })
+      .returning();
+    return row;
   }
 
   async createTask(insertTask: InsertTask): Promise<Task> {

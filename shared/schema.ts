@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, decimal, real, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, decimal, real, serial, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -178,7 +178,24 @@ export const tasks = pgTable("tasks", {
   clientRetainerAssignmentId: varchar("client_retainer_assignment_id"),
   serviceTrackId: varchar("service_track_id"),
   clientVisible: boolean("client_visible").notNull().default(true),
+  nextTaskId: varchar("next_task_id"),
 });
+
+export const strategyBoards = pgTable("strategy_boards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  snapshot: jsonb("snapshot"),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: varchar("updated_by"),
+});
+
+export const insertStrategyBoardSchema = createInsertSchema(strategyBoards).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertStrategyBoard = z.infer<typeof insertStrategyBoardSchema>;
+export type StrategyBoard = typeof strategyBoards.$inferSelect;
 
 export const taskChecklistItems = pgTable("task_checklist_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

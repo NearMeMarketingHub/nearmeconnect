@@ -98,6 +98,8 @@ const NAV_GROUPS: NavGroup[] = [
       { title: "Strategy Board",     href: "/admin/strategy",       icon: Zap },
       { title: "AI Brief Generator", href: "/admin/ai-brief",       icon: Star },
       { title: "Asset Library",      href: "/admin/asset-library",  icon: Image },
+      { title: "Media Profiles",     href: "/admin/media-profiles", icon: Image },
+      { title: "Media Submissions",  href: "/admin/media-submissions", icon: ClipboardList },
       { title: "Resource Library",   href: "/admin/resource-library", icon: FolderOpen },
       { title: "Workflows Library",  href: "/admin/workflow-library", icon: Activity },
       { title: "SEO / Directories",  href: "/admin/seo",              icon: Globe },
