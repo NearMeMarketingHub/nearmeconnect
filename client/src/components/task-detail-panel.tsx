@@ -2706,21 +2706,27 @@ function NextTaskLinker({ task, isAdmin, companyId, onUpdate, onOpenTask }: {
   onUpdate: (nextTaskId: string | null) => void;
   onOpenTask?: (task: Task) => void;
 }) {
-  const { data: companyTasks = [] } = useQuery<Task[]>({
+  const { data: companyTasksRaw } = useQuery<Task[]>({
     queryKey: ["/api/tasks", { companyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/tasks?companyId=${companyId}`, { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
+      try {
+        const res = await fetch(`/api/tasks?companyId=${companyId}`, { credentials: "include" });
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
+      }
     },
-    enabled: !!companyId,
+    enabled: !!companyId && !!task?.id,
   });
 
+  const companyTasks: Task[] = Array.isArray(companyTasksRaw) ? companyTasksRaw : [];
   const candidates = useMemo(
-    () => companyTasks.filter(t => t.id !== task.id && t.status !== "completed"),
+    () => companyTasks.filter(t => t && t.id !== task.id && t.status !== "completed"),
     [companyTasks, task.id]
   );
-  const linked = task.nextTaskId ? companyTasks.find(t => t.id === task.nextTaskId) : null;
+  const linked = task.nextTaskId ? companyTasks.find(t => t && t.id === task.nextTaskId) : null;
 
   return (
     <div className="space-y-2">
