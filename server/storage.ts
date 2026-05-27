@@ -326,7 +326,7 @@ export interface IStorage {
   deleteTask(id: string): Promise<void>;
 
   getStrategyBoard(companyId: string): Promise<StrategyBoard | undefined>;
-  upsertStrategyBoard(companyId: string, snapshot: unknown, updatedBy: string): Promise<StrategyBoard>;
+  upsertStrategyBoard(companyId: string, data: { snapshot?: unknown; notes?: string | null }, updatedBy: string): Promise<StrategyBoard>;
   deleteOldCompletedTasks(daysOld: number): Promise<number>;
   deleteOldCompletedCampaigns(daysOld: number): Promise<number>;
   deleteOldCompletedMeetings(daysOld: number): Promise<number>;
@@ -1074,18 +1074,27 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async upsertStrategyBoard(companyId: string, snapshot: unknown, updatedBy: string): Promise<StrategyBoard> {
+  async upsertStrategyBoard(companyId: string, data: { snapshot?: unknown; notes?: string | null }, updatedBy: string): Promise<StrategyBoard> {
     const now = new Date().toISOString();
     const existing = await this.getStrategyBoard(companyId);
+    const patch: any = { updatedAt: now, updatedBy };
+    if (data.snapshot !== undefined) patch.snapshot = data.snapshot as any;
+    if (data.notes !== undefined) patch.notes = data.notes;
     if (existing) {
       const [row] = await db.update(strategyBoards)
-        .set({ snapshot: snapshot as any, updatedAt: now, updatedBy })
+        .set(patch)
         .where(eq(strategyBoards.companyId, companyId))
         .returning();
       return row;
     }
     const [row] = await db.insert(strategyBoards)
-      .values({ companyId, snapshot: snapshot as any, updatedAt: now, updatedBy })
+      .values({
+        companyId,
+        snapshot: (data.snapshot ?? null) as any,
+        notes: data.notes ?? null,
+        updatedAt: now,
+        updatedBy,
+      })
       .returning();
     return row;
   }

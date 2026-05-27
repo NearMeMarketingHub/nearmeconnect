@@ -185,6 +185,7 @@ export const strategyBoards = pgTable("strategy_boards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().unique(),
   snapshot: jsonb("snapshot"),
+  notes: text("notes"),
   updatedAt: text("updated_at").notNull(),
   updatedBy: varchar("updated_by"),
 });

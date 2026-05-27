@@ -1696,8 +1696,15 @@ export async function registerRoutes(
       const companyId = req.params.companyId as string;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { snapshot } = req.body || {};
-      const board = await storage.upsertStrategyBoard(companyId, snapshot ?? null, userId);
+      const { snapshot, notes } = req.body || {};
+      const board = await storage.upsertStrategyBoard(
+        companyId,
+        {
+          ...(snapshot !== undefined ? { snapshot } : {}),
+          ...(notes !== undefined ? { notes: typeof notes === "string" ? notes : null } : {}),
+        },
+        userId,
+      );
       broadcastInvalidation([`/api/companies/${companyId}/strategy-board`]);
       res.json(board);
     } catch (error: any) {
