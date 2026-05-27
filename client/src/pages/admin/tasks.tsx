@@ -55,6 +55,8 @@ import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
+import { BulkTaskDialog } from "@/components/bulk-task-dialog";
+import { Layers } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Target } from "lucide-react";
 
@@ -72,6 +74,7 @@ export default function AdminTasks() {
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignRequest | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const TASKS_PER_PAGE = 10;
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -721,8 +724,13 @@ export default function AdminTasks() {
                 ))}
               </SelectContent>
             </Select>
+            <Button onClick={() => setBulkOpen(true)} data-testid="button-open-bulk-task">
+              <Layers className="w-4 h-4 mr-2" />
+              Create for Multiple
+            </Button>
           </div>
         </div>
+        <BulkTaskDialog open={bulkOpen} onOpenChange={setBulkOpen} />
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex gap-1">

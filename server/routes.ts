@@ -713,6 +713,66 @@ export async function registerRoutes(
     }
   });
 
+  // Bulk task creation across multiple companies (admin-only).
+  // Body: { companyIds: string[], task: { title, description?, priority?, dueDate?, creditCost?, noCredit?, clientVisible?, priority? } }
+  app.post("/api/tasks/bulk-companies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const { companyIds, task } = req.body || {};
+      if (!Array.isArray(companyIds) || companyIds.length === 0) {
+        return res.status(400).json({ error: "companyIds must be a non-empty array" });
+      }
+      if (!task || typeof task.title !== "string" || !task.title.trim()) {
+        return res.status(400).json({ error: "task.title is required" });
+      }
+
+      const created: Array<{ companyId: string; taskId: string }> = [];
+      const failed: Array<{ companyId: string; error: string }> = [];
+
+      for (const companyId of companyIds) {
+        try {
+          const company = await storage.getCompany(companyId);
+          if (!company) {
+            failed.push({ companyId, error: "Company not found" });
+            continue;
+          }
+          const creditCost = task.noCredit ? "0" : (task.creditCost ? String(task.creditCost) : "1");
+          const newTask = await storage.createTask({
+            companyId,
+            title: task.title.trim(),
+            description: task.description || null,
+            status: "pending",
+            priority: task.priority || "medium",
+            creditCost,
+            type: "assigned",
+            deliverableType: task.deliverableType || null,
+            dueDate: task.dueDate || null,
+            assignedBy: userId,
+            assignedTo: null,
+            creditsDeducted: false,
+            approvalStatus: "approved",
+            noCredit: !!task.noCredit,
+            taskOwnership: "agency",
+            clientVisible: task.clientVisible !== false,
+          } as any);
+          created.push({ companyId, taskId: newTask.id });
+        } catch (err: any) {
+          console.error(`Bulk task create failed for company ${companyId}:`, err?.message || err);
+          failed.push({ companyId, error: err?.message || "Failed to create task" });
+        }
+      }
+
+      broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications"]);
+      res.status(201).json({ created, failed, total: companyIds.length });
+    } catch (error: any) {
+      console.error("Bulk task creation failed:", error?.message || error);
+      res.status(500).json({ error: "Bulk task creation failed" });
+    }
+  });
+
   app.post("/api/tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
