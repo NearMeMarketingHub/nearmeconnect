@@ -105,27 +105,31 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     initialData: initialTask || undefined,
   });
 
-  const { data: checklistItems, isLoading: checklistLoading } = useQuery<TaskChecklistItem[]>({
+  const { data: checklistItemsRaw, isLoading: checklistLoading } = useQuery<TaskChecklistItem[]>({
     queryKey: ["/api/tasks", task?.id, "checklist"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/checklist`);
-      if (!response.ok) throw new Error("Failed to fetch checklist");
-      return response.json();
+      if (!response.ok) return [];
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!task,
   });
+  const checklistItems: TaskChecklistItem[] = Array.isArray(checklistItemsRaw) ? checklistItemsRaw : [];
 
-  const { data: subtasks } = useQuery<Task[]>({
+  const { data: subtasksRaw } = useQuery<Task[]>({
     queryKey: ["/api/tasks", task?.id, "subtasks"],
     queryFn: async () => {
       if (!task) return [];
       const r = await fetch(`/api/tasks/${task.id}/subtasks`);
       if (!r.ok) return [];
-      return r.json();
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!task && !task.parentTaskId,
   });
+  const subtasks: Task[] = Array.isArray(subtasksRaw) ? subtasksRaw : [];
 
   const { data: parentTask } = useQuery<Task | null>({
     queryKey: ["/api/tasks", task?.parentTaskId],
@@ -145,22 +149,25 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       const res = await fetch(`/api/companies/${companyId}/members`);
       if (!res.ok) return null;
       const members = await res.json();
+      if (!Array.isArray(members)) return null;
       return members.find((m: any) => m.userId === currentUserId) || null;
     },
     enabled: !isAdmin && !!companyId && !!currentUserId && open,
   });
   const isCompanyApprover = !isAdmin && (membershipData?.role === "company_owner" || membershipData?.role === "company_admin");
 
-  const { data: taskCategoriesData } = useQuery<any[]>({
+  const { data: taskCategoriesRaw } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
     queryFn: async () => {
       if (!companyId) return [];
       const response = await fetch(`/api/companies/${companyId}/task-categories`);
       if (!response.ok) return [];
-      return response.json();
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!companyId && open,
   });
+  const taskCategoriesData: any[] = Array.isArray(taskCategoriesRaw) ? taskCategoriesRaw : [];
 
   const { data: adminUsersData } = useQuery<any>({
     queryKey: ["/api/admin/users"],
@@ -178,7 +185,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
   const adminUsers = Array.isArray(adminUsersData) ? adminUsersData : (adminUsersData?.admins || []);
 
-  const { data: companyUsers } = useQuery<any[]>({
+  const { data: companyUsersRaw } = useQuery<any[]>({
     queryKey: ["/api/admin/companies", companyId, "users"],
     enabled: isAdmin && !!companyId && open,
     staleTime: 60000,
@@ -186,28 +193,32 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       try {
         const res = await fetch(`/api/admin/companies/${companyId}/users`, { credentials: "include" });
         if (!res.ok) return [];
-        return res.json();
+        const d = await res.json();
+        return Array.isArray(d) ? d : [];
       } catch {
         return [];
       }
     },
   });
+  const companyUsers: any[] = Array.isArray(companyUsersRaw) ? companyUsersRaw : [];
 
   const { data: deliverableTypes } = useQuery<DeliverableType[]>({
     queryKey: ["/api/deliverable-types"],
     enabled: (isAdmin || isCompanyApprover) && open,
   });
 
-  const { data: taskAssignees } = useQuery<any[]>({
+  const { data: taskAssigneesRaw } = useQuery<any[]>({
     queryKey: ["/api/tasks", initialTask?.id, "assignees"],
     queryFn: async () => {
       if (!initialTask) return [];
       const response = await fetch(`/api/tasks/${initialTask.id}/assignees`);
       if (!response.ok) return [];
-      return response.json();
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!initialTask && open,
   });
+  const taskAssignees: any[] = Array.isArray(taskAssigneesRaw) ? taskAssigneesRaw : [];
 
   const addAssigneeMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -582,16 +593,18 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
 
-  const { data: comments = [], isLoading: commentsLoading } = useQuery<TaskComment[]>({
+  const { data: commentsRaw = [], isLoading: commentsLoading } = useQuery<TaskComment[]>({
     queryKey: ["/api/tasks", task?.id, "comments"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/comments`);
-      if (!response.ok) throw new Error("Failed to fetch comments");
-      return response.json();
+      if (!response.ok) return [];
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!task,
   });
+  const comments: TaskComment[] = Array.isArray(commentsRaw) ? commentsRaw : [];
 
   const createCommentMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -638,16 +651,18 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { data: attachments = [], isLoading: attachmentsLoading } = useQuery<TaskAttachment[]>({
+  const { data: attachmentsRaw = [], isLoading: attachmentsLoading } = useQuery<TaskAttachment[]>({
     queryKey: ["/api/tasks", task?.id, "attachments"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/attachments`);
-      if (!response.ok) throw new Error("Failed to fetch attachments");
-      return response.json();
+      if (!response.ok) return [];
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!task,
   });
+  const attachments: TaskAttachment[] = Array.isArray(attachmentsRaw) ? attachmentsRaw : [];
 
   const uploadAttachmentMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -700,16 +715,18 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     }
   };
 
-  const { data: taskLinksData = [], isLoading: linksLoading } = useQuery<TaskLink[]>({
+  const { data: taskLinksRaw = [], isLoading: linksLoading } = useQuery<TaskLink[]>({
     queryKey: ["/api/tasks", task?.id, "links"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/links`);
-      if (!response.ok) throw new Error("Failed to fetch links");
-      return response.json();
+      if (!response.ok) return [];
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!task,
   });
+  const taskLinksData: TaskLink[] = Array.isArray(taskLinksRaw) ? taskLinksRaw : [];
 
   const createLinkMutation = useMutation({
     mutationFn: async (data: { url: string; label: string }) => {
@@ -787,22 +804,25 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     enabled: !!task && open,
   });
 
-  const { data: chatMessages = [], isLoading: messagesLoading } = useQuery<ChatMessage[]>({
+  const { data: chatMessagesRaw = [], isLoading: messagesLoading } = useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/threads", taskChat?.id, "messages"],
     queryFn: async () => {
       if (!taskChat) return [];
       const response = await fetch(`/api/chat/threads/${taskChat.id}/messages`);
       if (!response.ok) return [];
-      return response.json();
+      const d = await response.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: !!taskChat && showChat,
   });
+  const chatMessages: ChatMessage[] = Array.isArray(chatMessagesRaw) ? chatMessagesRaw : [];
 
   // Get thread members for existing chat
-  const { data: threadMembers = [] } = useQuery<{ userId: string }[]>({
+  const { data: threadMembersRaw = [] } = useQuery<{ userId: string }[]>({
     queryKey: ["/api/chat/threads", taskChat?.id, "members"],
     enabled: !!taskChat,
   });
+  const threadMembers: { userId: string }[] = Array.isArray(threadMembersRaw) ? threadMembersRaw : [];
 
   const createTaskChatMutation = useMutation({
     mutationFn: async (memberIds: string[]): Promise<ChatThread> => {
