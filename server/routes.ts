@@ -751,7 +751,7 @@ export async function registerRoutes(
             deliverableType: task.deliverableType || null,
             dueDate: task.dueDate || null,
             assignedBy: userId,
-            assignedTo: null,
+            assignedTo: task.assignedTo || null,
             creditsDeducted: false,
             approvalStatus: "approved",
             noCredit: !!task.noCredit,

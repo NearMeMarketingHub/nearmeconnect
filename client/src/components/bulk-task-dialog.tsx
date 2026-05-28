@@ -22,6 +22,21 @@ interface Props {
 export function BulkTaskDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
   const { data: companies = [] } = useQuery<Company[]>({ queryKey: ["/api/companies"] });
+  const { data: adminUsersData } = useQuery<any>({
+    queryKey: ["/api/admin/users"],
+    enabled: open,
+    staleTime: 60000,
+  });
+
+  const adminUsers: { id: string; name: string }[] = useMemo(() => {
+    const list = Array.isArray(adminUsersData)
+      ? adminUsersData
+      : (adminUsersData?.admins ?? []);
+    return list.map((u: any) => ({
+      id: u.userId || u.id,
+      name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Unknown",
+    }));
+  }, [adminUsersData]);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -30,6 +45,7 @@ export function BulkTaskDialog({ open, onOpenChange }: Props) {
   const [creditCost, setCreditCost] = useState<string>("1");
   const [noCredit, setNoCredit] = useState(true);
   const [clientVisible, setClientVisible] = useState(true);
+  const [assignedTo, setAssignedTo] = useState<string>("unassigned");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
@@ -60,6 +76,7 @@ export function BulkTaskDialog({ open, onOpenChange }: Props) {
     setCreditCost("1");
     setNoCredit(true);
     setClientVisible(true);
+    setAssignedTo("unassigned");
     setSelectedIds(new Set());
     setSearch("");
   };
@@ -76,6 +93,7 @@ export function BulkTaskDialog({ open, onOpenChange }: Props) {
           creditCost: noCredit ? "0" : creditCost,
           noCredit,
           clientVisible,
+          assignedTo: assignedTo === "unassigned" ? undefined : assignedTo,
         },
       });
       return res.json() as Promise<{ created: any[]; failed: any[]; total: number }>;
@@ -132,7 +150,7 @@ export function BulkTaskDialog({ open, onOpenChange }: Props) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What needs to be done for each company?"
-                rows={4}
+                rows={3}
                 data-testid="textarea-bulk-description"
               />
             </div>
@@ -159,6 +177,22 @@ export function BulkTaskDialog({ open, onOpenChange }: Props) {
                   data-testid="input-bulk-duedate"
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Assign to</Label>
+              <Select value={assignedTo} onValueChange={setAssignedTo}>
+                <SelectTrigger data-testid="select-bulk-assignee">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {adminUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id} data-testid={`option-assignee-${u.id}`}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
