@@ -114,7 +114,7 @@ export default function AdminTasks() {
 
   const [assigneeTypeFilter, setAssigneeTypeFilter] = useState<"all" | "agency" | "company">("all");
 
-  const { data: adminUsers = [] } = useQuery<{ id: string; userId: string; firstName: string; lastName: string; email: string }[]>({
+  const { data: adminUsersRaw } = useQuery<any>({
     queryKey: ["/api/admin/users"],
     queryFn: async () => {
       const res = await fetch("/api/admin/users");
@@ -123,17 +123,24 @@ export default function AdminTasks() {
       return Array.isArray(data) ? data : (data.admins || []);
     },
   });
+  const adminUsers: { id: string; userId: string; firstName: string; lastName: string; email: string }[] = useMemo(
+    () => Array.isArray(adminUsersRaw) ? adminUsersRaw : (adminUsersRaw?.admins || []),
+    [adminUsersRaw]
+  );
 
-  const { data: companyUsers = [] } = useQuery<{ id: string; firstName: string; lastName: string; email: string }[]>({
+  const { data: companyUsersRaw } = useQuery<any>({
     queryKey: ["/api/admin/companies", selectedCompany, "users"],
     queryFn: async () => {
       if (selectedCompany === "all") return [];
       const res = await fetch(`/api/admin/companies/${selectedCompany}/users`);
       if (!res.ok) return [];
-      return res.json();
+      const d = await res.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: selectedCompany !== "all",
   });
+  const companyUsers: { id: string; firstName: string; lastName: string; email: string }[] =
+    Array.isArray(companyUsersRaw) ? companyUsersRaw : [];
 
   const agencyUserIds = useMemo(() => new Set(adminUsers.map(u => u.userId)), [adminUsers]);
 
