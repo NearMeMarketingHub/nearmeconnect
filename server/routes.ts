@@ -793,7 +793,7 @@ export async function registerRoutes(
 
       if (data.categoryId) {
         const category = await storage.getTaskCategory(data.categoryId);
-        if (!category || category.companyId !== data.companyId) {
+        if (!category || (!category.isGlobal && category.companyId !== data.companyId)) {
           return res.status(400).json({ error: "Invalid category for this company" });
         }
       }
@@ -1033,7 +1033,7 @@ export async function registerRoutes(
 
       if (req.body.categoryId !== undefined && req.body.categoryId !== null) {
         const category = await storage.getTaskCategory(req.body.categoryId);
-        if (!category || category.companyId !== existingTask.companyId) {
+        if (!category || (!category.isGlobal && category.companyId !== existingTask.companyId)) {
           return res.status(400).json({ error: "Invalid category for this company" });
         }
       }
