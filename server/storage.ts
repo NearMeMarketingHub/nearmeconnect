@@ -256,8 +256,10 @@ import {
   type RetainerGenerationLog,
   type InsertRetainerGenerationLog,
   type StrategyBoard,
+  type CompanyServiceConfig,
+  type InsertCompanyServiceConfig,
 } from "@shared/schema";
-import { strategyBoards } from "@shared/schema";
+import { strategyBoards, companyServiceConfig } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray, or } from "drizzle-orm";
@@ -283,6 +285,9 @@ export interface IStorage {
   getAllCompanies(): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, data: Partial<Company>): Promise<Company | undefined>;
+
+  getCompanyServiceConfig(companyId: string): Promise<CompanyServiceConfig | null>;
+  upsertCompanyServiceConfig(companyId: string, data: Partial<InsertCompanyServiceConfig>): Promise<CompanyServiceConfig>;
 
   getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined>;
   getCompanyMembers(companyId: string): Promise<CompanyMember[]>;
@@ -817,6 +822,27 @@ export class DatabaseStorage implements IStorage {
       .where(eq(companies.id, id))
       .returning();
     return company;
+  }
+
+  async getCompanyServiceConfig(companyId: string): Promise<CompanyServiceConfig | null> {
+    const [row] = await db
+      .select()
+      .from(companyServiceConfig)
+      .where(eq(companyServiceConfig.companyId, companyId));
+    return row ?? null;
+  }
+
+  async upsertCompanyServiceConfig(companyId: string, data: Partial<InsertCompanyServiceConfig>): Promise<CompanyServiceConfig> {
+    const now = new Date().toISOString();
+    const [row] = await db
+      .insert(companyServiceConfig)
+      .values({ companyId, ...data, updatedAt: now })
+      .onConflictDoUpdate({
+        target: companyServiceConfig.companyId,
+        set: { ...data, updatedAt: now },
+      })
+      .returning();
+    return row;
   }
 
   async getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined> {

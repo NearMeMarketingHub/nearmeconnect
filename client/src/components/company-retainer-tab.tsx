@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, Settings, Play, CheckCircle2, AlertTriangle, Plus, Eye, FileText,
   Calendar, DollarSign, Layers, ChevronRight, RefreshCw,
+  Globe, Share2, Pencil, MonitorSmartphone, LayoutTemplate,
 } from "lucide-react";
 
 interface CompanyRetainerTabProps {
@@ -57,6 +58,447 @@ function useRetainerTemplates() {
 
 function useServiceTracks() {
   return useQuery<any[]>({ queryKey: ["/api/service-tracks"] });
+}
+
+function useServiceConfig(companyId: string) {
+  return useQuery<any>({
+    queryKey: [`/api/companies/${companyId}/service-config`],
+  });
+}
+
+// ── Service Delivery constants ─────────────────────────────────────────────────
+const HUBSPOT_HUBS = [
+  { key: "marketing_starter", label: "Marketing Hub Starter", group: "Marketing" },
+  { key: "marketing_pro", label: "Marketing Hub Professional", group: "Marketing" },
+  { key: "marketing_enterprise", label: "Marketing Hub Enterprise", group: "Marketing" },
+  { key: "sales_starter", label: "Sales Hub Starter", group: "Sales" },
+  { key: "sales_pro", label: "Sales Hub Professional", group: "Sales" },
+  { key: "sales_enterprise", label: "Sales Hub Enterprise", group: "Sales" },
+  { key: "service_starter", label: "Service Hub Starter", group: "Service" },
+  { key: "service_pro", label: "Service Hub Professional", group: "Service" },
+  { key: "service_enterprise", label: "Service Hub Enterprise", group: "Service" },
+  { key: "content_hub", label: "Content Hub", group: "Other" },
+  { key: "ops_hub", label: "Operations Hub", group: "Other" },
+];
+
+const SOCIAL_TOOLS: Record<string, string> = {
+  hubspot: "HubSpot",
+  followr: "Followr",
+  meta_suite: "Meta Business Suite",
+  buffer: "Buffer / Hootsuite",
+  other: "Other",
+  not_managed: "Not managed by us",
+};
+
+const PLATFORM_LABELS: Record<string, string> = {
+  hubspot: "HubSpot",
+  wordpress: "WordPress",
+  other: "Other platform",
+  na: "Not in scope",
+};
+
+const WEBSITE_ACCESS_LABELS: Record<string, string> = {
+  full_manage: "We fully manage",
+  edit_access: "We have edit access",
+  read_only: "Read-only access",
+  no_access: "No access",
+  na: "Not applicable",
+};
+
+const WEBSITE_ACCESS_COLORS: Record<string, string> = {
+  full_manage: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  edit_access: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  read_only: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+  no_access: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  na: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+};
+
+function parseHubs(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+// ── Service Delivery Edit Dialog ───────────────────────────────────────────────
+function ServiceDeliveryEditDialog({
+  open, onOpenChange, companyId, config,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  companyId: string;
+  config: any;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const [hubs, setHubs] = useState<string[]>(() => parseHubs(config?.hubspotHubs));
+  const [portalId, setPortalId] = useState(config?.hubspotPortalId || "");
+  const [socialTool, setSocialTool] = useState(config?.socialTool || "");
+  const [socialNotes, setSocialNotes] = useState(config?.socialToolNotes || "");
+  const [landingPlatform, setLandingPlatform] = useState(config?.landingPagePlatform || "");
+  const [landingNotes, setLandingNotes] = useState(config?.landingPageNotes || "");
+  const [blogPlatform, setBlogPlatform] = useState(config?.blogPlatform || "");
+  const [blogNotes, setBlogNotes] = useState(config?.blogNotes || "");
+  const [websiteAccess, setWebsiteAccess] = useState(config?.websiteAccess || "");
+  const [websiteUrl, setWebsiteUrl] = useState(config?.websiteUrl || "");
+  const [websiteNotes, setWebsiteNotes] = useState(config?.websiteNotes || "");
+
+  // Sync when config changes (dialog re-opens)
+  const [lastConfig, setLastConfig] = useState(config);
+  if (config !== lastConfig) {
+    setLastConfig(config);
+    setHubs(parseHubs(config?.hubspotHubs));
+    setPortalId(config?.hubspotPortalId || "");
+    setSocialTool(config?.socialTool || "");
+    setSocialNotes(config?.socialToolNotes || "");
+    setLandingPlatform(config?.landingPagePlatform || "");
+    setLandingNotes(config?.landingPageNotes || "");
+    setBlogPlatform(config?.blogPlatform || "");
+    setBlogNotes(config?.blogNotes || "");
+    setWebsiteAccess(config?.websiteAccess || "");
+    setWebsiteUrl(config?.websiteUrl || "");
+    setWebsiteNotes(config?.websiteNotes || "");
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const r = await apiRequest("PUT", `/api/companies/${companyId}/service-config`, {
+        hubspotHubs: JSON.stringify(hubs),
+        hubspotPortalId: portalId || null,
+        socialTool: socialTool || null,
+        socialToolNotes: socialNotes || null,
+        landingPagePlatform: landingPlatform || null,
+        landingPageNotes: landingNotes || null,
+        blogPlatform: blogPlatform || null,
+        blogNotes: blogNotes || null,
+        websiteAccess: websiteAccess || null,
+        websiteUrl: websiteUrl || null,
+        websiteNotes: websiteNotes || null,
+      });
+      if (!r.ok) throw new Error("Failed to save");
+      return r.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/companies/${companyId}/service-config`] });
+      toast({ title: "Service delivery details saved" });
+      onOpenChange(false);
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  function toggleHub(key: string) {
+    setHubs(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  }
+
+  const hubGroups = ["Marketing", "Sales", "Service", "Other"];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Service Delivery Details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-6 py-2">
+
+          {/* HubSpot Portals */}
+          <div>
+            <Label className="text-sm font-semibold mb-3 block">HubSpot Portals / Hubs</Label>
+            <div className="space-y-3">
+              {hubGroups.map(group => (
+                <div key={group}>
+                  <p className="text-xs text-muted-foreground font-medium mb-1.5 uppercase tracking-wide">{group}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    {HUBSPOT_HUBS.filter(h => h.group === group).map(hub => (
+                      <div key={hub.key} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`hub-${hub.key}`}
+                          checked={hubs.includes(hub.key)}
+                          onCheckedChange={() => toggleHub(hub.key)}
+                          data-testid={`checkbox-hub-${hub.key}`}
+                        />
+                        <label htmlFor={`hub-${hub.key}`} className="text-sm cursor-pointer leading-tight">
+                          {hub.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3">
+              <Label htmlFor="portal-id" className="text-xs text-muted-foreground">HubSpot Portal ID (optional)</Label>
+              <Input
+                id="portal-id"
+                value={portalId}
+                onChange={e => setPortalId(e.target.value)}
+                placeholder="e.g. 12345678"
+                className="mt-1 h-8 text-sm"
+                data-testid="input-hubspot-portal-id"
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Social Media */}
+          <div>
+            <Label className="text-sm font-semibold mb-3 block flex items-center gap-2">
+              <Share2 className="h-4 w-4" /> Social Media Management
+            </Label>
+            <Select value={socialTool} onValueChange={setSocialTool}>
+              <SelectTrigger className="h-8 text-sm" data-testid="select-social-tool">
+                <SelectValue placeholder="Select tool…" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SOCIAL_TOOLS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Textarea
+              value={socialNotes}
+              onChange={e => setSocialNotes(e.target.value)}
+              placeholder="Notes about social media setup…"
+              className="mt-2 text-sm min-h-[56px]"
+              data-testid="textarea-social-notes"
+            />
+          </div>
+
+          <Separator />
+
+          {/* Landing Pages & Blog */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-semibold mb-3 block flex items-center gap-2">
+                <LayoutTemplate className="h-4 w-4" /> Landing Pages
+              </Label>
+              <Select value={landingPlatform} onValueChange={setLandingPlatform}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-landing-platform">
+                  <SelectValue placeholder="Select platform…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PLATFORM_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                value={landingNotes}
+                onChange={e => setLandingNotes(e.target.value)}
+                placeholder="Notes…"
+                className="mt-2 text-sm min-h-[56px]"
+                data-testid="textarea-landing-notes"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold mb-3 block flex items-center gap-2">
+                <FileText className="h-4 w-4" /> Blog
+              </Label>
+              <Select value={blogPlatform} onValueChange={setBlogPlatform}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-blog-platform">
+                  <SelectValue placeholder="Select platform…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(PLATFORM_LABELS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                value={blogNotes}
+                onChange={e => setBlogNotes(e.target.value)}
+                placeholder="Notes…"
+                className="mt-2 text-sm min-h-[56px]"
+                data-testid="textarea-blog-notes"
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Website Access */}
+          <div>
+            <Label className="text-sm font-semibold mb-3 block flex items-center gap-2">
+              <Globe className="h-4 w-4" /> Website Access
+            </Label>
+            <Select value={websiteAccess} onValueChange={setWebsiteAccess}>
+              <SelectTrigger className="h-8 text-sm" data-testid="select-website-access">
+                <SelectValue placeholder="Select access level…" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(WEBSITE_ACCESS_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={websiteUrl}
+              onChange={e => setWebsiteUrl(e.target.value)}
+              placeholder="Website URL (optional)"
+              className="mt-2 h-8 text-sm"
+              data-testid="input-website-url"
+            />
+            <Textarea
+              value={websiteNotes}
+              onChange={e => setWebsiteNotes(e.target.value)}
+              placeholder="Notes about website access / login info location…"
+              className="mt-2 text-sm min-h-[56px]"
+              data-testid="textarea-website-notes"
+            />
+          </div>
+
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-service-delivery-cancel">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+            data-testid="button-service-delivery-save"
+          >
+            {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+            Save Details
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Service Delivery Card (admin, editable) ────────────────────────────────────
+function ServiceDeliveryCard({ companyId }: { companyId: string }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const { data: config, isLoading } = useServiceConfig(companyId);
+
+  const hubs = parseHubs(config?.hubspotHubs);
+  const hasAnyData = hubs.length > 0 || config?.socialTool || config?.landingPagePlatform
+    || config?.blogPlatform || config?.websiteAccess;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+            Service Delivery Details
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => setEditOpen(true)}
+            data-testid="button-edit-service-delivery"
+          >
+            <Pencil className="h-3 w-3 mr-1" />
+            {hasAnyData ? "Edit" : "Add Details"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+        ) : !hasAnyData ? (
+          <p className="text-sm text-muted-foreground">
+            No service delivery details added yet. Click <strong>Add Details</strong> to document HubSpot portals, social media tools, CMS platforms, and website access.
+          </p>
+        ) : (
+          <div className="space-y-4 text-sm">
+
+            {/* HubSpot Hubs */}
+            {hubs.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1.5 uppercase tracking-wide">HubSpot Portals</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {hubs.map(key => {
+                    const hub = HUBSPOT_HUBS.find(h => h.key === key);
+                    return (
+                      <Badge key={key} variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400">
+                        {hub?.label || key}
+                      </Badge>
+                    );
+                  })}
+                  {config?.hubspotPortalId && (
+                    <span className="text-xs text-muted-foreground ml-1 flex items-center">
+                      Portal ID: <code className="ml-1 font-mono">{config.hubspotPortalId}</code>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Social, Landing Pages, Blog */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {config?.socialTool && (
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                    <Share2 className="h-3 w-3" /> Social Media
+                  </p>
+                  <p className="font-medium">{SOCIAL_TOOLS[config.socialTool] || config.socialTool}</p>
+                  {config.socialToolNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.socialToolNotes}</p>}
+                </div>
+              )}
+              {config?.landingPagePlatform && (
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                    <LayoutTemplate className="h-3 w-3" /> Landing Pages
+                  </p>
+                  <p className="font-medium">{PLATFORM_LABELS[config.landingPagePlatform] || config.landingPagePlatform}</p>
+                  {config.landingPageNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.landingPageNotes}</p>}
+                </div>
+              )}
+              {config?.blogPlatform && (
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                    <FileText className="h-3 w-3" /> Blog
+                  </p>
+                  <p className="font-medium">{PLATFORM_LABELS[config.blogPlatform] || config.blogPlatform}</p>
+                  {config.blogNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.blogNotes}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Website Access */}
+            {config?.websiteAccess && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                  <Globe className="h-3 w-3" /> Website Access
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${WEBSITE_ACCESS_COLORS[config.websiteAccess] || ""}`}>
+                    {WEBSITE_ACCESS_LABELS[config.websiteAccess] || config.websiteAccess}
+                  </span>
+                  {config.websiteUrl && (
+                    <a
+                      href={config.websiteUrl.startsWith("http") ? config.websiteUrl : `https://${config.websiteUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline"
+                      data-testid="link-website-url"
+                    >
+                      {config.websiteUrl}
+                    </a>
+                  )}
+                </div>
+                {config.websiteNotes && <p className="text-xs text-muted-foreground mt-1">{config.websiteNotes}</p>}
+              </div>
+            )}
+
+          </div>
+        )}
+      </CardContent>
+
+      <ServiceDeliveryEditDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        companyId={companyId}
+        config={config}
+      />
+    </Card>
+  );
 }
 
 // ── Assignment Edit Dialog ────────────────────────────────────────────────────
@@ -718,6 +1160,9 @@ export function CompanyRetainerTab({ companyId, companyName }: CompanyRetainerTa
           </Card>
         </div>
       )}
+
+      {/* Service Delivery Details — always visible, company-level */}
+      <ServiceDeliveryCard companyId={companyId} />
 
       {/* Dialogs */}
       <AssignmentEditDialog

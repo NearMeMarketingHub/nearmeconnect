@@ -24,7 +24,63 @@ import {
   Users,
   XCircle,
   Zap,
+  Globe,
+  Share2,
+  LayoutTemplate,
+  MonitorSmartphone,
 } from "lucide-react";
+
+// ─── Service Delivery constants (mirrored from company-retainer-tab) ──────────
+const SD_HUBSPOT_HUBS = [
+  { key: "marketing_starter", label: "Marketing Hub Starter" },
+  { key: "marketing_pro", label: "Marketing Hub Professional" },
+  { key: "marketing_enterprise", label: "Marketing Hub Enterprise" },
+  { key: "sales_starter", label: "Sales Hub Starter" },
+  { key: "sales_pro", label: "Sales Hub Professional" },
+  { key: "sales_enterprise", label: "Sales Hub Enterprise" },
+  { key: "service_starter", label: "Service Hub Starter" },
+  { key: "service_pro", label: "Service Hub Professional" },
+  { key: "service_enterprise", label: "Service Hub Enterprise" },
+  { key: "content_hub", label: "Content Hub" },
+  { key: "ops_hub", label: "Operations Hub" },
+];
+
+const SD_SOCIAL_TOOLS: Record<string, string> = {
+  hubspot: "HubSpot",
+  followr: "Followr",
+  meta_suite: "Meta Business Suite",
+  buffer: "Buffer / Hootsuite",
+  other: "Other",
+  not_managed: "Not managed by us",
+};
+
+const SD_PLATFORM_LABELS: Record<string, string> = {
+  hubspot: "HubSpot",
+  wordpress: "WordPress",
+  other: "Other platform",
+  na: "Not in scope",
+};
+
+const SD_WEBSITE_ACCESS_LABELS: Record<string, string> = {
+  full_manage: "We fully manage",
+  edit_access: "We have edit access",
+  read_only: "Read-only access",
+  no_access: "No access",
+  na: "Not applicable",
+};
+
+const SD_WEBSITE_ACCESS_COLORS: Record<string, string> = {
+  full_manage: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  edit_access: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  read_only: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+  no_access: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  na: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+};
+
+function sdParseHubs(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
 
 // ─── API Response Types ────────────────────────────────────────────────────────
 
@@ -557,6 +613,7 @@ export function RetainerTasksCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <Target className="h-4 w-4 text-muted-foreground" /> Upcoming Retainer Tasks
+
             <span className="text-[10px] font-normal text-muted-foreground">(next 90 days)</span>
           </CardTitle>
           <Button
@@ -611,6 +668,129 @@ export function RetainerTasksCard({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Service Delivery Card (client read-only view) ─────────────────────────────
+
+export function ServiceDeliveryCard({ companyId }: { companyId: string }) {
+  const { data: config, isLoading } = useQuery<any>({
+    queryKey: [`/api/companies/${companyId}/service-config`],
+  });
+
+  const hubs = sdParseHubs(config?.hubspotHubs);
+  const hasAnyData = hubs.length > 0 || config?.socialTool || config?.landingPagePlatform
+    || config?.blogPlatform || config?.websiteAccess;
+
+  if (isLoading) {
+    return (
+      <Card data-testid="card-service-delivery">
+        <CardHeader className="pb-3">
+          <Skeleton className="h-5 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!hasAnyData) return null;
+
+  return (
+    <Card data-testid="card-service-delivery">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+          Your Tech Stack
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4 text-sm">
+
+          {/* HubSpot Hubs */}
+          {hubs.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground font-medium mb-1.5 uppercase tracking-wide">HubSpot Portals</p>
+              <div className="flex flex-wrap gap-1.5">
+                {hubs.map((key: string) => {
+                  const hub = SD_HUBSPOT_HUBS.find(h => h.key === key);
+                  return (
+                    <Badge
+                      key={key}
+                      variant="outline"
+                      className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-400"
+                      data-testid={`badge-hub-${key}`}
+                    >
+                      {hub?.label || key}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Social, Landing Pages, Blog */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {config?.socialTool && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                  <Share2 className="h-3 w-3" /> Social Media
+                </p>
+                <p className="font-medium">{SD_SOCIAL_TOOLS[config.socialTool] || config.socialTool}</p>
+                {config.socialToolNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.socialToolNotes}</p>}
+              </div>
+            )}
+            {config?.landingPagePlatform && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                  <LayoutTemplate className="h-3 w-3" /> Landing Pages
+                </p>
+                <p className="font-medium">{SD_PLATFORM_LABELS[config.landingPagePlatform] || config.landingPagePlatform}</p>
+                {config.landingPageNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.landingPageNotes}</p>}
+              </div>
+            )}
+            {config?.blogPlatform && (
+              <div>
+                <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                  <FileText className="h-3 w-3" /> Blog
+                </p>
+                <p className="font-medium">{SD_PLATFORM_LABELS[config.blogPlatform] || config.blogPlatform}</p>
+                {config.blogNotes && <p className="text-xs text-muted-foreground mt-0.5">{config.blogNotes}</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Website Access */}
+          {config?.websiteAccess && (
+            <div>
+              <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                <Globe className="h-3 w-3" /> Website
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SD_WEBSITE_ACCESS_COLORS[config.websiteAccess] || ""}`}>
+                  {SD_WEBSITE_ACCESS_LABELS[config.websiteAccess] || config.websiteAccess}
+                </span>
+                {config.websiteUrl && (
+                  <a
+                    href={config.websiteUrl.startsWith("http") ? config.websiteUrl : `https://${config.websiteUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline"
+                    data-testid="link-client-website-url"
+                  >
+                    {config.websiteUrl}
+                  </a>
+                )}
+              </div>
+              {config.websiteNotes && <p className="text-xs text-muted-foreground mt-1">{config.websiteNotes}</p>}
+            </div>
+          )}
+
+        </div>
       </CardContent>
     </Card>
   );

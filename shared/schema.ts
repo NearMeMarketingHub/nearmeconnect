@@ -2229,3 +2229,30 @@ export const retainerGenerationLogs = pgTable("retainer_generation_logs", {
 export const insertRetainerGenerationLogSchema = createInsertSchema(retainerGenerationLogs).omit({ id: true, createdAt: true });
 export type InsertRetainerGenerationLog = z.infer<typeof insertRetainerGenerationLogSchema>;
 export type RetainerGenerationLog = typeof retainerGenerationLogs.$inferSelect;
+
+// ── Company Service Delivery Config ───────────────────────────────────────────
+export const companyServiceConfig = pgTable("company_service_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  // HubSpot: JSON array of hub keys they have
+  hubspotHubs: text("hubspot_hubs"),
+  hubspotPortalId: text("hubspot_portal_id"),
+  // Social media management
+  socialTool: text("social_tool"),       // "hubspot" | "followr" | "meta_suite" | "buffer" | "other" | "not_managed"
+  socialToolNotes: text("social_tool_notes"),
+  // Landing pages
+  landingPagePlatform: text("landing_page_platform"), // "hubspot" | "wordpress" | "other" | "na"
+  landingPageNotes: text("landing_page_notes"),
+  // Blog
+  blogPlatform: text("blog_platform"),   // "hubspot" | "wordpress" | "other" | "na"
+  blogNotes: text("blog_notes"),
+  // Website access
+  websiteAccess: text("website_access"), // "full_manage" | "edit_access" | "read_only" | "no_access" | "na"
+  websiteUrl: text("website_url"),
+  websiteNotes: text("website_notes"),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCompanyServiceConfigSchema = createInsertSchema(companyServiceConfig).omit({ id: true });
+export type InsertCompanyServiceConfig = z.infer<typeof insertCompanyServiceConfigSchema>;
+export type CompanyServiceConfig = typeof companyServiceConfig.$inferSelect;

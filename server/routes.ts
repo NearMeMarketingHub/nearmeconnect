@@ -1773,6 +1773,58 @@ export async function registerRoutes(
     }
   });
 
+  // ── Company Service Delivery Config ─────────────────────────────────────────
+  app.get("/api/companies/:companyId/service-config", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const config = await storage.getCompanyServiceConfig(companyId);
+      res.json(config ?? null);
+    } catch (error: any) {
+      console.error("Failed to fetch service config:", error?.message || error);
+      res.status(500).json({ error: "Failed to fetch service config" });
+    }
+  });
+
+  app.put("/api/companies/:companyId/service-config", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      const {
+        hubspotHubs, hubspotPortalId,
+        socialTool, socialToolNotes,
+        landingPagePlatform, landingPageNotes,
+        blogPlatform, blogNotes,
+        websiteAccess, websiteUrl, websiteNotes,
+      } = req.body || {};
+      const config = await storage.upsertCompanyServiceConfig(companyId, {
+        hubspotHubs: typeof hubspotHubs === "string" ? hubspotHubs : (hubspotHubs ? JSON.stringify(hubspotHubs) : null),
+        hubspotPortalId: hubspotPortalId ?? null,
+        socialTool: socialTool ?? null,
+        socialToolNotes: socialToolNotes ?? null,
+        landingPagePlatform: landingPagePlatform ?? null,
+        landingPageNotes: landingPageNotes ?? null,
+        blogPlatform: blogPlatform ?? null,
+        blogNotes: blogNotes ?? null,
+        websiteAccess: websiteAccess ?? null,
+        websiteUrl: websiteUrl ?? null,
+        websiteNotes: websiteNotes ?? null,
+      });
+      broadcastInvalidation([`/api/companies/${companyId}/service-config`]);
+      res.json(config);
+    } catch (error: any) {
+      console.error("Failed to save service config:", error?.message || error);
+      res.status(500).json({ error: "Failed to save service config" });
+    }
+  });
+
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const campaignTasks = await storage.getTasksByCampaignRequest((req.params.campaignRequestId as string));

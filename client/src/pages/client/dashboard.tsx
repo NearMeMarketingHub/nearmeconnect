@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, ListTodo, CheckCircle, Clock } from "lucide-react";
 import type { Company, Task, MeetingRequest, CampaignRequest } from "@shared/schema";
-import { RetainerOverviewCard, ScopeOfWorkCard } from "@/components/retainer-plan-panel";
+import { RetainerOverviewCard, ScopeOfWorkCard, ServiceDeliveryCard } from "@/components/retainer-plan-panel";
 import { getBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 import { apiRequest } from "@/lib/queryClient";
 import { useEffect, useRef, useState } from "react";
@@ -216,6 +216,9 @@ export default function ClientDashboard({ companyId, embedded = false }: ClientD
           </div>
           <ScopeOfWorkCard companyId={companyId} />
         </div>
+
+        {/* Service Delivery / Tech Stack — shown when admin has configured it */}
+        <ServiceDeliveryCard companyId={companyId} />
 
         <Card>
           <CardHeader>

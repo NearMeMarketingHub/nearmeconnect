@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { parseLocalDate } from "@/lib/utils";
-import { RetainerOverviewCard, ScopeOfWorkCard, RetainerTasksCard } from "@/components/retainer-plan-panel";
+import { RetainerOverviewCard, ScopeOfWorkCard, RetainerTasksCard, ServiceDeliveryCard } from "@/components/retainer-plan-panel";
 import {
   AlertTriangle,
   ArrowRight,
@@ -1453,6 +1453,9 @@ export function CompanyCommandCenter({
 
       {/* Row 3: Retainer Tasks (full width) */}
       <RetainerTasksCard companyId={companyId} onNavigate={onNavigate} />
+
+      {/* Service Delivery Details — shown when configured */}
+      <ServiceDeliveryCard companyId={companyId} />
 
       {/* Row 4: This Week/Next Week + 30/60-Day Plan */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
