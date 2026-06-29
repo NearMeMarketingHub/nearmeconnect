@@ -93,6 +93,17 @@ export default function AdminTasks() {
     queryKey: ["/api/tasks"],
   });
 
+  const { data: mySecondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids"],
+    queryFn: async () => {
+      const res = await fetch("/api/tasks/my-secondary-task-ids");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!user?.id,
+  });
+  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
+
   const { data: campaignRequests } = useQuery<CampaignRequest[]>({
     queryKey: ["/api/admin/campaign-requests"],
   });
@@ -279,7 +290,7 @@ export default function AdminTasks() {
         if (activeQuickFilter === "urgent") return (t.priority === "urgent" || t.priority === "high") && t.status !== "completed";
         return true;
       });
-      if (assignmentFilter === "assigned_to_me" && user) tasks = tasks.filter(t => t.assignedTo === user.id);
+      if (assignmentFilter === "assigned_to_me" && user) tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
       if (selectedCompany !== "all") tasks = tasks.filter(t => t.companyId === selectedCompany);
       tasks.sort((a, b) => {
         if (!a.dueDate && !b.dueDate) return 0;
@@ -294,7 +305,7 @@ export default function AdminTasks() {
     let tasks = allTasks.filter(t => t.status !== "cadence_parent");
     
     if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter(t => t.assignedTo === user.id);
+      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     
     if (selectedCompany !== "all") {
@@ -510,7 +521,7 @@ export default function AdminTasks() {
     let tasks = allTasks.filter(t => t.status !== "cadence_parent");
     
     if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter(t => t.assignedTo === user.id);
+      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     
     if (selectedCompany !== "all") {

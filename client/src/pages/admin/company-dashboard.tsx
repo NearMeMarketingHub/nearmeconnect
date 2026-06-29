@@ -601,6 +601,17 @@ export default function CompanyDashboard() {
     enabled: !!companyId,
   });
 
+  const { data: mySecondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids", { companyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/tasks/my-secondary-task-ids?companyId=${companyId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!companyId && !!user?.id,
+  });
+  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
+
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
     queryFn: async () => {
@@ -1760,7 +1771,7 @@ export default function CompanyDashboard() {
     if (!tasks) return [];
     let filtered = tasks.filter(t => t.status !== "cadence_parent");
     if (assignedToMeFilter && user?.id) {
-      filtered = filtered.filter(t => t.assignedTo === user.id);
+      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     if (companyTaskFilter === "rejected") {
       filtered = filtered.filter(t => t.approvalStatus === "rejected");
@@ -1825,7 +1836,7 @@ export default function CompanyDashboard() {
       return dateStr >= selectedMonthStart && dateStr < selectedMonthEnd;
     });
     if (assignedToMeFilter && user?.id) {
-      normalTasks = normalTasks.filter(t => t.assignedTo === user.id);
+      normalTasks = normalTasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     const nonRejected = normalTasks.filter(t => t.approvalStatus !== "rejected");
     return {

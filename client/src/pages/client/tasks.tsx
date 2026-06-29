@@ -79,6 +79,16 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     enabled: !!companyId,
   });
 
+  const { data: secondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids", { companyId }],
+    queryFn: async () => {
+      const response = await fetch(`/api/tasks/my-secondary-task-ids?companyId=${companyId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!companyId && !!userId,
+  });
+
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
     queryFn: async () => {
@@ -213,9 +223,10 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     });
   };
 
+  const secondaryTaskIdSet = new Set(secondaryTaskIds || []);
   const tasks = showAllTasks || !isAdminOrOwner
     ? allTasks
-    : allTasks?.filter((t) => t.assignedBy === userId || t.assignedTo === userId);
+    : allTasks?.filter((t) => t.assignedBy === userId || t.assignedTo === userId || secondaryTaskIdSet.has(t.id));
 
   const monthFilteredTasks = useMemo(() => {
     if (!tasks) return [];

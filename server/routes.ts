@@ -1923,6 +1923,30 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Returns task IDs (scoped to a company) where the current user is a secondary assignee
+  app.get("/api/tasks/my-secondary-task-ids", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.query.companyId as string | undefined;
+      const assigneeRows = await storage.getTasksByAssignee(userId);
+      if (!assigneeRows.length) return res.json([]);
+      const taskIds = assigneeRows.map(r => r.taskId);
+      // Filter to the requested company if provided
+      if (companyId) {
+        const { db } = await import("./db");
+        const { tasks } = await import("../shared/schema");
+        const { inArray, and, eq } = await import("drizzle-orm");
+        const rows = await db.select({ id: tasks.id }).from(tasks).where(
+          and(inArray(tasks.id, taskIds), eq(tasks.companyId, companyId))
+        );
+        return res.json(rows.map(r => r.id));
+      }
+      res.json(taskIds);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch secondary task assignments" });
+    }
+  });
+
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const campaignTasks = await storage.getTasksByCampaignRequest((req.params.campaignRequestId as string));
