@@ -60,6 +60,7 @@ import AdminIntegrations from "@/pages/admin/integrations";
 import AdminStrategyBoard from "@/pages/admin/strategy-board";
 import ClientResourceLibrary from "@/pages/client/resource-library";
 import ClientGovernment from "@/pages/client/government";
+import ClientGovernmentHub from "@/pages/client/government-hub";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import SignPage from "@/pages/sign";
@@ -258,6 +259,7 @@ function AppContent() {
           {() => <ErrorBoundary showNav><ClientResourceLibrary companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/government">{() => <ErrorBoundary showNav><ClientGovernment /></ErrorBoundary>}</Route>
+        <Route path="/client/government-hub">{() => <ErrorBoundary showNav><ClientGovernmentHub /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );

@@ -258,8 +258,14 @@ import {
   type StrategyBoard,
   type CompanyServiceConfig,
   type InsertCompanyServiceConfig,
+  type CompanyProfile,
+  type InsertCompanyProfile,
+  type GovernmentProfile,
+  type InsertGovernmentProfile,
+  type GovernmentPortal,
+  type InsertGovernmentPortal,
 } from "@shared/schema";
-import { strategyBoards, companyServiceConfig } from "@shared/schema";
+import { strategyBoards, companyServiceConfig, companyProfiles, governmentProfiles, governmentPortals } from "@shared/schema";
 import { HUBSPOT_CHECKLIST_MASTER } from "@shared/hubspot-checklist";
 import { db } from "./db";
 import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray, or } from "drizzle-orm";
@@ -288,6 +294,16 @@ export interface IStorage {
 
   getCompanyServiceConfig(companyId: string): Promise<CompanyServiceConfig | null>;
   upsertCompanyServiceConfig(companyId: string, data: Partial<InsertCompanyServiceConfig>): Promise<CompanyServiceConfig>;
+
+  getCompanyProfile(companyId: string): Promise<CompanyProfile | null>;
+  upsertCompanyProfile(companyId: string, data: Partial<InsertCompanyProfile>): Promise<CompanyProfile>;
+
+  getGovernmentProfile(companyId: string): Promise<GovernmentProfile | null>;
+  upsertGovernmentProfile(companyId: string, data: Partial<InsertGovernmentProfile>): Promise<GovernmentProfile>;
+  getGovernmentPortals(companyId: string): Promise<GovernmentPortal[]>;
+  createGovernmentPortal(data: InsertGovernmentPortal): Promise<GovernmentPortal>;
+  updateGovernmentPortal(id: string, data: Partial<InsertGovernmentPortal>): Promise<GovernmentPortal | undefined>;
+  deleteGovernmentPortal(id: string): Promise<void>;
 
   getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined>;
   getCompanyMembers(companyId: string): Promise<CompanyMember[]>;
@@ -843,6 +859,58 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return row;
+  }
+
+  async getCompanyProfile(companyId: string): Promise<CompanyProfile | null> {
+    const [row] = await db.select().from(companyProfiles).where(eq(companyProfiles.companyId, companyId));
+    return row ?? null;
+  }
+
+  async upsertCompanyProfile(companyId: string, data: Partial<InsertCompanyProfile>): Promise<CompanyProfile> {
+    const now = new Date().toISOString();
+    const [row] = await db
+      .insert(companyProfiles)
+      .values({ companyId, ...data, updatedAt: now })
+      .onConflictDoUpdate({ target: companyProfiles.companyId, set: { ...data, updatedAt: now } })
+      .returning();
+    return row;
+  }
+
+  async getGovernmentProfile(companyId: string): Promise<GovernmentProfile | null> {
+    const [row] = await db.select().from(governmentProfiles).where(eq(governmentProfiles.companyId, companyId));
+    return row ?? null;
+  }
+
+  async upsertGovernmentProfile(companyId: string, data: Partial<InsertGovernmentProfile>): Promise<GovernmentProfile> {
+    const now = new Date().toISOString();
+    const [row] = await db
+      .insert(governmentProfiles)
+      .values({ companyId, ...data, updatedAt: now })
+      .onConflictDoUpdate({ target: governmentProfiles.companyId, set: { ...data, updatedAt: now } })
+      .returning();
+    return row;
+  }
+
+  async getGovernmentPortals(companyId: string): Promise<GovernmentPortal[]> {
+    return await db.select().from(governmentPortals)
+      .where(eq(governmentPortals.companyId, companyId))
+      .orderBy(governmentPortals.sortOrder, governmentPortals.createdAt);
+  }
+
+  async createGovernmentPortal(data: InsertGovernmentPortal): Promise<GovernmentPortal> {
+    const [row] = await db.insert(governmentPortals)
+      .values({ ...data, createdAt: new Date().toISOString() })
+      .returning();
+    return row;
+  }
+
+  async updateGovernmentPortal(id: string, data: Partial<InsertGovernmentPortal>): Promise<GovernmentPortal | undefined> {
+    const [row] = await db.update(governmentPortals).set(data).where(eq(governmentPortals.id, id)).returning();
+    return row;
+  }
+
+  async deleteGovernmentPortal(id: string): Promise<void> {
+    await db.delete(governmentPortals).where(eq(governmentPortals.id, id));
   }
 
   async getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined> {

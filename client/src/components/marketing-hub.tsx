@@ -11,10 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { CompanyCredential, CompanyKnowledgeItem } from "@shared/schema";
 import {
-  Palette, Link2, KeyRound, Lightbulb, BarChart2,
+  Palette, Link2, KeyRound, Lightbulb, BarChart2, Building2,
   Plus, Trash2, Eye, EyeOff, Copy, Check, Save, X,
   ExternalLink, Globe, AlertTriangle, Clock, ArrowRight,
-  ChevronDown, GripVertical, Pencil, RefreshCw,
+  ChevronDown, GripVertical, Pencil, RefreshCw, Phone, MapPin,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,11 +48,12 @@ type CredWithMeta = CompanyCredential & { hasPassword?: boolean };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
-  { key: "brand" as const, label: "Brand Profile", icon: Palette },
-  { key: "links" as const, label: "Links & Resources", icon: Link2 },
-  { key: "credentials" as const, label: "Login Credentials", icon: KeyRound },
-  { key: "ideas" as const, label: "Strategies & Ideas", icon: Lightbulb },
-  { key: "hubspot" as const, label: "HubSpot Data", icon: BarChart2 },
+  { key: "profile" as const,     label: "Company Profile",    icon: Building2 },
+  { key: "brand" as const,       label: "Brand Profile",      icon: Palette },
+  { key: "links" as const,       label: "Links & Resources",  icon: Link2 },
+  { key: "credentials" as const, label: "Login Credentials",  icon: KeyRound },
+  { key: "ideas" as const,       label: "Strategies & Ideas", icon: Lightbulb },
+  { key: "hubspot" as const,     label: "HubSpot Data",       icon: BarChart2 },
 ];
 type SectionKey = typeof NAV_SECTIONS[number]["key"];
 
@@ -181,6 +182,225 @@ const HS_FIELD_LABELS: Array<{ key: keyof HubSpotBrandData; label: string; mapsT
   { key: "facebookPage",      label: "Facebook Page",            mapsTo: "Facebook Link" },
   { key: "linkedinPage",      label: "LinkedIn Page",            mapsTo: "LinkedIn Link" },
 ];
+
+// ─── Company Profile Section ─────────────────────────────────────────────────
+interface CompanyProfileData {
+  businessLegalName?: string | null;
+  dbaName?: string | null;
+  physicalAddress?: string | null;
+  mailingAddress?: string | null;
+  phones?: string | null;
+  primaryEmail?: string | null;
+  website?: string | null;
+  stateOfIncorporation?: string | null;
+  businessRegistrationUrl?: string | null;
+  additionalContacts?: string | null;
+  notes?: string | null;
+}
+
+function CompanyProfileSection({ companyId }: { companyId: string }) {
+  const { toast } = useToast();
+  const { data: profile, isLoading } = useQuery<CompanyProfileData | null>({
+    queryKey: ["/api/companies", companyId, "company-profile"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/company-profile`, { credentials: "include" });
+      if (!r.ok) return null;
+      return r.json();
+    },
+    enabled: !!companyId,
+  });
+
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<CompanyProfileData>({});
+  const [phones, setPhones] = useState<{ label: string; number: string }[]>([]);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (profile !== undefined && !initialized.current) {
+      initialized.current = true;
+      setForm({
+        businessLegalName: profile?.businessLegalName || "",
+        dbaName: profile?.dbaName || "",
+        physicalAddress: profile?.physicalAddress || "",
+        mailingAddress: profile?.mailingAddress || "",
+        primaryEmail: profile?.primaryEmail || "",
+        website: profile?.website || "",
+        stateOfIncorporation: profile?.stateOfIncorporation || "",
+        businessRegistrationUrl: profile?.businessRegistrationUrl || "",
+        notes: profile?.notes || "",
+      });
+      try { setPhones(JSON.parse(profile?.phones || "[]")); } catch { setPhones([]); }
+    }
+  }, [profile]);
+
+  const save = useMutation({
+    mutationFn: () => apiRequest("PUT", `/api/companies/${companyId}/company-profile`, { ...form, phones: JSON.stringify(phones) }),
+    onSuccess: () => {
+      initialized.current = false;
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "company-profile"] });
+      toast({ title: "Company profile saved" });
+      setEditing(false);
+    },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  const set = (k: keyof CompanyProfileData, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  const parsedPhones: { label: string; number: string }[] = (() => {
+    try { return JSON.parse(profile?.phones || "[]"); } catch { return []; }
+  })();
+
+  if (isLoading) return <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-16" />)}</div>;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="font-semibold">Company Profile</h3>
+          <p className="text-sm text-muted-foreground">Business information, addresses, and contacts</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {editing && <Button size="sm" variant="ghost" onClick={() => { setEditing(false); initialized.current = false; }}>Cancel</Button>}
+          <Button size="sm" variant={editing ? "default" : "outline"} onClick={() => editing ? save.mutate() : setEditing(true)} disabled={save.isPending} data-testid="button-edit-company-profile">
+            {editing ? <><Save className="w-3.5 h-3.5 mr-1.5" />{save.isPending ? "Saving…" : "Save Profile"}</> : <><Pencil className="w-3.5 h-3.5 mr-1.5" />Edit Profile</>}
+          </Button>
+        </div>
+      </div>
+
+      {/* Business Names */}
+      <div className="rounded-lg border p-4 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Business Names</p>
+        {editing ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Legal Business Name</label>
+              <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.businessLegalName || ""} onChange={e => set("businessLegalName", e.target.value)} placeholder="Full legal name" data-testid="input-businessLegalName" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">DBA / Trade Name</label>
+              <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.dbaName || ""} onChange={e => set("dbaName", e.target.value)} placeholder="Doing business as…" data-testid="input-dbaName" />
+            </div>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {profile?.businessLegalName && <div><p className="text-xs text-muted-foreground">Legal Name</p><p className="text-sm font-medium">{profile.businessLegalName}</p></div>}
+            {profile?.dbaName && <div><p className="text-xs text-muted-foreground">DBA</p><p className="text-sm">{profile.dbaName}</p></div>}
+            {!profile?.businessLegalName && !profile?.dbaName && <p className="text-sm text-muted-foreground">No business names added yet.</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Contact */}
+      <div className="rounded-lg border p-4 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contact Information</p>
+        {editing ? (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Phone Numbers</p>
+              {phones.map((ph, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <input className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background flex-shrink-0" placeholder="Label" value={ph.label} onChange={e => setPhones(ps => ps.map((p, j) => j === i ? { ...p, label: e.target.value } : p))} data-testid={`input-profile-phone-label-${i}`} />
+                  <input className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background" placeholder="Phone number" value={ph.number} onChange={e => setPhones(ps => ps.map((p, j) => j === i ? { ...p, number: e.target.value } : p))} data-testid={`input-profile-phone-number-${i}`} />
+                  <button onClick={() => setPhones(ps => ps.filter((_, j) => j !== i))} className="p-1 text-destructive hover:bg-destructive/10 rounded" data-testid={`button-remove-profile-phone-${i}`}><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+              <button onClick={() => setPhones(ps => [...ps, { label: "", number: "" }])} className="flex items-center gap-1 text-xs text-primary hover:underline" data-testid="button-add-profile-phone">
+                <Plus className="w-3.5 h-3.5" /> Add phone
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Primary Email</label>
+                <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.primaryEmail || ""} onChange={e => set("primaryEmail", e.target.value)} placeholder="email@company.com" data-testid="input-primaryEmail" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Website</label>
+                <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.website || ""} onChange={e => set("website", e.target.value)} placeholder="https://…" data-testid="input-profile-website" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {parsedPhones.length > 0 && (
+              <div className="space-y-1">
+                {parsedPhones.map((ph, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                    {ph.label && <span className="text-muted-foreground text-xs">{ph.label}:</span>}
+                    <span className="font-mono">{ph.number}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid sm:grid-cols-2 gap-2">
+              {profile?.primaryEmail && <div className="flex items-center gap-1.5 text-sm"><Globe className="w-3.5 h-3.5 text-muted-foreground" />{profile.primaryEmail}</div>}
+              {profile?.website && <a href={profile.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-primary hover:underline"><ExternalLink className="w-3.5 h-3.5" />{profile.website}</a>}
+            </div>
+            {!parsedPhones.length && !profile?.primaryEmail && !profile?.website && <p className="text-sm text-muted-foreground">No contact info added yet.</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Addresses */}
+      <div className="rounded-lg border p-4 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Addresses</p>
+        {editing ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Physical / Business Address</label>
+              <textarea className="w-full border rounded-md px-3 py-1.5 text-sm bg-background resize-none" rows={2} value={form.physicalAddress || ""} onChange={e => set("physicalAddress", e.target.value)} placeholder="Street, City, State ZIP" data-testid="input-profile-physicalAddress" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Mailing Address</label>
+              <textarea className="w-full border rounded-md px-3 py-1.5 text-sm bg-background resize-none" rows={2} value={form.mailingAddress || ""} onChange={e => set("mailingAddress", e.target.value)} placeholder="P.O. Box or mailing address" data-testid="input-profile-mailingAddress" />
+            </div>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {profile?.physicalAddress && <div><p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Physical</p><p className="text-sm whitespace-pre-line">{profile.physicalAddress}</p></div>}
+            {profile?.mailingAddress && <div><p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />Mailing</p><p className="text-sm whitespace-pre-line">{profile.mailingAddress}</p></div>}
+            {!profile?.physicalAddress && !profile?.mailingAddress && <p className="text-sm text-muted-foreground">No addresses added yet.</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Registration */}
+      <div className="rounded-lg border p-4 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registration</p>
+        {editing ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">State of Incorporation</label>
+              <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.stateOfIncorporation || ""} onChange={e => set("stateOfIncorporation", e.target.value)} placeholder="e.g. Florida" data-testid="input-stateOfIncorporation" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">State Registration URL</label>
+              <input className="w-full border rounded-md px-3 py-1.5 text-sm bg-background" value={form.businessRegistrationUrl || ""} onChange={e => set("businessRegistrationUrl", e.target.value)} placeholder="https://search.sunbiz.org/…" data-testid="input-businessRegistrationUrl" />
+            </div>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {profile?.stateOfIncorporation && <div><p className="text-xs text-muted-foreground">State of Incorporation</p><p className="text-sm">{profile.stateOfIncorporation}</p></div>}
+            {profile?.businessRegistrationUrl && <div><p className="text-xs text-muted-foreground">State Registration</p><a href={profile.businessRegistrationUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1"><ExternalLink className="w-3 h-3" />View Registration</a></div>}
+            {!profile?.stateOfIncorporation && !profile?.businessRegistrationUrl && <p className="text-sm text-muted-foreground">No registration info added yet.</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Notes */}
+      {(editing || profile?.notes) && (
+        <div className="rounded-lg border p-4 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</p>
+          {editing ? (
+            <textarea className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none" rows={3} value={form.notes || ""} onChange={e => set("notes", e.target.value)} placeholder="Any additional business notes…" data-testid="input-profile-notes" />
+          ) : (
+            <p className="text-sm whitespace-pre-wrap text-muted-foreground">{profile?.notes}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function BrandProfileSection({ companyId }: { companyId: string }) {
   const { toast } = useToast();
@@ -1147,11 +1367,12 @@ export function MarketingHub({ companyId, onNavigateToTab }: MarketingHubProps) 
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {activeSection === "brand" && <BrandProfileSection companyId={companyId} />}
-        {activeSection === "links" && <LinksSection companyId={companyId} />}
+        {activeSection === "profile"     && <CompanyProfileSection companyId={companyId} />}
+        {activeSection === "brand"       && <BrandProfileSection companyId={companyId} />}
+        {activeSection === "links"       && <LinksSection companyId={companyId} />}
         {activeSection === "credentials" && <CredentialsSection companyId={companyId} />}
-        {activeSection === "ideas" && <IdeasSection companyId={companyId} />}
-        {activeSection === "hubspot" && <HubSpotPlaceholder onNavigate={onNavigateToTab ? () => onNavigateToTab("hubspot") : undefined} />}
+        {activeSection === "ideas"       && <IdeasSection companyId={companyId} />}
+        {activeSection === "hubspot"     && <HubSpotPlaceholder onNavigate={onNavigateToTab ? () => onNavigateToTab("hubspot") : undefined} />}
       </div>
     </div>
   );

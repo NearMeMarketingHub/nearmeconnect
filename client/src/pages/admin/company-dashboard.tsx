@@ -111,6 +111,7 @@ import { TaskBoardView } from "@/components/task-board-view";
 import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import { MarketingHub } from "@/components/marketing-hub";
+import { GovernmentHub } from "@/components/government-hub";
 import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
 import { NotepadPanel } from "@/components/notepad-panel";
 import { MessageBoardPanel } from "@/components/message-board-panel";
@@ -424,13 +425,13 @@ export default function CompanyDashboard() {
       { key: "hill-chart",       label: "Hill Chart" },
     ], defaultSub: "tasks" },
     { key: "marketing",  label: "Marketing",  subTabs: [
-      { key: "marketing",  label: "Marketing Hub" },
-      { key: "onboarding", label: "Info Hub" },
-      { key: "hubspot",    label: "HubSpot" },
-      { key: "workflows",  label: "Workflows" },
-      { key: "notes",      label: "Notes" },
-      { key: "seo",        label: "SEO / Directories" },
-      { key: "gbp",        label: "GBP" },
+      { key: "marketing",    label: "Marketing Hub" },
+      { key: "government",   label: "Government Hub" },
+      { key: "onboarding",   label: "Info Hub" },
+      { key: "hubspot",      label: "HubSpot" },
+      { key: "workflows",    label: "Workflows" },
+      { key: "seo",          label: "SEO / Directories" },
+      { key: "gbp",          label: "GBP" },
     ], defaultSub: "marketing" },
     { key: "communicate", label: "Communicate", subTabs: [
       { key: "chat",     label: "Chat" },
@@ -450,7 +451,7 @@ export default function CompanyDashboard() {
   const TAB_TO_CATEGORY: Record<string, string> = {
     details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
     calendar: "work", cadences: "work", pending_approval: "work",
-    marketing: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", notes: "marketing", seo: "marketing", gbp: "marketing",
+    marketing: "marketing", government: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", seo: "marketing", gbp: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
     "hill-chart": "work",
     users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin", retainer: "admin",
@@ -4572,15 +4573,9 @@ export default function CompanyDashboard() {
             {companyId && <CompanyWorkflowsPanel companyId={companyId} />}
           </TabsContent>
 
-          {/* Notes Tab */}
-          <TabsContent value="notes" className="min-h-0">
-            {companyId && user && (
-              <NotepadPanel
-                companyId={companyId}
-                currentUserId={user.id}
-                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
-              />
-            )}
+          {/* Government Hub Tab */}
+          <TabsContent value="government" className="min-h-0">
+            {companyId && <GovernmentHub companyId={companyId} isAdmin={true} />}
           </TabsContent>
 
           {/* SEO / Directories Tab */}

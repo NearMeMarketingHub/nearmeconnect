@@ -1825,6 +1825,104 @@ export async function registerRoutes(
     }
   });
 
+  // ── Company Profile ───────────────────────────────────────────────────────────
+  app.get("/api/companies/:companyId/company-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(await storage.getCompanyProfile(companyId) ?? null);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/companies/:companyId/company-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      const profile = await storage.upsertCompanyProfile(companyId, req.body || {});
+      broadcastInvalidation([`/api/companies/${companyId}/company-profile`]);
+      res.json(profile);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Government Profile ────────────────────────────────────────────────────────
+  app.get("/api/companies/:companyId/government-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(await storage.getGovernmentProfile(companyId) ?? null);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/companies/:companyId/government-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      const profile = await storage.upsertGovernmentProfile(companyId, req.body || {});
+      broadcastInvalidation([`/api/companies/${companyId}/government-profile`]);
+      res.json(profile);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ── Government Portals ────────────────────────────────────────────────────────
+  app.get("/api/companies/:companyId/government-portals", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      res.json(await storage.getGovernmentPortals(companyId));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/companies/:companyId/government-portals", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const companyId = req.params.companyId as string;
+      const isAdminUser = await storage.isAdmin(userId);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      const portal = await storage.createGovernmentPortal({ ...req.body, companyId });
+      broadcastInvalidation([`/api/companies/${companyId}/government-portals`]);
+      res.status(201).json(portal);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.put("/api/government-portals/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdminUser = await storage.isAdmin(req.user!.id);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      const portal = await storage.updateGovernmentPortal(req.params.id as string, req.body || {});
+      if (!portal) return res.status(404).json({ error: "Portal not found" });
+      broadcastInvalidation([`/api/companies/${portal.companyId}/government-portals`]);
+      res.json(portal);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/government-portals/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdminUser = await storage.isAdmin(req.user!.id);
+      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
+      await storage.deleteGovernmentPortal(req.params.id as string);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const campaignTasks = await storage.getTasksByCampaignRequest((req.params.campaignRequestId as string));

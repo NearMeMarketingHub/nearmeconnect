@@ -2256,3 +2256,76 @@ export const companyServiceConfig = pgTable("company_service_config", {
 export const insertCompanyServiceConfigSchema = createInsertSchema(companyServiceConfig).omit({ id: true });
 export type InsertCompanyServiceConfig = z.infer<typeof insertCompanyServiceConfigSchema>;
 export type CompanyServiceConfig = typeof companyServiceConfig.$inferSelect;
+
+// ── Company Profile ───────────────────────────────────────────────────────────
+export const companyProfiles = pgTable("company_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  businessLegalName: text("business_legal_name"),
+  dbaName: text("dba_name"),
+  physicalAddress: text("physical_address"),
+  mailingAddress: text("mailing_address"),
+  // phones: JSON array of {label: string, number: string}
+  phones: text("phones"),
+  primaryEmail: text("primary_email"),
+  website: text("website"),
+  stateOfIncorporation: text("state_of_incorporation"),
+  businessRegistrationUrl: text("business_registration_url"),
+  // additionalContacts: JSON array of {label: string, name: string, phone: string, email: string}
+  additionalContacts: text("additional_contacts"),
+  notes: text("notes"),
+  updatedAt: text("updated_at"),
+});
+export const insertCompanyProfileSchema = createInsertSchema(companyProfiles).omit({ id: true });
+export type InsertCompanyProfile = z.infer<typeof insertCompanyProfileSchema>;
+export type CompanyProfile = typeof companyProfiles.$inferSelect;
+
+// ── Government Profile ────────────────────────────────────────────────────────
+export const governmentProfiles = pgTable("government_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  fein: text("fein"),
+  dunsNumber: text("duns_number"),
+  ueiNumber: text("uei_number"),
+  cageCode: text("cage_code"),
+  cageCodeNotes: text("cage_code_notes"),
+  physicalAddress: text("physical_address"),
+  mailingAddress: text("mailing_address"),
+  // phones: JSON array of {label: string, number: string}
+  phones: text("phones"),
+  businessEmail: text("business_email"),
+  bankingRoutingNumber: text("banking_routing_number"),
+  bankingAccountNumber: text("banking_account_number"),
+  bankingInstitution: text("banking_institution"),
+  // naicsCodes: JSON array of {code: string, description: string}
+  naicsCodes: text("naics_codes"),
+  // commodityCodes: JSON array of {code: string, description: string}
+  commodityCodes: text("commodity_codes"),
+  capabilitiesStatement: text("capabilities_statement"),
+  stateRegistrationUrl: text("state_registration_url"),
+  additionalNotes: text("additional_notes"),
+  updatedAt: text("updated_at"),
+});
+export const insertGovernmentProfileSchema = createInsertSchema(governmentProfiles).omit({ id: true });
+export type InsertGovernmentProfile = z.infer<typeof insertGovernmentProfileSchema>;
+export type GovernmentProfile = typeof governmentProfiles.$inferSelect;
+
+// ── Government Portals ────────────────────────────────────────────────────────
+export const governmentPortals = pgTable("government_portals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  url: text("url"),
+  username: text("username"),
+  password: text("password"),
+  notes: text("notes"),
+  // category: "federal" | "state" | "county" | "national" | "other"
+  category: text("category").notNull().default("federal"),
+  registeredDate: text("registered_date"),
+  registrationNotes: text("registration_notes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertGovernmentPortalSchema = createInsertSchema(governmentPortals).omit({ id: true, createdAt: true });
+export type InsertGovernmentPortal = z.infer<typeof insertGovernmentPortalSchema>;
+export type GovernmentPortal = typeof governmentPortals.$inferSelect;

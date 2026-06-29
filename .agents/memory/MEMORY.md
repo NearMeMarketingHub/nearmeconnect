@@ -1,0 +1,2 @@
+- [DB push via direct SQL](db-push-direct-sql.md) — drizzle-kit push has interactive prompt issues; use psql $DATABASE_URL -c "CREATE TABLE IF NOT EXISTS..." instead.
+- [Government Hub structure](government-hub-structure.md) — government_profiles (one per company) + government_portals (many per company); GovernmentHub component mirrors MarketingHub sidebar layout.
