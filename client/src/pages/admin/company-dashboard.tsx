@@ -5432,9 +5432,13 @@ export default function CompanyDashboard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="biweekly">Biweekly</SelectItem>
+                  <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="semi-annually">Semi-Annually</SelectItem>
+                  <SelectItem value="annually">Annually</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -5614,9 +5618,13 @@ export default function CompanyDashboard() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Biweekly</SelectItem>
+                      <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                      <SelectItem value="semi-annually">Semi-Annually</SelectItem>
+                      <SelectItem value="annually">Annually</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

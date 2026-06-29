@@ -539,7 +539,12 @@ function getDatesForCadence(
   const lastDay = new Date(year, month + 1, 0).getDate();
   const dates: Date[] = [];
 
-  if (cadence.frequency === "monthly") {
+  if (cadence.frequency === "daily") {
+    for (let day = 1; day <= lastDay; day++) {
+      const d = new Date(year, month, day);
+      if (!afterDate || d > afterDate) dates.push(d);
+    }
+  } else if (cadence.frequency === "monthly") {
     const days = cadence.monthDays?.length ? cadence.monthDays : [15];
     for (const monthDay of days) {
       const day = Math.min(monthDay, lastDay);
@@ -547,6 +552,24 @@ function getDatesForCadence(
       if (!afterDate || d > afterDate) {
         dates.push(d);
       }
+    }
+  } else if (cadence.frequency === "quarterly") {
+    // Generate one task in Jan (0), Apr (3), Jul (6), Oct (9)
+    if (month % 3 === 0) {
+      const d = new Date(year, month, 1);
+      if (!afterDate || d > afterDate) dates.push(d);
+    }
+  } else if (cadence.frequency === "semi-annually") {
+    // Generate one task in Jan (0) and Jul (6)
+    if (month === 0 || month === 6) {
+      const d = new Date(year, month, 1);
+      if (!afterDate || d > afterDate) dates.push(d);
+    }
+  } else if (cadence.frequency === "annually") {
+    // Generate one task in Jan (0)
+    if (month === 0) {
+      const d = new Date(year, month, 1);
+      if (!afterDate || d > afterDate) dates.push(d);
     }
   } else {
     const targetDayNums = (cadence.scheduledDays || [])
