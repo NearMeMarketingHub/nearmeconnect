@@ -2274,6 +2274,7 @@ export const companyProfiles = pgTable("company_profiles", {
   // additionalContacts: JSON array of {label: string, name: string, phone: string, email: string}
   additionalContacts: text("additional_contacts"),
   notes: text("notes"),
+  companySummary: text("company_summary"),
   updatedAt: text("updated_at"),
 });
 export const insertCompanyProfileSchema = createInsertSchema(companyProfiles).omit({ id: true });

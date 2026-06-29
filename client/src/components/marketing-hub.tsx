@@ -196,6 +196,7 @@ interface CompanyProfileData {
   businessRegistrationUrl?: string | null;
   additionalContacts?: string | null;
   notes?: string | null;
+  companySummary?: string | null;
 }
 
 function CompanyProfileSection({ companyId }: { companyId: string }) {
@@ -228,6 +229,7 @@ function CompanyProfileSection({ companyId }: { companyId: string }) {
         stateOfIncorporation: profile?.stateOfIncorporation || "",
         businessRegistrationUrl: profile?.businessRegistrationUrl || "",
         notes: profile?.notes || "",
+        companySummary: profile?.companySummary || "",
       });
       try { setPhones(JSON.parse(profile?.phones || "[]")); } catch { setPhones([]); }
     }
@@ -384,6 +386,19 @@ function CompanyProfileSection({ companyId }: { companyId: string }) {
             {profile?.businessRegistrationUrl && <div><p className="text-xs text-muted-foreground">State Registration</p><a href={profile.businessRegistrationUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex items-center gap-1"><ExternalLink className="w-3 h-3" />View Registration</a></div>}
             {!profile?.stateOfIncorporation && !profile?.businessRegistrationUrl && <p className="text-sm text-muted-foreground">No registration info added yet.</p>}
           </div>
+        )}
+      </div>
+
+      {/* Company Summary */}
+      <div className="rounded-lg border p-4 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company Summary</p>
+        <p className="text-xs text-muted-foreground">A paragraph about this business used for marketing content and meta descriptions.</p>
+        {editing ? (
+          <textarea className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none" rows={4} value={form.companySummary || ""} onChange={e => set("companySummary", e.target.value)} placeholder="Describe the business in a few sentences — what they do, who they serve, what makes them unique…" data-testid="input-companySummary" />
+        ) : (
+          profile?.companySummary
+            ? <p className="text-sm whitespace-pre-wrap">{profile.companySummary}</p>
+            : <p className="text-sm text-muted-foreground">No company summary added yet.</p>
         )}
       </div>
 

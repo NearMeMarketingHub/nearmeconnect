@@ -20,6 +20,29 @@ import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone"
 
 import type { InsertNotification } from "@shared/schema";
 
+async function syncOnboardingToMarketingHub(storage: any, companyId: string, body: any): Promise<void> {
+  try {
+    if (body.companySummary !== undefined) {
+      await storage.upsertCompanyProfile(companyId, { companySummary: body.companySummary });
+    }
+  } catch (err: any) {
+    console.error("[onboarding] Failed to sync company profile:", err?.message || err);
+  }
+  try {
+    const brandUpdates: Record<string, string> = {};
+    if (body.tagline) brandUpdates.tagline = body.tagline;
+    if (body.brandVoice) brandUpdates.brandVoiceSummary = body.brandVoice;
+    if (body.targetAudience) brandUpdates.targetAudienceDescription = body.targetAudience;
+    if (body.geographicFocus) brandUpdates.geographicFocus = body.geographicFocus;
+    if (body.uniqueValueProposition) brandUpdates.uniqueValueProposition = body.uniqueValueProposition;
+    if (Object.keys(brandUpdates).length > 0) {
+      await storage.upsertBrandProfile(companyId, brandUpdates);
+    }
+  } catch (err: any) {
+    console.error("[onboarding] Failed to sync brand profile:", err?.message || err);
+  }
+}
+
 async function createAndBroadcastNotification(data: InsertNotification) {
   const notification = await storage.createNotification(data);
   broadcastNotificationToUser(data.userId, {
@@ -4234,6 +4257,8 @@ export async function registerRoutes(
       const existing = await storage.getClientOnboarding(companyId);
       if (existing) {
         const updated = await storage.updateClientOnboarding(companyId, body);
+        // Sync marketing fields to Marketing Hub data stores
+        await syncOnboardingToMarketingHub(storage, companyId, body);
         return res.json(updated);
       }
       
@@ -4241,6 +4266,8 @@ export async function registerRoutes(
         ...body,
         companyId,
       });
+      // Sync marketing fields to Marketing Hub data stores
+      await syncOnboardingToMarketingHub(storage, companyId, body);
       res.status(201).json(onboarding);
     } catch (error) {
       res.status(500).json({ error: "Failed to save onboarding data" });
@@ -4841,24 +4868,16 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Company not found" });
       }
 
-      const result = await uploadToSharePoint(
-        company.name,
-        req.file.originalname,
-        req.file.buffer,
-        req.file.mimetype,
-        "Brand Assets",
-        company.clientType as "marketing" | "government" || "marketing"
-      );
-
-      if (!result.success) {
-        return res.status(500).json({ error: result.error || "Failed to upload to SharePoint" });
-      }
+      const { uploadBuffer } = await import("./object-storage-helpers");
+      const timestamp = Date.now();
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const relativePath = `brand-assets/${companyId}/${timestamp}-${safeName}`;
+      const objectPath = await uploadBuffer(relativePath, req.file.buffer, req.file.mimetype);
 
       res.status(201).json({
         success: true,
         fileName: req.file.originalname,
-        sharepointPath: result.path,
-        sharepointUrl: result.webUrl,
+        objectPath,
       });
     } catch (error: any) {
       console.error('Brand asset upload error:', error);

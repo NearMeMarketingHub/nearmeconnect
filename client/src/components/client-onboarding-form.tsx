@@ -131,7 +131,7 @@ interface ValidationError {
 export function ClientOnboardingForm({ companyId, companyName, onComplete }: OnboardingFormProps) {
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 7;
+  const totalSteps = 8;
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   // Track whether the user has explicitly modified credentials this session.
@@ -186,6 +186,12 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
     gbpAdditionalContext: "",
     brandAssetLinks: "",
     brandAssetFiles: [] as BrandAssetFile[],
+    companySummary: "",
+    tagline: "",
+    brandVoice: "",
+    targetAudience: "",
+    geographicFocus: "",
+    uniqueValueProposition: "",
     seasonalPreferences: [] as string[],
     holidayPreferences: [] as string[],
     otherHolidays: "",
@@ -342,8 +348,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
           const result = await response.json();
           const newFile: BrandAssetFile = {
             name: result.fileName,
-            sharepointPath: result.sharepointPath,
-            sharepointUrl: result.sharepointUrl,
+            objectPath: result.objectPath,
             uploadedAt: new Date().toISOString(),
           };
           setFormData(prev => ({
@@ -351,7 +356,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
             brandAssetFiles: [...prev.brandAssetFiles, newFile],
           }));
           toast({
-            title: "Uploaded to SharePoint",
+            title: "File uploaded",
             description: `${file.name} uploaded successfully`,
           });
         } else {
@@ -481,7 +486,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
       });
     }
 
-    // Step 7: Authorization (required)
+    // Step 8: Authorization (required)
     const authorizationMissing = [];
     if (!formData.authorizationName || formData.authorizationName.trim() === "") {
       authorizationMissing.push("Full Name");
@@ -495,7 +500,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
     if (authorizationMissing.length > 0) {
       errors.push({
         section: "Authorization",
-        step: 7,
+        step: 8,
         items: authorizationMissing
       });
     }
@@ -1140,7 +1145,7 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
                   {isBrandAssetUploading ? (
                     <>
                       <Upload className="w-4 h-4 mr-2 animate-spin" />
-                      Uploading to SharePoint...
+                      Uploading...
                     </>
                   ) : (
                     <>
@@ -1293,6 +1298,91 @@ export function ClientOnboardingForm({ companyId, companyName, onComplete }: Onb
       )}
 
       {currentStep === 7 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Marketing Information</CardTitle>
+            <CardDescription>
+              Help us understand your business so we can create content that truly represents you.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label className="text-base font-medium">Company Summary</Label>
+              <p className="text-xs text-muted-foreground">
+                A paragraph about your business — what you do, who you serve, and what makes you unique.
+                This will be used when creating marketing content and meta descriptions for your website.
+              </p>
+              <Textarea
+                value={formData.companySummary}
+                onChange={(e) => updateField("companySummary", e.target.value)}
+                placeholder="Example: ABC Plumbing has served the greater Tampa Bay area since 1998, specializing in residential and commercial plumbing services. Known for same-day emergency response and upfront pricing, we're the trusted choice for homeowners and property managers throughout Hillsborough County."
+                className="min-h-[120px]"
+                data-testid="input-company-summary"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tagline</Label>
+              <p className="text-xs text-muted-foreground">A short, memorable phrase that captures your brand.</p>
+              <Input
+                value={formData.tagline}
+                onChange={(e) => updateField("tagline", e.target.value)}
+                placeholder="e.g. &quot;Quality you can count on&quot; or &quot;Your neighborhood experts&quot;"
+                data-testid="input-tagline"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Brand Voice & Personality</Label>
+              <p className="text-xs text-muted-foreground">How would you describe your brand's tone? (e.g. professional, friendly, authoritative, conversational)</p>
+              <Textarea
+                value={formData.brandVoice}
+                onChange={(e) => updateField("brandVoice", e.target.value)}
+                placeholder="e.g. We're professional but approachable — we speak plainly and avoid jargon. Think of us as the knowledgeable neighbor you call when things go wrong."
+                className="min-h-[80px]"
+                data-testid="input-brand-voice"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Target Audience</Label>
+              <p className="text-xs text-muted-foreground">Who are your ideal customers?</p>
+              <Textarea
+                value={formData.targetAudience}
+                onChange={(e) => updateField("targetAudience", e.target.value)}
+                placeholder="e.g. Homeowners ages 35–65, primarily in suburban areas, who value reliability and fair pricing over the cheapest option."
+                className="min-h-[80px]"
+                data-testid="input-target-audience"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Geographic Focus</Label>
+              <p className="text-xs text-muted-foreground">What areas or regions do you serve?</p>
+              <Input
+                value={formData.geographicFocus}
+                onChange={(e) => updateField("geographicFocus", e.target.value)}
+                placeholder="e.g. Greater Tampa Bay area — Hillsborough, Pinellas, and Pasco counties"
+                data-testid="input-geographic-focus"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>What Makes You Different?</Label>
+              <p className="text-xs text-muted-foreground">Your unique value — what you offer that competitors don't.</p>
+              <Textarea
+                value={formData.uniqueValueProposition}
+                onChange={(e) => updateField("uniqueValueProposition", e.target.value)}
+                placeholder="e.g. Same-day service guarantee, upfront flat-rate pricing, and a 2-year labor warranty on all repairs — no surprises, no callbacks."
+                className="min-h-[80px]"
+                data-testid="input-unique-value"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {currentStep === 8 && (
         <Card>
           <CardHeader>
             <CardTitle>Review & Authorization</CardTitle>
