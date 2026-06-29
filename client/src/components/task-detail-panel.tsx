@@ -467,17 +467,20 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
 
   const deleteTaskMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("DELETE", `/api/tasks/${task?.id}`);
+      if (!task?.id) throw new Error("No task selected");
+      return apiRequest("DELETE", `/api/tasks/${task.id}`);
     },
     onSuccess: () => {
+      const deletedId = task?.id;
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
       toast({ title: "Task deleted" });
-      onDelete?.(task!.id);
+      if (deletedId) onDelete?.(deletedId);
       onClose();
     },
-    onError: () => {
-      toast({ title: "Failed to delete task", variant: "destructive" });
+    onError: (error) => {
+      const detail = error instanceof Error ? error.message : undefined;
+      toast({ title: "Failed to delete task", description: detail, variant: "destructive" });
     },
   });
 
@@ -1084,7 +1087,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction
-                      onClick={() => deleteTaskMutation.mutate()}
+                      onClick={(e) => { e.preventDefault(); deleteTaskMutation.mutate(); }}
+                      disabled={deleteTaskMutation.isPending}
                       className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                       data-testid="button-confirm-delete-task"
                     >

@@ -1971,8 +1971,9 @@ export async function registerRoutes(
       broadcastInvalidation(["/api/tasks", "/api/companies"]);
       res.json({ deleted: true });
     } catch (error) {
-      console.error("Error deleting task:", error);
-      res.status(500).json({ error: "Failed to delete task" });
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error("Error deleting task:", req.params.id, msg, error);
+      res.status(500).json({ error: "Failed to delete task", detail: msg });
     }
   });
 

@@ -1210,6 +1210,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteTask(id: string): Promise<void> {
+    // Delete subtasks first (recursively clean up their own related data)
+    const subtasks = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.parentTaskId, id));
+    for (const sub of subtasks) {
+      await this.deleteTask(sub.id);
+    }
+
+    // Delete object-storage attachments
     const attachments = await db.select().from(taskAttachments).where(eq(taskAttachments.taskId, id));
     for (const att of attachments) {
       if (att.driveId === "object-storage") {
@@ -1221,6 +1228,11 @@ export class DatabaseStorage implements IStorage {
         }
       }
     }
+
+    // Clear nextTaskId on any tasks that point to this one
+    await db.update(tasks).set({ nextTaskId: null }).where(eq(tasks.nextTaskId, id));
+
+    await db.delete(taskAssignees).where(eq(taskAssignees.taskId, id));
     await db.delete(taskChecklistItems).where(eq(taskChecklistItems.taskId, id));
     await db.delete(taskComments).where(eq(taskComments.taskId, id));
     await db.delete(taskAttachments).where(eq(taskAttachments.taskId, id));
