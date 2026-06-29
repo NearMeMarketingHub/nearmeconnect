@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,9 +57,10 @@ interface TaskDetailPanelProps {
   onNavigateToMediaUploads?: () => void;
   onViewCampaign?: (campaignRequestId: string) => void;
   onOpenTask?: (task: Task) => void;
+  onDelete?: (taskId: string) => void;
 }
 
-export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign, onOpenTask }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign, onOpenTask, onDelete }: TaskDetailPanelProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const currentUserId = user?.id;
@@ -460,6 +462,22 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     },
     onError: () => {
       toast({ title: "Failed to reject task", variant: "destructive" });
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", `/api/tasks/${task?.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: "Task deleted" });
+      onDelete?.(task!.id);
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Failed to delete task", variant: "destructive" });
     },
   });
 
@@ -1045,6 +1063,37 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 </div>
               )}
             </div>
+            {isAdmin && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    className="mt-1 shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors"
+                    data-testid="button-delete-task"
+                    title="Delete task"
+                  >
+                    <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors" />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete task?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently deletes <strong>{task.title}</strong> along with all its comments, attachments, and checklist items. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => deleteTaskMutation.mutate()}
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                      data-testid="button-confirm-delete-task"
+                    >
+                      {deleteTaskMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </SheetHeader>
 

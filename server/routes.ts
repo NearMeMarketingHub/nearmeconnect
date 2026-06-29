@@ -1932,6 +1932,26 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/tasks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      const task = await storage.getTask((req.params.id as string));
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      await storage.deleteTask((req.params.id as string));
+      broadcastInvalidation(["/api/tasks", "/api/companies"]);
+      res.json({ deleted: true });
+    } catch (error) {
+      console.error("Error deleting task:", error);
+      res.status(500).json({ error: "Failed to delete task" });
+    }
+  });
+
   app.patch("/api/tasks/:id/completed-by", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
