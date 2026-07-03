@@ -179,7 +179,16 @@ export const tasks = pgTable("tasks", {
   serviceTrackId: varchar("service_track_id"),
   clientVisible: boolean("client_visible").notNull().default(true),
   nextTaskId: varchar("next_task_id"),
+  targetMonth: text("target_month"), // "YYYY-MM" bucket for monthly grouping / 60-90 day projection
+  isInternal: boolean("is_internal").notNull().default(false), // true = internal agency task (SOPs, admin), false = client deliverable
+  resourceLinkId: varchar("resource_link_id").references(() => clientResources.id, { onDelete: "set null" }),
+  checklist: jsonb("checklist").$type<TaskChecklistEntry[]>().notNull().default(sql`'[]'::jsonb`),
 });
+
+export type TaskChecklistEntry = {
+  title: string;
+  isCompleted: boolean;
+};
 
 export const strategyBoards = pgTable("strategy_boards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -297,9 +306,16 @@ export const insertTaskCategorySchema = createInsertSchema(taskCategories).omit(
 export type InsertTaskCategory = z.infer<typeof insertTaskCategorySchema>;
 export type TaskCategory = typeof taskCategories.$inferSelect;
 
+export const insertTaskChecklistEntrySchema = z.object({
+  title: z.string(),
+  isCompleted: z.boolean(),
+});
+
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
   createdAt: true,
+}).extend({
+  checklist: z.array(insertTaskChecklistEntrySchema).optional(),
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -2016,7 +2032,7 @@ export type RetainerTemplateServiceTrack = typeof retainerTemplateServiceTracks.
 export const taskTemplateRoleOwnerEnum = ["account_manager", "strategist", "content_lead", "designer", "developer", "hubspot_specialist", "ads_manager"] as const;
 export type TaskTemplateRoleOwner = typeof taskTemplateRoleOwnerEnum[number];
 
-export const taskTemplateCadenceEnum = ["once", "weekly", "monthly", "quarterly", "annual", "custom"] as const;
+export const taskTemplateCadenceEnum = ["once", "daily", "weekly", "biweekly", "monthly", "quarterly", "annual", "custom"] as const;
 export type TaskTemplateCadence = typeof taskTemplateCadenceEnum[number];
 
 export const taskTemplates = pgTable("task_templates", {

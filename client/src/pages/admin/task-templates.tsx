@@ -35,7 +35,9 @@ const ROLE_OWNER_LABELS: Record<string, string> = {
 
 const CADENCE_LABELS: Record<string, string> = {
   once: "One-time",
+  daily: "Daily",
   weekly: "Weekly",
+  biweekly: "Bi-Weekly",
   monthly: "Monthly",
   quarterly: "Quarterly",
   annual: "Annual",

@@ -36,7 +36,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const CADENCE_LABEL: Record<string, string> = {
   monthly: "Monthly", quarterly: "Quarterly", annual: "Annual",
-  once: "Once", weekly: "Weekly", custom: "Custom",
+  once: "Once", daily: "Daily", weekly: "Weekly", biweekly: "Bi-Weekly", custom: "Custom",
 };
 
 const ROLE_LABEL: Record<string, string> = {
