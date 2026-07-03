@@ -729,7 +729,7 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Access denied" });
         }
         const tasks = await storage.getTasks(companyId);
-        res.json(await enrichWithCreatorName(tasks));
+        res.json(await enrichWithCreatorName(tasks.filter(t => !t.isInternal && t.clientVisible !== false)));
       }
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch tasks" });
@@ -11277,6 +11277,137 @@ export async function registerRoutes(
     }
   });
 
+  // ── Admin Dashboard: Row 1 — Active Retainers & Credit Health ────────────
+  app.get("/api/admin/credit-health", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [companies, allTransactions] = await Promise.all([
+        storage.getAllCompanies(),
+        storage.getAllCreditTransactions(),
+      ]);
+
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const usedByCompany = new Map<string, number>();
+      for (const tx of allTransactions) {
+        const amount = parseFloat(String(tx.amount));
+        if (!(amount < 0)) continue;
+        const created = new Date(tx.createdAt);
+        if (isNaN(created.getTime()) || created < monthStart) continue;
+        usedByCompany.set(tx.companyId, (usedByCompany.get(tx.companyId) || 0) + Math.abs(amount));
+      }
+
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+
+      const rows = companies.map(c => {
+        const totalMonthly = round1((c.monthlyCredits || 0) + (c.bonusCredits || 0));
+        const used = round1(usedByCompany.get(c.id) || 0);
+        const remaining = round1((c.credits || 0) + (c.bonusCredits || 0));
+        let status: "paused" | "over_budget" | "at_risk" | "healthy";
+        if (c.isPaused) status = "paused";
+        else if (remaining <= 0) status = "over_budget";
+        else if (totalMonthly > 0 && remaining < totalMonthly * 0.2) status = "at_risk";
+        else status = "healthy";
+        return {
+          companyId: c.id,
+          companyName: c.name,
+          subscriptionTier: c.subscriptionTier,
+          totalMonthlyCredits: totalMonthly,
+          creditsUsed: used,
+          creditsRemaining: remaining,
+          status,
+        };
+      }).sort((a, b) => a.companyName.localeCompare(b.companyName));
+
+      const totals = {
+        totalAvailable: round1(rows.reduce((s, r) => s + Math.max(r.creditsRemaining, 0), 0)),
+        totalUsedThisMonth: round1(rows.reduce((s, r) => s + r.creditsUsed, 0)),
+        totalMonthlyAllocation: round1(rows.reduce((s, r) => s + r.totalMonthlyCredits, 0)),
+        activeClients: rows.filter(r => r.status !== "paused").length,
+      };
+
+      res.json({ companies: rows, totals });
+    } catch (error) {
+      console.error("Failed to get credit health:", error);
+      res.status(500).json({ error: "Failed to get credit health" });
+    }
+  });
+
+  // ── Admin Dashboard: Row 2 — My Work (logged-in admin's tasks) ───────────
+  app.get("/api/admin/my-work", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const currentUserId = req.user!.id;
+      const isUserAdmin = await storage.isAdmin(currentUserId);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [allTasks, companies, categories] = await Promise.all([
+        storage.getAllTasks(),
+        storage.getAllCompanies(),
+        storage.getAllTaskCategories(),
+      ]);
+
+      const companyMap = new Map(companies.map(c => [c.id, c.name]));
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      const myTasks = allTasks
+        .filter(t => t.assignedTo === currentUserId && !t.isInternal && !["completed", "rejected", "cancelled"].includes(t.status))
+        .map(t => ({
+          ...t,
+          companyName: companyMap.get(t.companyId) || "Unknown",
+          categoryName: t.categoryId ? categoryMap.get(t.categoryId) || null : null,
+        }))
+        .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+
+      res.json(myTasks);
+    } catch (error) {
+      console.error("Failed to get my work:", error);
+      res.status(500).json({ error: "Failed to get my work" });
+    }
+  });
+
+  // ── Admin Dashboard: Row 3 — Agency Operations & SOPs (internal tasks) ───
+  app.get("/api/admin/internal-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isUserAdmin = await storage.isAdmin(req.user!.id);
+      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
+
+      const [allTasks, companies] = await Promise.all([
+        storage.getAllTasks(),
+        storage.getAllCompanies(),
+      ]);
+
+      const internalTasks = allTasks.filter(t => t.isInternal && !["completed", "rejected", "cancelled"].includes(t.status));
+
+      const assigneeIds = Array.from(new Set(internalTasks.map(t => t.assignedTo).filter(Boolean))) as string[];
+      const assignees = assigneeIds.length > 0 ? await storage.getUsersByIds(assigneeIds) : [];
+      const assigneeMap = new Map(assignees.map(u => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email]));
+      const companyMap = new Map(companies.map(c => [c.id, c.name]));
+
+      const resourceIds = Array.from(new Set(internalTasks.map(t => t.resourceLinkId).filter(Boolean))) as string[];
+      const resources = await Promise.all(resourceIds.map(id => storage.getClientResource(id).catch(() => undefined)));
+      const resourceMap = new Map(
+        resources.filter(Boolean).map(r => [r!.id, { id: r!.id, title: r!.title, url: r!.url, resourceType: r!.resourceType }])
+      );
+
+      const rows = internalTasks
+        .map(t => ({
+          ...t,
+          companyName: companyMap.get(t.companyId) || null,
+          assigneeName: t.assignedTo ? assigneeMap.get(t.assignedTo) || null : null,
+          resource: t.resourceLinkId ? resourceMap.get(t.resourceLinkId) || null : null,
+        }))
+        .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+
+      res.json(rows);
+    } catch (error) {
+      console.error("Failed to get internal tasks:", error);
+      res.status(500).json({ error: "Failed to get internal tasks" });
+    }
+  });
+
   app.get("/api/admin/tasks-by-category", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const currentUserId = req.user!.id;
@@ -13433,6 +13564,16 @@ export async function registerRoutes(
       }
       broadcastInvalidation([`/api/companies/${companyId}/retainer-assignment`]);
       res.json(assignment);
+
+      // Auto-generate tasks 90 days ahead when an assignment becomes active
+      if (assignment && assignment.status === "active" && assignment.autoGenerationEnabled) {
+        import("./retainer-scheduler")
+          .then(({ runRetainerAutoGeneration }) =>
+            runRetainerAutoGeneration({ runType: "manual", triggeredBy: req.user!.id, companyIdFilter: companyId })
+          )
+          .then(() => broadcastInvalidation(["/api/tasks"]))
+          .catch((err) => console.error("[retainer] post-assignment generation failed:", err.message));
+      }
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

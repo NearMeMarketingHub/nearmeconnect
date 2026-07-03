@@ -38,6 +38,90 @@ function getCurrentBillingPeriodEnd(billingDay: number): string {
   return endDate.toISOString().split("T")[0];
 }
 
+function ymd(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addMonthsClamped(date: Date, months: number): Date {
+  const d = new Date(date);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return d;
+}
+
+// Billing period (start/end) that contains a given date
+function getBillingPeriodForDate(billingDay: number, date: Date): { start: string; end: string } {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  let start: Date;
+  if (day >= billingDay) {
+    start = new Date(year, month, billingDay);
+  } else {
+    start = new Date(year, month - 1, billingDay);
+  }
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, billingDay - 1);
+  return { start: ymd(start), end: ymd(end) };
+}
+
+// How many days between occurrences for day-stepped cadences
+const CADENCE_STEP_DAYS: Record<string, number> = {
+  daily: 1,
+  weekly: 7,
+  biweekly: 14,
+};
+
+// How many months between occurrences for month-stepped cadences
+const CADENCE_STEP_MONTHS: Record<string, number> = {
+  monthly: 1,
+  quarterly: 3,
+  annual: 12,
+};
+
+// Minimum forward-generation horizon: templates always generate at least
+// 90 days into the future so future month buckets are pre-populated.
+export const GENERATION_HORIZON_DAYS = 90;
+
+// Safety cap on occurrences per template per run (daily cadence over 90
+// days with quantity multipliers could otherwise explode).
+const MAX_OCCURRENCES_PER_TEMPLATE = 120;
+
+/**
+ * Compute all occurrence dates for a template between today and the horizon.
+ * The anchor is the current billing period start plus the template's due
+ * offset; occurrences before today are advanced forward by cadence steps.
+ */
+function computeOccurrences(cadence: string, anchor: Date, today: Date, horizon: Date): Date[] {
+  const occurrences: Date[] = [];
+  if (CADENCE_STEP_DAYS[cadence]) {
+    const step = CADENCE_STEP_DAYS[cadence];
+    let d = new Date(anchor);
+    while (d < today) d = new Date(d.getTime() + step * 86400000);
+    while (d <= horizon && occurrences.length < MAX_OCCURRENCES_PER_TEMPLATE) {
+      occurrences.push(new Date(d));
+      d = new Date(d.getTime() + step * 86400000);
+    }
+  } else if (CADENCE_STEP_MONTHS[cadence]) {
+    const step = CADENCE_STEP_MONTHS[cadence];
+    let d = new Date(anchor);
+    while (d < today) d = addMonthsClamped(d, step);
+    while (d <= horizon && occurrences.length < MAX_OCCURRENCES_PER_TEMPLATE) {
+      occurrences.push(new Date(d));
+      d = addMonthsClamped(d, step);
+    }
+  } else {
+    // "once" / "custom" / unknown → single occurrence, never in the past
+    occurrences.push(anchor < today ? new Date(today) : new Date(anchor));
+  }
+  return occurrences;
+}
+
 // ── Core generation function ───────────────────────────────────────────────
 
 export async function runRetainerAutoGeneration(opts: {
@@ -103,7 +187,10 @@ export async function runRetainerAutoGeneration(opts: {
           continue;
         }
 
-        const windowDays = assignment.generationWindowDaysOverride ?? template.generationWindowDays ?? 30;
+        const windowDays = Math.max(
+          assignment.generationWindowDaysOverride ?? template.generationWindowDays ?? GENERATION_HORIZON_DAYS,
+          GENERATION_HORIZON_DAYS,
+        );
 
         // ── Load linked task templates ────────────────────────────────────
         const linked = await storage.getRetainerTemplateTaskTemplates(assignment.retainerTemplateId);
@@ -130,85 +217,124 @@ export async function runRetainerAutoGeneration(opts: {
             if (!activeTrackIds.has(tpl.serviceTrackId)) { companySkipped++; continue; }
           }
 
-          // Determine instances based on cadence
+          // ── Occurrence-based generation: step forward from the current
+          // billing period start through the horizon (>= 90 days out) ──────
           const cadence = tpl.cadence ?? "once";
-          let instances = 1;
+
+          // Quantity of tasks per occurrence (spaced a week apart for
+          // month-stepped cadences, suffixed dedup keys otherwise)
+          let perOccurrenceQty = 1;
           if (cadence === "monthly") {
-            instances = link.monthlyQuantity ?? 1;
-          } else if (cadence === "weekly") {
-            instances = Math.floor(windowDays / 7) * (link.monthlyQuantity ?? 1);
+            perOccurrenceQty = link.monthlyQuantity ?? 1;
           } else if (cadence === "quarterly") {
-            instances = link.quarterlyQuantity ?? 1;
+            perOccurrenceQty = link.quarterlyQuantity ?? 1;
           } else if (cadence === "annual") {
-            instances = link.annualQuantity ?? 1;
+            perOccurrenceQty = link.annualQuantity ?? 1;
+          } else if (cadence === "weekly" || cadence === "biweekly" || cadence === "daily") {
+            perOccurrenceQty = link.monthlyQuantity ?? 1;
           }
 
           const creditCost = parseFloat(String(link.creditOverride ?? tpl.defaultCreditCost ?? 0));
-          const dueOffsetDays = tpl.defaultDueOffsetDays ?? Math.floor(windowDays / 2);
-          const periodStartDate = new Date(periodStart);
+          const dueOffsetDays = tpl.defaultDueOffsetDays ?? 0;
 
-          for (let i = 0; i < instances; i++) {
-            // Dedup: one task per (company, template, periodStart)
-            const dedupKey = i > 0 ? `${periodStart}-${i}` : periodStart;
-            const existing = await storage.getRetainerGeneratedTaskByDedup(companyId, tpl.id, dedupKey).catch(() => null);
-            if (existing) {
-              companySkipped++;
-              continue;
-            }
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const horizon = new Date(today.getTime() + windowDays * 86400000);
+          const anchor = new Date(new Date(`${periodStart}T00:00:00`).getTime() + dueOffsetDays * 86400000);
 
-            const dueDate = new Date(periodStartDate.getTime() + (dueOffsetDays + i * 7) * 86400000);
-            const dueDateStr = dueDate.toISOString().split("T")[0];
+          const occurrences = computeOccurrences(cadence, anchor, today, horizon);
 
-            if (isDryRun) {
-              details.push(`[DRY RUN] Would create: "${tpl.title}" for company ${companyId}, due ${dueDateStr}`);
-              companyCreated++;
-              continue;
-            }
+          // Legacy dedup keys (pre-occurrence engine) so existing generated
+          // tasks for the current period are not duplicated
+          let legacyIdx = 0;
 
-            const task = await storage.createTask({
-              companyId,
-              title: tpl.title,
-              description: tpl.defaultInstructions ?? tpl.description ?? null,
-              status: "pending",
-              priority: tpl.defaultPriority ?? "medium",
-              creditCost: String(creditCost),
-              type: "assigned",
-              dueDate: dueDateStr,
-              billingPeriodStart: periodStart,
-              billingPeriodEnd: periodEnd,
-              taskOwnership: "agency",
-              approvalStatus: tpl.requiresClientApproval ? "pending" : "approved",
-              noCredit: creditCost === 0,
-              source: "retainer_template",
-              taskTemplateId: tpl.id,
-              retainerTemplateId: assignment.retainerTemplateId,
-              clientRetainerAssignmentId: assignment.id,
-              serviceTrackId: tpl.serviceTrackId ?? null,
-              clientVisible: tpl.createsClientVisibleTask,
-            } as any);
+          for (const occurrence of occurrences) {
+            for (let q = 0; q < perOccurrenceQty; q++) {
+              // Month-stepped cadences space multiple instances a week apart
+              const isMonthStepped = !!CADENCE_STEP_MONTHS[cadence];
+              const dueDate = isMonthStepped
+                ? new Date(occurrence.getTime() + q * 7 * 86400000)
+                : occurrence;
+              const dueDateStr = ymd(dueDate);
+              const targetMonth = dueDateStr.slice(0, 7);
 
-            await storage.createRetainerGeneratedTask({
-              companyId,
-              taskTemplateId: tpl.id,
-              retainerTemplateId: assignment.retainerTemplateId,
-              clientRetainerAssignmentId: assignment.id,
-              generatedTaskId: task.id,
-              periodStart: dedupKey,
-              periodEnd,
-            });
+              // Dedup: one task per (company, template, occurrence date [+qty suffix])
+              const dedupKey = q === 0 ? dueDateStr : `${dueDateStr}-q${q}`;
+              const existing = await storage.getRetainerGeneratedTaskByDedup(companyId, tpl.id, dedupKey).catch(() => null);
+              if (existing) {
+                legacyIdx++;
+                companySkipped++;
+                continue;
+              }
 
-            if (creditCost > 0) {
-              await storage.createCreditReservation({
+              // Backwards-compat: check pre-engine key format for tasks that
+              // were generated for the current billing period
+              if (dueDateStr >= periodStart && dueDateStr <= periodEnd) {
+                const legacyKey = legacyIdx > 0 ? `${periodStart}-${legacyIdx}` : periodStart;
+                const legacyExisting = await storage.getRetainerGeneratedTaskByDedup(companyId, tpl.id, legacyKey).catch(() => null);
+                if (legacyExisting) {
+                  legacyIdx++;
+                  companySkipped++;
+                  continue;
+                }
+              }
+              legacyIdx++;
+
+              if (isDryRun) {
+                details.push(`[DRY RUN] Would create: "${tpl.title}" for company ${companyId}, due ${dueDateStr} (target month ${targetMonth})`);
+                companyCreated++;
+                continue;
+              }
+
+              // Billing period that contains this occurrence's due date
+              const occPeriod = getBillingPeriodForDate(assignment.billingDayOfMonth, dueDate);
+
+              const task = await storage.createTask({
                 companyId,
-                generatedTaskId: task.id,
-                billingPeriodStart: periodStart,
-                billingPeriodEnd: periodEnd,
-                reservedCredits: String(creditCost),
-                status: "reserved",
-              });
-            }
+                title: tpl.title,
+                description: tpl.defaultInstructions ?? tpl.description ?? null,
+                status: "pending",
+                priority: tpl.defaultPriority ?? "medium",
+                creditCost: String(creditCost),
+                type: "assigned",
+                dueDate: dueDateStr,
+                targetMonth,
+                billingPeriodStart: occPeriod.start,
+                billingPeriodEnd: occPeriod.end,
+                taskOwnership: "agency",
+                approvalStatus: tpl.requiresClientApproval ? "pending" : "approved",
+                noCredit: creditCost === 0,
+                source: "retainer_template",
+                taskTemplateId: tpl.id,
+                retainerTemplateId: assignment.retainerTemplateId,
+                clientRetainerAssignmentId: assignment.id,
+                serviceTrackId: tpl.serviceTrackId ?? null,
+                clientVisible: tpl.createsClientVisibleTask,
+              } as any);
 
-            companyCreated++;
+              await storage.createRetainerGeneratedTask({
+                companyId,
+                taskTemplateId: tpl.id,
+                retainerTemplateId: assignment.retainerTemplateId,
+                clientRetainerAssignmentId: assignment.id,
+                generatedTaskId: task.id,
+                periodStart: dedupKey,
+                periodEnd: occPeriod.end,
+              });
+
+              if (creditCost > 0) {
+                await storage.createCreditReservation({
+                  companyId,
+                  generatedTaskId: task.id,
+                  billingPeriodStart: occPeriod.start,
+                  billingPeriodEnd: occPeriod.end,
+                  reservedCredits: String(creditCost),
+                  status: "reserved",
+                });
+              }
+
+              companyCreated++;
+            }
           }
         }
 
