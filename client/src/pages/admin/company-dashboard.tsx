@@ -485,7 +485,8 @@ export default function CompanyDashboard() {
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
   const [companyTaskPage, setCompanyTaskPage] = useState(1);
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
-  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage">("list");
+  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage" | "board">("board");
+  const [showCompletedOnBoard, setShowCompletedOnBoard] = useState(false);
   const COMPANY_TASKS_PER_PAGE = 10;
   
   // Task form state
@@ -1816,6 +1817,31 @@ export default function CompanyDashboard() {
     return filtered;
   }, [tasks, companyTaskFilter, taskMonthDate, assignedToMeFilter, user?.id, categoryFilter]);
 
+  const boardFilteredTasks = useMemo(() => {
+    if (!tasks) return [];
+    let filtered = tasks.filter(t => t.status !== "cadence_parent" && t.approvalStatus !== "rejected");
+    if (!showCompletedOnBoard) {
+      filtered = filtered.filter(t => t.status !== "completed");
+    }
+    if (assignedToMeFilter && user?.id) {
+      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+    }
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "uncategorized") {
+        filtered = filtered.filter(t => !t.categoryId);
+      } else {
+        filtered = filtered.filter(t => t.categoryId === categoryFilter);
+      }
+    }
+    filtered.sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
+    });
+    return filtered;
+  }, [tasks, showCompletedOnBoard, assignedToMeFilter, user?.id, categoryFilter, mySecondaryTaskIdSet]);
+
   const companyTaskCounts = useMemo(() => {
     if (!tasks) return { all: 0, pending: 0, in_progress: 0, completed: 0, review: 0, rejected: 0 };
     const selectedMonthStart = `${taskMonthDate.getFullYear()}-${String(taskMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
@@ -2974,28 +3000,52 @@ export default function CompanyDashboard() {
             </div>
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
-                  data-testid="button-task-month-prev"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
-                  {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                </span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
-                  data-testid="button-task-month-next"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+              {companyTaskViewMode !== "board" && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
+                    data-testid="button-task-month-prev"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
+                    {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
+                    data-testid="button-task-month-next"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {companyTaskViewMode === "board" && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={showCompletedOnBoard ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowCompletedOnBoard(v => !v)}
+                    data-testid="button-show-completed-board"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    {showCompletedOnBoard ? "Hide Completed" : "Show Completed"}
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center gap-1 flex-wrap" data-testid="company-view-mode-toggle">
+                <Button
+                  variant={companyTaskViewMode === "board" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("board")}
+                  data-testid="company-view-toggle-board"
+                >
+                  <Kanban className="w-4 h-4 mr-1" />
+                  Board
+                </Button>
                 <Button
                   variant={companyTaskViewMode === "list" ? "default" : "ghost"}
                   size="sm"
@@ -3014,33 +3064,6 @@ export default function CompanyDashboard() {
                   <Users className="w-4 h-4 mr-1" />
                   By Assignee
                 </Button>
-                <Button
-                  variant={companyTaskViewMode === "by-category" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("by-category")}
-                  data-testid="company-view-toggle-by-category"
-                >
-                  <FolderOpen className="w-4 h-4 mr-1" />
-                  By Category
-                </Button>
-                <Button
-                  variant={companyTaskViewMode === "category" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("category")}
-                  data-testid="company-view-toggle-category"
-                >
-                  <LayoutGrid className="w-4 h-4 mr-1" />
-                  Category Board
-                </Button>
-                <Button
-                  variant={companyTaskViewMode === "stage" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("stage")}
-                  data-testid="company-view-toggle-stage"
-                >
-                  <Kanban className="w-4 h-4 mr-1" />
-                  Stage Board
-                </Button>
               </div>
             </div>
 
@@ -3057,6 +3080,24 @@ export default function CompanyDashboard() {
                 categories={taskCategoriesData || []}
                 userMap={assigneeUserMap}
                 onTaskClick={setSelectedTask}
+              />
+            ) : companyTaskViewMode === "board" && tasksLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24 w-full" />
+                ))}
+              </div>
+            ) : companyTaskViewMode === "board" ? (
+              <TaskBoardView
+                tasks={boardFilteredTasks}
+                categories={taskCategoriesData || []}
+                mode="swimlane"
+                onTaskClick={setSelectedTask}
+                onStatusChange={(taskId, newStatus) =>
+                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
+                }
+                allowDrag={true}
+                showCompleted={showCompletedOnBoard}
               />
             ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") && tasksLoading ? (
               <div className="space-y-2">

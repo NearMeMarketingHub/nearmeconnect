@@ -22,6 +22,8 @@ const STAGE_ORDER: TaskStatus[] = [
   "completed",
 ];
 
+const ACTIVE_STAGES: TaskStatus[] = ["pending", "in_progress", "review", "approved"];
+
 const CATEGORY_PALETTE = [
   "#3b82f6",
   "#8b5cf6",
@@ -36,10 +38,11 @@ const CATEGORY_PALETTE = [
 interface TaskBoardViewProps {
   tasks: Task[];
   categories: TaskCategory[];
-  mode: "category" | "stage";
+  mode: "category" | "stage" | "swimlane";
   onTaskClick: (task: Task) => void;
   onStatusChange?: (taskId: string, newStatus: TaskStatus) => void;
   allowDrag?: boolean;
+  showCompleted?: boolean;
   getCompanyName?: (companyId: string) => string;
 }
 
@@ -54,8 +57,8 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col gap-2 min-h-[120px] rounded-lg p-1 transition-colors ${
-        isOver ? "bg-accent/60" : ""
+      className={`flex flex-col gap-2 min-h-[80px] rounded-lg p-1.5 transition-colors ${
+        isOver ? "bg-accent/60 ring-2 ring-primary/30" : ""
       }`}
       data-testid={`board-column-drop-${id}`}
     >
@@ -112,6 +115,7 @@ export function TaskBoardView({
   onTaskClick,
   onStatusChange,
   allowDrag = false,
+  showCompleted = true,
   getCompanyName,
 }: TaskBoardViewProps) {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -132,11 +136,52 @@ export function TaskBoardView({
     const { active, over } = event;
     setActiveTaskId(null);
     if (!over || active.id === over.id) return;
-    const newStatus = String(over.id);
-    const validStatus = STAGE_ORDER.find((s) => s === newStatus);
+    const dropId = String(over.id);
+    const statusPart = dropId.includes("::") ? dropId.split("::")[1] : dropId;
+    const validStatus = STAGE_ORDER.find((s) => s === statusPart);
     if (validStatus) {
       onStatusChange?.(String(active.id), validStatus);
     }
+  }
+
+  if (mode === "swimlane") {
+    const inner = (
+      <SwimlaneBoard
+        tasks={tasks}
+        categories={categories}
+        onTaskClick={onTaskClick}
+        onStatusChange={onStatusChange}
+        allowDrag={allowDrag}
+        showCompleted={showCompleted}
+        getCompanyName={getCompanyName}
+        activeTask={activeTask ?? null}
+      />
+    );
+
+    if (!allowDrag) return inner;
+
+    return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {inner}
+        <DragOverlay>
+          {activeTask ? (
+            <BoardTaskCard
+              task={activeTask}
+              categories={categories}
+              mode="stage"
+              onTaskClick={() => {}}
+              companyName={getCompanyName ? getCompanyName(activeTask.companyId) : undefined}
+              isDragging
+            />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    );
   }
 
   if (mode === "category") {
@@ -156,6 +201,162 @@ export function TaskBoardView({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     />
+  );
+}
+
+function SwimlaneBoard({
+  tasks,
+  categories,
+  onTaskClick,
+  onStatusChange,
+  allowDrag,
+  showCompleted,
+  getCompanyName,
+  activeTask,
+}: {
+  tasks: Task[];
+  categories: TaskCategory[];
+  onTaskClick: (task: Task) => void;
+  onStatusChange?: (taskId: string, newStatus: TaskStatus) => void;
+  allowDrag: boolean;
+  showCompleted: boolean;
+  getCompanyName?: (id: string) => string;
+  activeTask: Task | null;
+}) {
+  const visibleStages = showCompleted ? STAGE_ORDER : ACTIVE_STAGES;
+
+  const usedCategoryIds = new Set(tasks.filter((t) => t.categoryId).map((t) => t.categoryId as string));
+  const usedCategories = categories.filter((c) => usedCategoryIds.has(c.id));
+  const unassignedTasks = tasks.filter((t) => !t.categoryId);
+
+  type Lane = { id: string; name: string; color: string | null; tasks: Task[] };
+  const lanes: Lane[] = [
+    ...usedCategories.map((cat, idx) => ({
+      id: cat.id,
+      name: cat.name,
+      color: cat.color || CATEGORY_PALETTE[idx % CATEGORY_PALETTE.length],
+      tasks: tasks.filter((t) => t.categoryId === cat.id),
+    })),
+    ...(unassignedTasks.length > 0
+      ? [{ id: "__unassigned__", name: "Unassigned", color: "#94a3b8", tasks: unassignedTasks }]
+      : []),
+  ];
+
+  if (lanes.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <p className="text-sm">No tasks to display.</p>
+      </div>
+    );
+  }
+
+  const CATEGORY_COL_W = 160;
+  const STAGE_COL_W = 220;
+  const minWidth = CATEGORY_COL_W + visibleStages.length * STAGE_COL_W;
+
+  return (
+    <div className="overflow-x-auto pb-6" data-testid="board-swimlane-view">
+      <div style={{ minWidth: `${minWidth}px` }}>
+        {/* Header row */}
+        <div className="flex mb-3">
+          <div style={{ width: CATEGORY_COL_W }} className="flex-shrink-0" />
+          {visibleStages.map((stage) => {
+            const config = statusConfig[stage];
+            const stageCount = tasks.filter((t) => t.status === stage).length;
+            return (
+              <div
+                key={stage}
+                style={{ width: STAGE_COL_W }}
+                className="flex-shrink-0 px-2"
+                data-testid={`swimlane-header-${stage}`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${config.className}`}>
+                    {config.label}
+                  </span>
+                  {stageCount > 0 && (
+                    <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 font-mono">
+                      {stageCount}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Swimlane rows */}
+        {lanes.map((lane, laneIdx) => (
+          <div
+            key={lane.id}
+            className={`flex ${laneIdx < lanes.length - 1 ? "border-b border-border/50 pb-3 mb-3" : ""}`}
+            data-testid={`swimlane-row-${lane.id}`}
+          >
+            {/* Category label column */}
+            <div
+              style={{ width: CATEGORY_COL_W }}
+              className="flex-shrink-0 pr-3 pt-2"
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: lane.color || "#94a3b8" }}
+                />
+                <span className="text-sm font-semibold text-foreground leading-tight">
+                  {lane.name}
+                </span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-4.5 mt-0.5 block">
+                {lane.tasks.length} task{lane.tasks.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Stage cells */}
+            {visibleStages.map((stage) => {
+              const cellTasks = lane.tasks.filter((t) => t.status === stage);
+              const cellId = `${lane.id}::${stage}`;
+
+              return (
+                <div key={stage} style={{ width: STAGE_COL_W }} className="flex-shrink-0 px-1.5">
+                  {allowDrag ? (
+                    <DroppableColumn id={cellId}>
+                      {cellTasks.map((task) => (
+                        <DraggableCard
+                          key={task.id}
+                          task={task}
+                          categories={[]}
+                          onTaskClick={onTaskClick}
+                          getCompanyName={getCompanyName}
+                        />
+                      ))}
+                      {cellTasks.length === 0 && (
+                        <div className="min-h-[60px] rounded-md border border-dashed border-border/60" />
+                      )}
+                    </DroppableColumn>
+                  ) : (
+                    <div className="flex flex-col gap-2 min-h-[60px]">
+                      {cellTasks.map((task) => (
+                        <BoardTaskCard
+                          key={task.id}
+                          task={task}
+                          categories={[]}
+                          mode="stage"
+                          onTaskClick={onTaskClick}
+                          companyName={getCompanyName ? getCompanyName(task.companyId) : undefined}
+                        />
+                      ))}
+                      {cellTasks.length === 0 && (
+                        <div className="min-h-[60px] rounded-md border border-dashed border-border/40" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -29,6 +29,14 @@ interface BoardTaskCardProps {
   isDragging?: boolean;
 }
 
+function formatTargetMonth(targetMonth: string | null | undefined): string | null {
+  if (!targetMonth) return null;
+  const [year, month] = targetMonth.split("-");
+  if (!year || !month) return null;
+  const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
 export function BoardTaskCard({
   task,
   categories,
@@ -119,16 +127,35 @@ export function BoardTaskCard({
   const completedCount = checklistItems?.filter((i) => i.isCompleted).length ?? 0;
   const totalCount = checklistItems?.length ?? 0;
 
+  const targetMonthLabel = formatTargetMonth(task.targetMonth);
+  const dueDateLabel = task.dueDate
+    ? parseLocalDate(task.dueDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : null;
+  const cornerLabel = targetMonthLabel || dueDateLabel;
+
   return (
     <Card
       className={`cursor-pointer transition-all select-none ${
         isDragging ? "opacity-50 rotate-1 shadow-xl scale-105" : "hover-elevate"
-      }`}
+      } ${task.status === "completed" ? "opacity-70" : ""}`}
       onClick={() => onTaskClick(task)}
       data-testid={`board-card-${task.id}`}
     >
       <CardContent className="p-3 space-y-2">
-        <p className="text-sm font-medium leading-snug line-clamp-2">{task.title}</p>
+        {/* Title row with corner month chip */}
+        <div className="flex items-start justify-between gap-2">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 flex-1 ${task.status === "completed" ? "line-through text-muted-foreground" : ""}`}>
+            {task.title}
+          </p>
+          {cornerLabel && (
+            <span
+              className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground whitespace-nowrap leading-tight"
+              data-testid={`board-corner-month-${task.id}`}
+            >
+              {cornerLabel}
+            </span>
+          )}
+        </div>
 
         {companyName && (
           <p
@@ -159,15 +186,7 @@ export function BoardTaskCard({
               />
               {category.name}
             </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className="text-xs text-muted-foreground"
-              data-testid={`board-category-badge-${task.id}`}
-            >
-              Unassigned
-            </Badge>
-          )}
+          ) : null}
 
           {task.priority !== "medium" && (
             <Badge
