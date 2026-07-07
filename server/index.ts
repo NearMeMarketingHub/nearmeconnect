@@ -469,18 +469,46 @@ async function seedDatabase() {
   try {
     const existingAdmins = await storage.getAllAdminUsers();
     if (existingAdmins.length === 0) {
+      const { db } = await import("./db");
+      const { users, adminUsers } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
       const hashedPassword = await bcrypt.hash("Marketing.123", 10);
-      const user = await storage.createUserWithId(
-        crypto.randomUUID(),
-        {
-          email: "cameron@nearmemarketinghub.com",
+      const SEED_EMAIL = "cameron@nearmemarketinghub.com";
+
+      const [existingUser] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, SEED_EMAIL))
+        .limit(1);
+
+      let adminUserId: string;
+      if (existingUser) {
+        // User already exists — reset password and restore admin role
+        await db
+          .update(users)
+          .set({ password: hashedPassword })
+          .where(eq(users.id, existingUser.id));
+        adminUserId = existingUser.id;
+        log(`Restored admin access for ${SEED_EMAIL} — temporary password: Marketing.123`);
+      } else {
+        // Fresh setup — create the user
+        const user = await storage.createUserWithId(crypto.randomUUID(), {
+          email: SEED_EMAIL,
           password: hashedPassword,
           firstName: "Cameron",
           lastName: "Drake",
-        }
-      );
-      await storage.createAdminUser({ userId: user.id });
-      log("Seeded default admin account: cameron@nearmemarketinghub.com");
+        });
+        adminUserId = user.id;
+        log(`Seeded default admin account: ${SEED_EMAIL}`);
+      }
+
+      // Restore admin_users record
+      await db
+        .insert(adminUsers)
+        .values({ userId: adminUserId, createdAt: new Date().toISOString() })
+        .onConflictDoNothing();
+      log("Admin access restored. Please log in and change your password.");
     }
 
     const deliverables = [
