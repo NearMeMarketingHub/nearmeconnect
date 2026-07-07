@@ -47,7 +47,7 @@ import type {
   ClientOnboarding,
   ChatThread,
   BrandProfile,
-  ContentCalendarItem,
+
   CompanyKnowledgeItem,
   SeoDirectory,
 } from "@shared/schema";
@@ -374,15 +374,13 @@ function ClientSnapshotCard({
 function IntegrationHealthCard({
   company,
   knowledgeItems,
-  contentItems,
 }: {
   company: Company;
   knowledgeItems: CompanyKnowledgeItem[];
-  contentItems: ContentCalendarItem[];
 }) {
   const hubspotOk = !!company.hubspotCompanyId;
   const sharepointOk = knowledgeItems.some((k) => k.url?.toLowerCase().includes("sharepoint"));
-  const gbpOk = contentItems.some((c) => c.platform === "google_business");
+  const gbpOk = !!company.gbpAccountId;
 
   const integrations = [
     {
@@ -552,12 +550,10 @@ function ThisWeekCard({
 function PlanCard({
   tasks,
   campaigns,
-  contentItems,
   onNavigate,
 }: {
   tasks: Task[];
   campaigns: CampaignRequest[];
-  contentItems: ContentCalendarItem[];
   onNavigate: (tab: string) => void;
 }) {
   const t = today();
@@ -576,15 +572,6 @@ function PlanCard({
     return d.slice(0, 10) >= ts && d.slice(0, 10) <= in60;
   });
 
-  const content30 = contentItems.filter((c) => {
-    if (!c.scheduledDate) return false;
-    return c.scheduledDate >= ts && c.scheduledDate <= in30;
-  });
-  const content60 = contentItems.filter((c) => {
-    if (!c.scheduledDate) return false;
-    return c.scheduledDate >= ts && c.scheduledDate <= in60;
-  });
-
   const activeTasks = tasks.filter(
     (t) => t.status !== "completed" && t.status !== "cancelled" && t.approvalStatus !== "rejected"
   );
@@ -596,7 +583,6 @@ function PlanCard({
 
   const rows = [
     { label: "Planned Campaigns", v30: campaigns30.length, v60: campaigns60.length, tab: "campaigns" },
-    { label: "Content Items", v30: content30.length, v60: content60.length, tab: "content-calendar" },
     { label: "Cadence Tasks", v30: cadenceTasks.length, v60: cadenceTasks.length, tab: "cadences" },
     { label: "Unscheduled", v30: unscheduled.length, v60: unscheduled.length, tab: "tasks" },
   ];
@@ -739,102 +725,20 @@ function ActiveCampaignsCard({
   );
 }
 
-// ── 6. Content Pipeline ───────────────────────────────────────────────────────
-function ContentPipelineCard({
-  contentItems,
-  onNavigate,
-}: {
-  contentItems: ContentCalendarItem[];
-  onNavigate: (tab: string) => void;
-}) {
-  const statuses = [
-    { key: "draft", label: "Draft", color: "bg-slate-400" },
-    { key: "in_review", label: "Review", color: "bg-yellow-400" },
-    { key: "approved", label: "Approved", color: "bg-blue-400" },
-    { key: "scheduled", label: "Scheduled", color: "bg-purple-400" },
-    { key: "published", label: "Published", color: "bg-green-400" },
-  ];
-
-  const platforms = ["google_business", "facebook", "instagram", "linkedin", "email", "blog"] as const;
-
-  const platformCounts = platforms
-    .map((p) => ({ key: p, count: contentItems.filter((c) => c.platform === p).length }))
-    .filter((p) => p.count > 0);
-
-  return (
-    <Card data-testid="card-content-pipeline">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Layers className="h-4 w-4 text-muted-foreground" /> Content Pipeline
-          </CardTitle>
-          <Button size="sm" variant="ghost" className="text-xs h-6 px-2" onClick={() => onNavigate("content-calendar")} data-testid="button-content-all">
-            View all <ChevronRight className="h-3 w-3" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {contentItems.length === 0 ? (
-          <EmptyState icon={Layers} text='No content items yet. Schedule content to see the pipeline.' />
-        ) : (
-          <>
-            <div>
-              <SectionLabel>By Status</SectionLabel>
-              <div className="flex items-end gap-1 h-16">
-                {statuses.map((s) => {
-                  const count = contentItems.filter((c) => c.status === s.key).length;
-                  const max = Math.max(...statuses.map((ss) => contentItems.filter((c) => c.status === ss.key).length), 1);
-                  const pct = Math.round((count / max) * 100);
-                  return (
-                    <div key={s.key} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[10px] font-semibold text-muted-foreground">{count}</span>
-                      <div className="w-full rounded-t" style={{ height: `${Math.max(4, (pct / 100) * 40)}px` }}>
-                        <div className={`w-full h-full rounded-t ${s.color} opacity-80`} />
-                      </div>
-                      <span className="text-[9px] text-muted-foreground">{s.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            {platformCounts.length > 0 && (
-              <div>
-                <SectionLabel>By Platform</SectionLabel>
-                <div className="flex flex-wrap gap-1.5">
-                  {platformCounts.map((p) => (
-                    <div key={p.key} className="flex items-center gap-1 text-xs bg-muted rounded-md px-2 py-1">
-                      {platformIcon(p.key)}
-                      <span>{platformLabel(p.key)}</span>
-                      <span className="font-semibold ml-0.5">{p.count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
 // ── 7. Client Approvals ───────────────────────────────────────────────────────
 function ClientApprovalsCard({
   tasks,
-  contentItems,
   campaigns,
   onNavigate,
 }: {
   tasks: Task[];
-  contentItems: ContentCalendarItem[];
   campaigns: CampaignRequest[];
   onNavigate: (tab: string) => void;
 }) {
   const pendingTasks = tasks.filter((t) => t.approvalStatus === "pending_approval");
-  const reviewContent = contentItems.filter((c) => c.status === "in_review");
   const pendingCampaigns = campaigns.filter((c) => c.status === "pending");
 
-  const total = pendingTasks.length + reviewContent.length + pendingCampaigns.length;
+  const total = pendingTasks.length + pendingCampaigns.length;
 
   return (
     <Card data-testid="card-client-approvals">
@@ -870,21 +774,7 @@ function ClientApprovalsCard({
                 <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               </div>
             ))}
-            {reviewContent.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
-                onClick={() => onNavigate("content-calendar")}
-                data-testid={`item-approval-content-${c.id}`}
-              >
-                <Image className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate font-medium">{c.title}</p>
-                  <p className="text-[10px] text-muted-foreground">Content review · {platformLabel(c.platform)}</p>
-                </div>
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              </div>
-            ))}
+
             {pendingCampaigns.map((c) => (
               <div
                 key={c.id}
@@ -1091,12 +981,10 @@ function BrandVoiceCard({
 function RecentActivityCard({
   tasks,
   threads,
-  contentItems,
   onNavigate,
 }: {
   tasks: Task[];
   threads: ChatThread[];
-  contentItems: ContentCalendarItem[];
   onNavigate: (tab: string) => void;
 }) {
   type ActivityItem = {
@@ -1130,17 +1018,7 @@ function RecentActivityCard({
         icon: <MessageSquare className="h-3.5 w-3.5 text-blue-500" />,
         tab: "chat",
       })),
-    ...contentItems
-      .filter((c) => c.status === "published" || c.status === "scheduled")
-      .slice(0, 2)
-      .map((c) => ({
-        id: `content-${c.id}`,
-        label: c.title,
-        sub: `${c.status === "published" ? "Published" : "Scheduled"} · ${platformLabel(c.platform)}`,
-        ts: c.scheduledDate || c.createdAt,
-        icon: <BarChart2 className="h-3.5 w-3.5 text-purple-500" />,
-        tab: "content-calendar",
-      })),
+
   ]
     .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
     .slice(0, 6);
@@ -1404,15 +1282,6 @@ export function CompanyCommandCenter({
     },
   });
 
-  const { data: contentItems = [] } = useQuery<ContentCalendarItem[]>({
-    queryKey: ["/api/content-calendar", { companyId }],
-    queryFn: async () => {
-      const r = await fetch(`/api/content-calendar?companyId=${companyId}`, { credentials: "include" });
-      if (!r.ok) return [];
-      return r.json();
-    },
-  });
-
   const { data: knowledgeItems = [] } = useQuery<CompanyKnowledgeItem[]>({
     queryKey: ["/api/companies", companyId, "knowledge"],
     queryFn: async () => {
@@ -1439,7 +1308,6 @@ export function CompanyCommandCenter({
         <IntegrationHealthCard
           company={company}
           knowledgeItems={knowledgeItems}
-          contentItems={contentItems}
         />
       </div>
 
@@ -1460,23 +1328,20 @@ export function CompanyCommandCenter({
       {/* Row 4: This Week/Next Week + 30/60-Day Plan */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <ThisWeekCard tasks={tasks} meetings={meetings} onNavigate={onNavigate} />
-        <PlanCard tasks={tasks} campaigns={campaigns} contentItems={contentItems} onNavigate={onNavigate} />
+        <PlanCard tasks={tasks} campaigns={campaigns} onNavigate={onNavigate} />
       </div>
 
       {/* Row 3: Active Campaigns (full width) */}
       <ActiveCampaignsCard campaigns={campaigns} tasks={tasks} onNavigate={onNavigate} />
 
-      {/* Row 4: Content Pipeline + Client Approvals */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <ContentPipelineCard contentItems={contentItems} onNavigate={onNavigate} />
-        <ClientApprovalsCard tasks={tasks} contentItems={contentItems} campaigns={campaigns} onNavigate={onNavigate} />
-      </div>
+      {/* Row 4: Client Approvals */}
+      <ClientApprovalsCard tasks={tasks} campaigns={campaigns} onNavigate={onNavigate} />
 
       {/* Row 5: Resources + Brand Voice + Recent Activity */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <ResourcesCard companyId={companyId} knowledgeItems={knowledgeItems} onNavigate={onNavigate} />
         <BrandVoiceCard brandProfile={brandProfile} onNavigate={onNavigate} />
-        <RecentActivityCard tasks={tasks} threads={threads} contentItems={contentItems} onNavigate={onNavigate} />
+        <RecentActivityCard tasks={tasks} threads={threads} onNavigate={onNavigate} />
       </div>
 
       {/* Row 6: SEO Coverage + Pinned Notes */}

@@ -30,7 +30,6 @@ import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { HubspotPanel } from "@/components/hubspot-panel";
-import { ContentCalendarView } from "@/components/content-calendar-view";
 import { CompanyCommandCenter } from "@/components/company-command-center";
 import {
   ArrowLeft,
@@ -419,7 +418,7 @@ export default function CompanyDashboard() {
     { key: "work",       label: "Work",       subTabs: [
       { key: "tasks",            label: "Tasks" },
       { key: "campaigns",        label: "Campaigns" },
-      { key: "content-calendar", label: "Content Calendar" },
+
       { key: "calendar",         label: "Calendar" },
       { key: "cadences",         label: "Cadences" },
       { key: "hill-chart",       label: "Hill Chart" },
@@ -449,7 +448,7 @@ export default function CompanyDashboard() {
     ], defaultSub: "users" },
   ];
   const TAB_TO_CATEGORY: Record<string, string> = {
-    details: "overview", tasks: "work", campaigns: "work", "content-calendar": "work",
+    details: "overview", tasks: "work", campaigns: "work",
     calendar: "work", cadences: "work", pending_approval: "work",
     marketing: "marketing", government: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", seo: "marketing", gbp: "marketing",
     chat: "communicate", meetings: "communicate", board: "communicate",
@@ -2431,7 +2430,7 @@ export default function CompanyDashboard() {
               { value: "reporting", label: "Reporting" },
               { value: "hubspot", label: "HubSpot" },
               { value: "marketing", label: "Marketing Hub" },
-              { value: "content-calendar", label: "Content Calendar" },
+
               { value: "workflows", label: "Workflows" },
               { value: "retainer", label: "Retainer" },
             ]}
@@ -4559,25 +4558,6 @@ export default function CompanyDashboard() {
             }} />}
           </TabsContent>
 
-          {/* Content Calendar Tab */}
-          <TabsContent value="content-calendar" className="data-[state=active]:h-[calc(100vh-220px)] data-[state=active]:flex data-[state=active]:flex-col min-h-0">
-            {companyId && (
-              <>
-                <div className="flex justify-end px-4 pt-2 pb-1 shrink-0">
-                  <Link href={`/admin/ai-brief/${companyId}`}>
-                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" data-testid="btn-ai-brief-from-calendar">
-                      <Sparkles className="h-3.5 w-3.5 text-primary" />
-                      Generate AI Brief
-                    </Button>
-                  </Link>
-                </div>
-                <ContentCalendarView
-                  companyId={companyId}
-                  companies={company ? [company] : []}
-                />
-              </>
-            )}
-          </TabsContent>
 
           {/* Workflows Tab */}
           <TabsContent value="workflows" className="min-h-0">

@@ -25,7 +25,7 @@ import {
   CheckCircle2, XCircle, Clock, AlertCircle, ClipboardList, Trash2, Globe,
   Users, Eye, EyeOff, ExternalLink, Check,
 } from "lucide-react";
-import type { CampaignRequest, CampaignType, DeliverableType, Task, MeetingType, ContentCalendarItem } from "@shared/schema";
+import type { CampaignRequest, CampaignType, DeliverableType, Task, MeetingType } from "@shared/schema";
 
 interface CompanyMemberEnriched {
   id: string;
@@ -90,11 +90,6 @@ const ASSET_TYPE_OPTIONS: { value: AssetLink["type"]; label: string }[] = [
   { value: "link", label: "Link" },
 ];
 
-const CONTENT_PLATFORM_LABELS: Record<string, string> = {
-  instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn",
-  twitter: "Twitter/X", tiktok: "TikTok", youtube: "YouTube",
-  website: "Website", email: "Email", google_business: "Google Business", other: "Other",
-};
 
 function statusColor(status: string) {
   switch (status) {
@@ -216,12 +211,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
     queryFn: () => apiRequest("GET", `/api/tasks/campaign/${campaign!.id}`).then(r => r.json()),
     enabled: !!campaign?.id,
   });
-  const { data: contentItems = [], isLoading: contentLoading } = useQuery<ContentCalendarItem[]>({
-    queryKey: ["/api/content-calendar", "campaign", campaign?.id],
-    queryFn: () => apiRequest("GET", `/api/content-calendar?campaignRequestId=${campaign!.id}`).then(r => r.json()),
-    enabled: !!campaign?.id,
-  });
-
   // ─── Mutations ────────────────────────────────────────────────────────────
   const invalidateCampaigns = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/campaign-requests"] });
@@ -326,15 +315,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
       toast({ title: `Generated ${data.created} task${data.created !== 1 ? "s" : ""}` });
     },
     onError: () => toast({ title: "Failed to generate tasks", variant: "destructive" }),
-  });
-
-  const generateContentMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/campaign-requests/${campaign?.id}/generate-content`, {}).then(r => r.json()),
-    onSuccess: (data: { created: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/content-calendar", "campaign", campaign?.id] });
-      toast({ title: `Generated ${data.created} content item${data.created !== 1 ? "s" : ""}` });
-    },
-    onError: () => toast({ title: "Failed to generate content", variant: "destructive" }),
   });
 
   if (!campaign) return null;
@@ -467,9 +447,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
               <Button size="sm" variant="outline" onClick={() => generateTasksMutation.mutate()} disabled={generateTasksMutation.isPending} data-testid="button-generate-tasks">
                 {generateTasksMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}Generate Tasks
               </Button>
-              <Button size="sm" variant="outline" onClick={() => generateContentMutation.mutate()} disabled={generateContentMutation.isPending} data-testid="button-generate-content">
-                {generateContentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ClipboardList className="w-3 h-3 mr-1" />}Generate Content
-              </Button>
               <Button size="sm" variant="outline" onClick={() => { setActiveTab("assets"); setAddingAsset(true); }} data-testid="button-add-resource">
                 <Plus className="w-3 h-3 mr-1" />Add Resource
               </Button>
@@ -488,7 +465,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
                 { value: "brief", label: "Brief", icon: FileText },
                 { value: "deliverables", label: "Deliverables", icon: Package },
                 { value: "tasks", label: "Tasks", icon: CircleDot },
-                { value: "content", label: "Content", icon: CalendarDays },
                 { value: "assets", label: "Assets", icon: FolderOpen },
                 { value: "approvals", label: "Approvals", icon: ShieldCheck },
                 { value: "notes", label: "Notes", icon: StickyNote },
@@ -502,9 +478,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
                   <Icon className="w-3 h-3" />{label}
                   {value === "tasks" && totalTasks > 0 && (
                     <span className="ml-0.5 rounded-full bg-muted px-1.5 py-0 text-[10px] font-mono">{totalTasks}</span>
-                  )}
-                  {value === "content" && contentItems.length > 0 && (
-                    <span className="ml-0.5 rounded-full bg-muted px-1.5 py-0 text-[10px] font-mono">{contentItems.length}</span>
                   )}
                 </TabsTrigger>
               ))}
@@ -982,58 +955,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
             </TabsContent>
 
             {/* ═══════════════════════════════════════════════════════════════
-                CONTENT
-            ═══════════════════════════════════════════════════════════════ */}
-            <TabsContent value="content" className="mt-0 p-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Content Calendar Items</h3>
-                {isAdmin && (
-                  <Button size="sm" variant="outline" onClick={() => generateContentMutation.mutate()} disabled={generateContentMutation.isPending} data-testid="button-generate-content-inline">
-                    {generateContentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ClipboardList className="w-3 h-3 mr-1" />}Generate Placeholders
-                  </Button>
-                )}
-              </div>
-              {contentLoading ? (
-                <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
-              ) : contentItems.length > 0 ? (
-                <div className="space-y-2" data-testid="section-content-items">
-                  {contentItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between gap-3 p-3 rounded-md border" data-testid={`content-item-${item.id}`}>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.title}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-muted-foreground">{CONTENT_PLATFORM_LABELS[item.platform] || item.platform}</span>
-                          {item.scheduledDate && <span className="text-xs text-muted-foreground">• {parseLocalDate(item.scheduledDate).toLocaleDateString()}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Badge className={`text-xs border-0 ${
-                          item.status === "published" ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" :
-                          item.status === "scheduled" ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" :
-                          item.status === "approved" ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300" :
-                          item.status === "in_review" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300" :
-                          "bg-muted text-muted-foreground"}`}>
-                          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                        </Badge>
-                        {item.ctaUrl && (
-                          <a href={item.ctaUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground" onClick={e => e.stopPropagation()}>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-10 text-muted-foreground">
-                  <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">No content items linked to this campaign.</p>
-                  {isAdmin && <p className="text-xs mt-1">Click "Generate Placeholders" to create draft content items.</p>}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ═══════════════════════════════════════════════════════════════
                 ASSETS
             ═══════════════════════════════════════════════════════════════ */}
             <TabsContent value="assets" className="mt-0 p-6 space-y-4">
@@ -1231,10 +1152,6 @@ export function CampaignDetailPanel({ campaign, open, onClose, isAdmin, companyI
                 <div className="rounded-md border p-3 text-center">
                   <p className="text-2xl font-bold">{completedTasks}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Tasks Done</p>
-                </div>
-                <div className="rounded-md border p-3 text-center">
-                  <p className="text-2xl font-bold">{contentItems.filter(c => c.status === "published").length}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Published</p>
                 </div>
                 <div className="rounded-md border p-3 text-center">
                   <p className="text-2xl font-bold">{totalCreditsUsed.toFixed(0)}</p>

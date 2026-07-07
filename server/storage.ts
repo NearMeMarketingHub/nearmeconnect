@@ -163,18 +163,14 @@ import {
   brandProfiles,
   contentPillars,
   contentAssets,
-  contentCalendarItems,
-  contentCalendarActivity,
+
   type HubspotConnection,
   type BrandProfile,
   type ContentPillar,
   type InsertContentPillar,
   type ContentAsset,
   type InsertContentAsset,
-  type ContentCalendarItem,
-  type InsertContentCalendarItem,
-  type ContentCalendarActivity,
-  type InsertContentCalendarActivity,
+
   hubspotOnboardingChecklist,
   type HubspotOnboardingItem,
   hubspotSyncLog,
@@ -660,15 +656,7 @@ export interface IStorage {
   getContentAssets(companyId?: string, pillarId?: string): Promise<ContentAsset[]>;
   createContentAsset(data: InsertContentAsset): Promise<ContentAsset>;
   deleteContentAsset(id: string): Promise<void>;
-  getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string; campaignRequestId?: string }): Promise<ContentCalendarItem[]>;
-  getContentCalendarItem(id: string): Promise<ContentCalendarItem | undefined>;
-  createContentCalendarItem(data: InsertContentCalendarItem): Promise<ContentCalendarItem>;
-  updateContentCalendarItem(id: string, data: Partial<ContentCalendarItem>): Promise<ContentCalendarItem | undefined>;
-  deleteContentCalendarItem(id: string): Promise<void>;
-  bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]>;
-  getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]>;
-  createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity>;
-  getContentCalendarReadiness(daysAhead?: number): Promise<Array<{ companyId: string; companyName: string; count30: number; count60: number; approvedCampaigns: number; activeCadences: number }>>;
+
 
   // HubSpot Onboarding Checklist
   getHubspotOnboardingChecklist(companyId: string): Promise<HubspotOnboardingItem[]>;
@@ -3206,108 +3194,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContentAsset(id: string): Promise<void> {
     await db.delete(contentAssets).where(eq(contentAssets.id, id));
-  }
-
-  async getContentCalendarItems(filters: { companyId?: string; month?: number; year?: number; platform?: string; status?: string; campaignRequestId?: string }): Promise<ContentCalendarItem[]> {
-    const conditions = [];
-    if (filters.companyId) conditions.push(eq(contentCalendarItems.companyId, filters.companyId));
-    if (filters.platform) conditions.push(eq(contentCalendarItems.platform, filters.platform as any));
-    if (filters.status) conditions.push(eq(contentCalendarItems.status, filters.status as any));
-    if (filters.campaignRequestId) conditions.push(eq(contentCalendarItems.campaignRequestId, filters.campaignRequestId));
-    if (filters.month !== undefined && filters.year !== undefined) {
-      const prefix = `${filters.year}-${String(filters.month).padStart(2, "0")}-`;
-      conditions.push(sql`${contentCalendarItems.scheduledDate} LIKE ${prefix + "%"}`);
-    }
-    const q = db.select().from(contentCalendarItems);
-    if (conditions.length > 0) {
-      return q.where(and(...conditions)).orderBy(contentCalendarItems.scheduledDate, contentCalendarItems.scheduledTime);
-    }
-    return q.orderBy(contentCalendarItems.scheduledDate, contentCalendarItems.scheduledTime);
-  }
-
-  async getContentCalendarItem(id: string): Promise<ContentCalendarItem | undefined> {
-    const [row] = await db.select().from(contentCalendarItems).where(eq(contentCalendarItems.id, id));
-    return row;
-  }
-
-  async createContentCalendarItem(data: InsertContentCalendarItem): Promise<ContentCalendarItem> {
-    const now = new Date().toISOString();
-    const [row] = await db.insert(contentCalendarItems).values({ ...data, createdAt: now, updatedAt: now }).returning();
-    return row;
-  }
-
-  async updateContentCalendarItem(id: string, data: Partial<ContentCalendarItem>): Promise<ContentCalendarItem | undefined> {
-    const [row] = await db.update(contentCalendarItems)
-      .set({ ...data, updatedAt: new Date().toISOString() })
-      .where(eq(contentCalendarItems.id, id))
-      .returning();
-    return row;
-  }
-
-  async deleteContentCalendarItem(id: string): Promise<void> {
-    await db.delete(contentCalendarItems).where(eq(contentCalendarItems.id, id));
-  }
-
-  async bulkCreateContentCalendarItems(items: InsertContentCalendarItem[]): Promise<ContentCalendarItem[]> {
-    if (items.length === 0) return [];
-    const now = new Date().toISOString();
-    const rows = await db.insert(contentCalendarItems)
-      .values(items.map(item => ({ ...item, createdAt: now, updatedAt: now })))
-      .returning();
-    return rows;
-  }
-
-  async getContentCalendarActivity(calendarItemId: string): Promise<ContentCalendarActivity[]> {
-    return db.select().from(contentCalendarActivity)
-      .where(eq(contentCalendarActivity.calendarItemId, calendarItemId))
-      .orderBy(desc(contentCalendarActivity.createdAt));
-  }
-
-  async createContentCalendarActivity(data: InsertContentCalendarActivity): Promise<ContentCalendarActivity> {
-    const [row] = await db.insert(contentCalendarActivity).values({ ...data, createdAt: new Date().toISOString() }).returning();
-    return row;
-  }
-
-  async getContentCalendarReadiness(): Promise<Array<{ companyId: string; companyName: string; count30: number; count60: number; approvedCampaigns: number; activeCadences: number }>> {
-    const now = new Date();
-    const d30 = new Date(now); d30.setDate(d30.getDate() + 30);
-    const d60 = new Date(now); d60.setDate(d60.getDate() + 60);
-    const fmt = (d: Date) => d.toISOString().split("T")[0];
-    const todayStr = fmt(now);
-    const d30Str = fmt(d30);
-    const d60Str = fmt(d60);
-
-    const allCompanies = await db.select().from(companies).orderBy(companies.name);
-    const results = [];
-    for (const company of allCompanies) {
-      const items30 = await db.select().from(contentCalendarItems)
-        .where(and(
-          eq(contentCalendarItems.companyId, company.id),
-          sql`${contentCalendarItems.scheduledDate} >= ${todayStr}`,
-          sql`${contentCalendarItems.scheduledDate} <= ${d30Str}`,
-          sql`${contentCalendarItems.status} NOT IN ('cancelled','archived')`
-        ));
-      const items60 = await db.select().from(contentCalendarItems)
-        .where(and(
-          eq(contentCalendarItems.companyId, company.id),
-          sql`${contentCalendarItems.scheduledDate} > ${d30Str}`,
-          sql`${contentCalendarItems.scheduledDate} <= ${d60Str}`,
-          sql`${contentCalendarItems.status} NOT IN ('cancelled','archived')`
-        ));
-      const approvedCampaignRows = await db.select().from(campaignRequests)
-        .where(and(eq(campaignRequests.companyId, company.id), eq(campaignRequests.status, "approved")));
-      const activeCadenceRows = await db.select().from(cadences)
-        .where(and(eq(cadences.companyId, company.id), eq(cadences.isActive, true)));
-      results.push({
-        companyId: company.id,
-        companyName: company.name,
-        count30: items30.length,
-        count60: items60.length,
-        approvedCampaigns: approvedCampaignRows.length,
-        activeCadences: activeCadenceRows.length,
-      });
-    }
-    return results;
   }
 
   // ── HubSpot Onboarding Checklist ──────────────────────────────────────────

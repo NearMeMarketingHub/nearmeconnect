@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentCalendarItemSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema, insertSeoDirectorySchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema, insertSeoDirectorySchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -6365,34 +6365,6 @@ export async function registerRoutes(
                 bulkQuantity: qty > 1 ? qty : null,
               });
             }
-
-            // Auto-create content calendar placeholders for deliverables with contentPlatform
-            try {
-              for (const delId of effectiveDeliverableIds) {
-                const del = deliverableTypes.find((d: any) => d.id === delId || d.key === delId);
-                if (!(del as any)?.contentPlatform) continue;
-                const qty = quantities[delId] || 1;
-                const campaignTitle = request.name || approvalCampaignType!.name;
-                const title = `${campaignTitle} — ${del!.name}`;
-                const existing = await storage.getContentCalendarItems({ companyId: request.companyId, campaignRequestId: request.id });
-                const alreadyExists = existing.some((e: any) => e.title === title);
-                if (alreadyExists) continue;
-                for (let q = 0; q < qty; q++) {
-                  await storage.createContentCalendarItem({
-                    companyId: request.companyId,
-                    platform: (del as any).contentPlatform as any,
-                    contentType: "post",
-                    title: qty > 1 ? `${title} (${q + 1}/${qty})` : title,
-                    status: "placeholder" as any,
-                    scheduledDate: request.dueDate || null,
-                    campaignRequestId: request.id,
-                    createdBy: userId,
-                  });
-                }
-              }
-            } catch (contentErr: any) {
-              console.error("Failed to auto-create content calendar items for approved campaign:", contentErr.message);
-            }
           }
           checkProjectedUsageAndNotify(request.companyId).catch(() => {});
         } catch (taskError: any) {
@@ -6565,64 +6537,6 @@ export async function registerRoutes(
       res.json({ created: created.length, taskIds: created });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to generate tasks", detail: error.message });
-    }
-  });
-
-  // Generate content calendar placeholders for a campaign
-  app.post("/api/campaign-requests/:id/generate-content", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const request = await storage.getCampaignRequest((req.params.id as string));
-      if (!request) return res.status(404).json({ error: "Campaign request not found" });
-
-      const campaignType = await storage.getCampaignType(request.campaignTypeId);
-      const deliverableTypes = await storage.getDeliverableTypes();
-      const effectiveDeliverableIds = request.requestDeliverableIds || campaignType?.includedDeliverableIds || [];
-      let quantities: Record<string, number> = {};
-      if (request.requestDeliverableQuantities) {
-        try { quantities = JSON.parse(request.requestDeliverableQuantities); } catch {}
-      } else if (request.deliverableQuantities) {
-        try { quantities = JSON.parse(request.deliverableQuantities); } catch {}
-      }
-
-      const PLATFORM_MAP: Record<string, string> = {
-        blog: "website", email: "email", social: "instagram", "social-media": "instagram",
-        facebook: "facebook", linkedin: "linkedin", gbp: "google_business", video: "youtube",
-        podcast: "other", landing: "website", ads: "facebook", graphics: "instagram",
-      };
-
-      const now = new Date().toISOString();
-      const created: string[] = [];
-      const campaignTitle = request.name || campaignType?.name || "Campaign";
-
-      for (const delId of effectiveDeliverableIds) {
-        const del = deliverableTypes.find(d => d.id === delId || d.key === delId);
-        if (!del) continue;
-        const qty = quantities[delId] || 1;
-        const keyLower = (del.key || del.name || "").toLowerCase();
-        const platform = Object.entries(PLATFORM_MAP).find(([k]) => keyLower.includes(k))?.[1] || "other";
-
-        for (let i = 0; i < Math.min(qty, 12); i++) {
-          const item = await storage.createContentCalendarItem({
-            companyId: request.companyId,
-            platform: platform as any,
-            contentType: "post",
-            title: qty > 1 ? `${campaignTitle} - ${del.name} #${i + 1}` : `${campaignTitle} - ${del.name}`,
-            status: "draft",
-            createdBy: userId,
-            campaignRequestId: request.id,
-          });
-          created.push(item.id);
-        }
-      }
-
-      broadcastInvalidation(["/api/content-calendar", "/api/admin/campaign-requests"]);
-      res.json({ created: created.length, itemIds: created });
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to generate content placeholders", detail: error.message });
     }
   });
 
@@ -11521,42 +11435,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/content-production-status", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(currentUserId);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const now = new Date();
-      const items = await storage.getContentCalendarItems({ month: now.getMonth() + 1, year: now.getFullYear() });
-
-      const platforms = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "other"];
-      const statuses = ["draft", "in_review", "approved", "scheduled", "published"];
-
-      const matrix: Record<string, Record<string, number>> = {};
-      for (const p of platforms) {
-        matrix[p] = {};
-        for (const s of statuses) matrix[p][s] = 0;
-      }
-      for (const item of items) {
-        if (matrix[item.platform] && statuses.includes(item.status)) {
-          matrix[item.platform][item.status]++;
-        }
-      }
-
-      const byStatus: Record<string, number> = {};
-      for (const s of statuses) byStatus[s] = 0;
-      for (const item of items) {
-        if (statuses.includes(item.status)) byStatus[item.status]++;
-      }
-
-      res.json({ matrix, byStatus, total: items.length, platforms, statuses });
-    } catch (error) {
-      console.error("Failed to get content production status:", error);
-      res.status(500).json({ error: "Failed to get content production status" });
-    }
-  });
-
   // ── Report Builder ────────────────────────────────────────────────────────
 
   // Helper: parse date range from query params
@@ -11702,76 +11580,6 @@ export async function registerRoutes(
     } catch (e) {
       console.error("Tasks report error:", e);
       res.status(500).json({ error: "Failed to generate tasks report" });
-    }
-  });
-
-  app.get("/api/admin/reports/content", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-
-      const { from, to, preset = "month", companies: companiesParam, platforms: platformsParam, statuses: statusParam } = req.query as Record<string, string>;
-      const { start, end } = parseReportDateRange(from, to, preset);
-      const startStr = start.toISOString().split("T")[0];
-      const endStr = end.toISOString().split("T")[0];
-
-      const [allItems, allCompanies, allPillars] = await Promise.all([
-        storage.getContentCalendarItems({}),
-        storage.getAllCompanies(),
-        storage.getContentPillars(),
-      ]);
-
-      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
-      const platformFilter = platformsParam ? platformsParam.split(",").filter(Boolean) : [];
-      const statusFilter = statusParam ? statusParam.split(",").filter(Boolean) : [];
-
-      const items = allItems.filter(i => {
-        const d = (i.scheduledDate || i.createdAt || "").substring(0, 10);
-        if (d < startStr || d > endStr) return false;
-        if (companyFilter.length && !companyFilter.includes(i.companyId)) return false;
-        if (platformFilter.length && !platformFilter.includes(i.platform)) return false;
-        if (statusFilter.length && !statusFilter.includes(i.status)) return false;
-        return true;
-      });
-
-      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
-      const pillarMap = new Map(allPillars.map(p => [p.id, p]));
-
-      const byStatus: Record<string, number> = {};
-      const byPlatform: Record<string, number> = {};
-      const byPillar: Record<string, { name: string; count: number }> = {};
-      const gbpByType: Record<string, number> = {};
-
-      for (const item of items) {
-        byStatus[item.status] = (byStatus[item.status] || 0) + 1;
-        byPlatform[item.platform] = (byPlatform[item.platform] || 0) + 1;
-        const pillarId = item.pillarId || "none";
-        const pillarName = pillarId === "none" ? "No Pillar" : (pillarMap.get(pillarId)?.name || pillarId);
-        if (!byPillar[pillarId]) byPillar[pillarId] = { name: pillarName, count: 0 };
-        byPillar[pillarId].count++;
-        if (item.platform === "google_business" && item.gbpPostType) {
-          gbpByType[item.gbpPostType] = (gbpByType[item.gbpPostType] || 0) + 1;
-        }
-      }
-
-      // Posts per day/week average
-      const dayRange = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-      const avgPerDay = Math.round((items.length / dayRange) * 10) / 10;
-      const avgPerWeek = Math.round((items.length / (dayRange / 7)) * 10) / 10;
-
-      res.json({
-        total: items.length,
-        byStatus,
-        byPlatform,
-        byPillar: Object.values(byPillar).sort((a, b) => b.count - a.count),
-        gbpByType,
-        avgPerDay,
-        avgPerWeek,
-        dateRange: { from: startStr, to: endStr },
-      });
-    } catch (e) {
-      console.error("Content report error:", e);
-      res.status(500).json({ error: "Failed to generate content report" });
     }
   });
 
@@ -12110,20 +11918,7 @@ export async function registerRoutes(
         return d.toISOString().split("T")[0];
       })();
 
-      const item = await storage.createContentCalendarItem({
-        companyId,
-        platform,
-        pillarId: pillarId || null,
-        title: title.substring(0, 255),
-        bodyContent: bodyContent || null,
-        hashtags: hashtags || null,
-        status: "draft",
-        scheduledDate: scheduledDate || defaultDate,
-        contentType: "post",
-        createdBy: currentUserId,
-      });
-
-      res.json(item);
+      res.status(400).json({ error: "Content calendar has been removed" });
     } catch (e) {
       console.error("ai-brief save error:", e);
       res.status(500).json({ error: "Failed to save calendar item" });
@@ -12224,264 +12019,6 @@ export async function registerRoutes(
     const isAdmin = await storage.isAdmin(userId);
     if (!isAdmin) return res.status(403).json({ error: "Admin only" });
     await storage.deleteContentAsset(req.params.id as string);
-    res.status(204).end();
-  });
-
-  // Content Calendar Items — bulk must come before :id routes
-  app.post("/api/content-calendar/bulk", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const { items } = req.body as { items: any[] };
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "items array required" });
-    }
-    const created = await Promise.all(
-      items.map((item) => storage.createContentCalendarItem({ ...item, createdBy: userId }))
-    );
-    res.status(201).json(created);
-  });
-
-  app.get("/api/content-calendar", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const companyId = req.query.companyId as string | undefined;
-    const month = req.query.month ? parseInt(req.query.month as string) : undefined;
-    const year = req.query.year ? parseInt(req.query.year as string) : undefined;
-    const platform = req.query.platform as string | undefined;
-    const status = req.query.status as string | undefined;
-    const campaignRequestId = req.query.campaignRequestId as string | undefined;
-    const items = await storage.getContentCalendarItems({ companyId, month, year, platform, status, campaignRequestId });
-    res.json(items);
-  });
-
-  app.get("/api/content-calendar/readiness", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const rows = await storage.getContentCalendarReadiness();
-    res.json(rows);
-  });
-
-  app.post("/api/content-calendar/build-schedule", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const { companyId } = req.body as { companyId: string };
-    if (!companyId) return res.status(400).json({ error: "companyId required" });
-
-    const now = new Date();
-    const d60 = new Date(now); d60.setDate(d60.getDate() + 60);
-    const todayStr = now.toISOString().split("T")[0];
-    const d60Str = d60.toISOString().split("T")[0];
-
-    let created = 0;
-
-    // 1. Placeholders from approved campaigns
-    const campaigns = await storage.getCampaignRequests(companyId);
-    const approvedCampaigns = campaigns.filter((c: any) => c.status === "approved");
-    const allDeliverableTypes = await storage.getDeliverableTypes();
-
-    for (const campaign of approvedCampaigns) {
-      const campaignType = await storage.getCampaignType(campaign.campaignTypeId);
-      const effectiveDelIds = campaign.requestDeliverableIds || campaignType?.includedDeliverableIds || [];
-      for (const delId of effectiveDelIds) {
-        const del = allDeliverableTypes.find((d: any) => d.id === delId || d.key === delId);
-        if (!del?.contentPlatform) continue;
-        const title = `${campaign.name || campaignType?.name || "Campaign"} — ${del.name}`;
-        // Dedup: check if already exists
-        const existing = await storage.getContentCalendarItems({ companyId, campaignRequestId: campaign.id });
-        const alreadyExists = existing.some((e: any) => e.title === title && e.platform === del.contentPlatform);
-        if (alreadyExists) continue;
-        await storage.createContentCalendarItem({
-          companyId,
-          platform: del.contentPlatform as any,
-          contentType: "post",
-          title,
-          status: "placeholder" as any,
-          scheduledDate: campaign.dueDate || todayStr,
-          campaignRequestId: campaign.id,
-          createdBy: userId,
-        });
-        created++;
-      }
-    }
-
-    // 2. Placeholders from active cadences (next 60 days)
-    const cadenceList = await storage.getCadences(companyId);
-    const activeCadences = cadenceList.filter((c: any) => c.isActive);
-    for (const cadence of activeCadences) {
-      if (!cadence.deliverableTypeId) continue;
-      const del = allDeliverableTypes.find((d: any) => d.id === cadence.deliverableTypeId);
-      if (!del?.contentPlatform) continue;
-
-      // Generate dates for next 60 days
-      const dates: string[] = [];
-      const checkDate = new Date(now);
-      while (checkDate <= d60) {
-        const dayOfWeek = checkDate.getDay();
-        const dateStr = checkDate.toISOString().split("T")[0];
-        let include = false;
-        if (cadence.frequency === "daily") {
-          include = true;
-        } else if (cadence.frequency === "weekly" && cadence.scheduledDays) {
-          const DAY_MAP: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-          include = cadence.scheduledDays.some((d: string) => DAY_MAP[d.toLowerCase()] === dayOfWeek);
-        } else if (cadence.frequency === "monthly" && cadence.monthDays) {
-          include = cadence.monthDays.includes(checkDate.getDate());
-        }
-        if (include) dates.push(dateStr);
-        checkDate.setDate(checkDate.getDate() + 1);
-      }
-
-      for (const dateStr of dates) {
-        const title = `${cadence.title} — ${dateStr}`;
-        const existing = await storage.getContentCalendarItems({ companyId });
-        const alreadyExists = existing.some((e: any) => e.cadenceId === cadence.id && e.scheduledDate === dateStr);
-        if (alreadyExists) continue;
-        await storage.createContentCalendarItem({
-          companyId,
-          platform: del.contentPlatform as any,
-          contentType: "post",
-          title,
-          status: "placeholder" as any,
-          scheduledDate: dateStr,
-          cadenceId: cadence.id,
-          createdBy: userId,
-        });
-        created++;
-      }
-    }
-
-    broadcastInvalidation(["/api/content-calendar"]);
-    res.json({ created });
-  });
-
-  app.get("/api/content-calendar/:id/activity", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const activity = await storage.getContentCalendarActivity(req.params.id as string);
-    res.json(activity);
-  });
-
-  app.get("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const item = await storage.getContentCalendarItem(req.params.id as string);
-    if (!item) return res.status(404).json({ error: "Not found" });
-    res.json(item);
-  });
-
-  app.post("/api/content-calendar", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const parsed = insertContentCalendarItemSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const item = await storage.createContentCalendarItem({ ...parsed.data, createdBy: userId });
-    res.status(201).json(item);
-  });
-
-  // Download a CSV template for bulk content upload (includes GBP fields)
-  app.get("/api/content-calendar/template", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const headers = [
-      "platform","contentType","title","bodyContent","hashtags","ctaText","ctaUrl",
-      "scheduledDate","scheduledTime","status",
-      "gbpPostType","gbpEventTitle","gbpEventStart","gbpEventEnd",
-      "gbpOfferTitle","gbpOfferStart","gbpOfferEnd","gbpOfferCoupon","gbpOfferTerms","gbpRedeemUrl",
-      "gbpProductName","gbpProductPrice","gbpProductDescription","gbpCtaType"
-    ];
-    const sampleSocial = [
-      "facebook","post","Spring sale announcement","Big spring sale this weekend!","#spring #sale","Shop Now","https://example.com",
-      "2026-06-01","09:00","draft",
-      "","","","","","","","","","","","","",""
-    ];
-    const sampleGbpEvent = [
-      "google_business","gbp_post","Summer kickoff event","Join us for the summer kickoff!","","Learn More","",
-      "2026-06-15","10:00","draft",
-      "event","Summer Kickoff","2026-06-15T10:00","2026-06-15T14:00","","","","","","","","","","learn_more"
-    ];
-    const sampleGbpOffer = [
-      "google_business","gbp_post","20% off promo","Limited-time 20% off any service.","","Redeem","https://example.com/promo",
-      "2026-06-20","08:00","draft",
-      "offer","","","","20% Off","2026-06-20","2026-06-27","SUMMER20","Cannot combine with other offers","https://example.com/promo",
-      "","","",""
-    ];
-    const esc = (v: string) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const csv = [headers, sampleSocial, sampleGbpEvent, sampleGbpOffer]
-      .map(row => row.map(esc).join(","))
-      .join("\n");
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", 'attachment; filename="content-calendar-template.csv"');
-    res.send(csv);
-  });
-
-  // Bulk-create content calendar items from a parsed array
-  app.post("/api/content-calendar/bulk", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const { companyId, items } = req.body || {};
-    if (!companyId || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "companyId and non-empty items[] required" });
-    }
-    if (items.length > 500) {
-      return res.status(400).json({ error: "Maximum 500 items per upload" });
-    }
-    const company = await storage.getCompany(companyId);
-    if (!company) return res.status(404).json({ error: "Company not found" });
-    const successes: any[] = [];
-    const errors: Array<{ row: number; message: string }> = [];
-    for (let i = 0; i < items.length; i++) {
-      const raw: any = { ...items[i], companyId };
-      // Normalise empty strings → undefined; for nullable enum fields use null instead
-      const nullableEnumFields = new Set(["gbpPostType"]);
-      Object.keys(raw).forEach(k => {
-        if (raw[k] === "") raw[k] = nullableEnumFields.has(k) ? null : undefined;
-      });
-      const parsed = insertContentCalendarItemSchema.safeParse(raw);
-      if (!parsed.success) {
-        const msg = Object.entries(parsed.error.flatten().fieldErrors)
-          .map(([f, m]) => `${f}: ${(m as string[])?.join("; ")}`).join(" | ");
-        errors.push({ row: i + 1, message: msg || "Invalid row" });
-        continue;
-      }
-      try {
-        const created = await storage.createContentCalendarItem({ ...parsed.data, createdBy: userId });
-        successes.push(created);
-      } catch (err: any) {
-        errors.push({ row: i + 1, message: err?.message || "Insert failed" });
-      }
-    }
-    broadcastInvalidation(["/api/content-calendar"]);
-    res.status(errors.length === items.length ? 400 : 200).json({
-      created: successes.length,
-      failed: errors.length,
-      errors,
-    });
-  });
-
-  app.patch("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const id = req.params.id as string;
-    const item = await storage.updateContentCalendarItem(id, req.body);
-    if (!item) return res.status(404).json({ error: "Not found" });
-    await storage.createContentCalendarActivity({
-      calendarItemId: id,
-      userId,
-      action: "updated",
-      toValue: JSON.stringify(req.body),
-    });
-    res.json(item);
-  });
-
-  app.delete("/api/content-calendar/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    await storage.deleteContentCalendarItem(req.params.id as string);
     res.status(204).end();
   });
 
@@ -12887,11 +12424,10 @@ export async function registerRoutes(
       const isUserAdmin = await storage.isAdmin(req.user!.id);
       if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
 
-      const [companies, allTasks, allCampaigns, allContent, allSeo, allMeetings] = await Promise.all([
+      const [companies, allTasks, allCampaigns, allSeo, allMeetings] = await Promise.all([
         storage.getAllCompanies(),
         storage.getAllTasks(),
         storage.getAllCampaignRequests(),
-        storage.getContentCalendarItems({}),
         storage.getAllSeoDirectories(),
         storage.getAllMeetingRequests(),
       ]);
@@ -12917,12 +12453,6 @@ export async function registerRoutes(
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         .slice(0, 10)
         .map(c => ({ id: c.id, title: c.name || "Campaign Request", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, createdAt: c.createdAt, isRush: c.isRush }));
-
-      const contentApprovals = allContent
-        .filter(c => c.status === "in_review")
-        .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""))
-        .slice(0, 15)
-        .map(c => ({ id: c.id, title: c.title, companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, platform: c.platform, scheduledDate: c.scheduledDate }));
 
       // ── Campaign health ──
       const activeCampaigns = allCampaigns
@@ -12956,20 +12486,9 @@ export async function registerRoutes(
 
       // ── 30/60-day readiness ──
       const readiness = companies.map(company => {
-        const co = allContent.filter(c => c.companyId === company.id);
-        const contentNext30 = co.filter(c => {
-          if (!c.scheduledDate || c.status === "published") return false;
-          const d = new Date(c.scheduledDate + "T00:00:00");
-          return d >= today && d <= in30;
-        }).length;
-        const contentNext60 = co.filter(c => {
-          if (!c.scheduledDate || c.status === "published") return false;
-          const d = new Date(c.scheduledDate + "T00:00:00");
-          return d >= today && d <= in60;
-        }).length;
         const campaignsActive = allCampaigns.filter(c => c.companyId === company.id && ["approved", "in_progress"].includes(c.status)).length;
-        const status = (contentNext30 === 0 && campaignsActive === 0) ? "no_schedule" : (contentNext30 < 3) ? "under_planned" : "well_planned";
-        return { companyId: company.id, companyName: company.name, contentNext30, contentNext60, campaignsActive, status };
+        const status = campaignsActive === 0 ? "no_schedule" : "well_planned";
+        return { companyId: company.id, companyName: company.name, campaignsActive, status };
       });
 
       // ── Recent activity ──
@@ -12977,9 +12496,6 @@ export async function registerRoutes(
 
       allTasks.filter(t => t.status === "completed").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8)
         .forEach(t => activity.push({ type: "task_completed", id: t.id, title: t.title, companyId: t.companyId, companyName: companyMap[t.companyId] ?? t.companyId, ts: t.createdAt }));
-
-      allContent.filter(c => c.status === "published").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 6)
-        .forEach(c => activity.push({ type: "content_published", id: c.id, title: c.title, companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, ts: c.createdAt, meta: c.platform }));
 
       allCampaigns.filter(c => c.status === "approved").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
         .forEach(c => activity.push({ type: "campaign_approved", id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, ts: c.createdAt }));
@@ -12990,7 +12506,7 @@ export async function registerRoutes(
       activity.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
 
       res.json({
-        approvalQueue: { tasks: taskApprovals, campaigns: campaignApprovals, content: contentApprovals },
+        approvalQueue: { tasks: taskApprovals, campaigns: campaignApprovals },
         campaignHealth: { active: activeCampaigns, atRisk: atRiskCampaigns, launchingSoon },
         seoQueue: { byStatus: seoByStatus, overdue: seoOverdue.slice(0, 10), total: allSeo.length },
         readiness,
@@ -13826,12 +13342,11 @@ export async function registerRoutes(
         if (!member) return res.status(403).json({ error: "Forbidden" });
       }
 
-      const [assignment, credits, tasks, campaigns, contentItems] = await Promise.all([
+      const [assignment, credits, tasks, campaigns] = await Promise.all([
         storage.getClientRetainerAssignment(companyId),
         storage.getCreditProjection(companyId),
         storage.getTasks(companyId),
         storage.getCampaignRequests(companyId),
-        storage.getContentCalendarItems({ companyId }),
       ]);
 
       let assignmentData = null;
@@ -13887,7 +13402,6 @@ export async function registerRoutes(
         credits,
         taskCounts,
         campaigns: { active: campaigns.filter(c => !["rejected", "cancelled"].includes(c.status)).length },
-        contentItems: { scheduled: contentItems.filter(c => c.status === "scheduled" || c.status === "approved" || c.status === "drafting").length },
         upcomingRetainerTasks,
       });
     } catch (e: any) { res.status(500).json({ error: e.message }); }

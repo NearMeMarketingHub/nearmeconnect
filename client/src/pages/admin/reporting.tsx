@@ -53,15 +53,6 @@ interface TasksReportData {
   dateRange: { from: string; to: string };
 }
 
-interface ContentReportData {
-  total: number;
-  byStatus: Record<string, number>;
-  byPlatform: Record<string, number>;
-  byPillar: { name: string; count: number }[];
-  gbpByType: Record<string, number>;
-  avgPerDay: number; avgPerWeek: number;
-  dateRange: { from: string; to: string };
-}
 
 interface CompanyReportData {
   scorecard: { id: string; name: string; subscriptionTier: string; onboardingComplete: boolean; hubspotConnected: boolean; tasksCreated: number; completed: number; overdue: number; creditsUsed: number }[];
@@ -367,68 +358,6 @@ function TasksReport({ filters, companies, adminUsers, categories }: {
   );
 }
 
-// ── Content Report ────────────────────────────────────────────────────────────
-
-function ContentReport({ filters, companies, pillars }: { filters: ReportFilters; companies: Company[]; pillars: ContentPillar[] }) {
-  const params = filtersToParams(filters);
-  const { data, isLoading } = useQuery<ContentReportData>({
-    queryKey: ["/api/admin/reports/content", params.toString()],
-    queryFn: async () => {
-      const r = await fetch(`/api/admin/reports/content?${params}`, { credentials: "include" });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
-  });
-
-  if (isLoading) return <div className="space-y-3">{[1, 2].map(i => <Skeleton key={i} className="h-24 w-full" />)}</div>;
-  if (!data) return null;
-
-  const platformData = Object.entries(data.byPlatform).filter(([, v]) => v > 0).map(([k, v]) => ({ name: PLATFORM_LABELS[k] || k, value: v }));
-  const statusData = Object.entries(data.byStatus).filter(([, v]) => v > 0).map(([k, v]) => ({ name: k.replace("_", " "), value: v }));
-  const gbpData = Object.entries(data.gbpByType).filter(([, v]) => v > 0).map(([k, v]) => ({ name: k, value: v }));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-xs text-muted-foreground">Period: {data.dateRange.from} → {data.dateRange.to}</p>
-        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => downloadCSV(data.byPillar as any, "content-report.csv")} data-testid="btn-export-content">
-          <Download className="h-3 w-3" /> Export CSV
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard label="Content Items" value={data.total} />
-        <MetricCard label="Published" value={data.byStatus.published || 0} color="text-green-600 dark:text-green-400" />
-        <MetricCard label="Scheduled" value={data.byStatus.scheduled || 0} color="text-blue-600 dark:text-blue-400" />
-        <MetricCard label="Draft" value={data.byStatus.draft || 0} />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <MetricCard label="Avg Posts/Day" value={data.avgPerDay} />
-        <MetricCard label="Avg Posts/Week" value={data.avgPerWeek} />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <SimplePieChart data={platformData} title="By Platform" />
-        <SimplePieChart data={statusData} title="By Status" />
-      </div>
-
-      {data.byPillar.length > 0 && (
-        <SimpleBarChart data={data.byPillar.slice(0, 8)} dataKey="count" nameKey="name" title="By Content Pillar" color="#8b5cf6" />
-      )}
-
-      {gbpData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Google Business Profile — Post Types</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {gbpData.map(d => <MetricCard key={d.name} label={d.name.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())} value={d.value} />)}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
 
 // ── Company Report ────────────────────────────────────────────────────────────
 
@@ -982,7 +911,7 @@ export default function AdminReporting() {
 
               <div className="mt-4">
                 <TabsContent value="tasks"><TasksReport filters={filters} companies={companies} adminUsers={adminUsers} categories={categories} /></TabsContent>
-                <TabsContent value="content"><ContentReport filters={filters} companies={companies} pillars={pillars} /></TabsContent>
+
                 <TabsContent value="companies"><CompanyReport filters={filters} /></TabsContent>
                 <TabsContent value="credits"><CreditsReport filters={filters} companies={companies} /></TabsContent>
                 <TabsContent value="hubspot"><HubSpotReport filters={filters} /></TabsContent>

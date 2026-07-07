@@ -16,7 +16,18 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Plus, Pencil, Trash2, Tag, Coins, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { DeliverableType } from "@shared/schema";
 import { contentPlatformEnum } from "@shared/schema";
-import { PLATFORM_CONFIG } from "@/components/content-item-modal";
+
+const PLATFORM_CONFIG: Record<string, { label: string }> = {
+  facebook: { label: "Facebook" },
+  instagram: { label: "Instagram" },
+  linkedin: { label: "LinkedIn" },
+  twitter: { label: "Twitter / X" },
+  google_business: { label: "Google Business" },
+  youtube: { label: "YouTube" },
+  email: { label: "Email" },
+  website: { label: "Website / Blog" },
+  other: { label: "Other" },
+};
 
 export default function AdminDeliverableTypes() {
   const { toast } = useToast();

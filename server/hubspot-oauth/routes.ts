@@ -423,12 +423,6 @@ export function registerHubSpotOAuthRoutes(app: Express) {
       const broadcastId = String(broadcast.id || broadcast.broadcastGuid || "");
       const newStatus = triggerAt ? "scheduled" : "published";
 
-      await storage.updateContentCalendarItem(calendarItemId, {
-        hubspotPostId: broadcastId,
-        status: newStatus,
-        publishedAt: new Date().toISOString(),
-      });
-
       storage.createHubspotSyncLog({
         companyId,
         action: "push_social",

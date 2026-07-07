@@ -692,26 +692,11 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
     });
     created++;
 
-    // Auto-create content calendar placeholder if deliverable has a contentPlatform
-    if (deliverableTypeRecord?.contentPlatform) {
+    if (false) {
       try {
-        const existingItems = await storage.getContentCalendarItems({ companyId: cadence.companyId });
-        const alreadyExists = existingItems.some((e: any) => e.cadenceId === cadence.id && e.scheduledDate === dateStr);
-        if (!alreadyExists) {
-          await storage.createContentCalendarItem({
-            companyId: cadence.companyId,
-            platform: deliverableTypeRecord.contentPlatform,
-            contentType: "post",
-            title: `${cadence.title} — ${dateStr}`,
-            status: "placeholder" as any,
-            scheduledDate: dateStr,
-            linkedTaskId: task.id,
-            cadenceId: cadence.id,
-            createdBy: cadence.createdBy,
-          });
-        }
+        // content calendar removed
       } catch (err: any) {
-        log(`Failed to create content calendar item for cadence ${cadence.id} on ${dateStr}: ${err.message}`, 'cadence-generator');
+        log(`Skipped: ${err.message}`, 'cadence-generator');
       }
     }
   }

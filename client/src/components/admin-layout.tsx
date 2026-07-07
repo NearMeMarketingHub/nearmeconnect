@@ -87,7 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Work",
     items: [
       { title: "All Tasks",        href: "/admin/tasks",            icon: ClipboardList },
-      { title: "Content Calendar", href: "/admin/content-calendar", icon: Calendar },
+
       { title: "Campaigns",        href: "/admin/campaigns",        icon: Target },
     ],
   },

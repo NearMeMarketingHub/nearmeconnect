@@ -81,9 +81,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [rejectionReason, setRejectionReason] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkLabel, setNewLinkLabel] = useState("");
-  const [newLinkType, setNewLinkType] = useState<"external" | "campaign" | "content">("external");
+  const [newLinkType, setNewLinkType] = useState<"external" | "campaign">("external");
   const [selectedCampaignId, setSelectedCampaignId] = useState("");
-  const [selectedContentItemId, setSelectedContentItemId] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [editingRecurrence, setEditingRecurrence] = useState(false);
@@ -802,18 +801,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
   const linkCampaigns: any[] = Array.isArray(linkCampaignsRaw) ? linkCampaignsRaw : [];
 
-  const { data: linkContentItemsRaw = [] } = useQuery<any[]>({
-    queryKey: ["/api/content-calendar", { companyId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/content-calendar?companyId=${companyId}`, { credentials: "include" });
-      if (!res.ok) return [];
-      const d = await res.json();
-      return Array.isArray(d) ? d : [];
-    },
-    enabled: !!companyId && open && newLinkType === "content",
-  });
-  const linkContentItems: any[] = Array.isArray(linkContentItemsRaw) ? linkContentItemsRaw : [];
-
   const handleAddCampaignLink = () => {
     const campaign = linkCampaigns.find((c) => c.id === selectedCampaignId);
     if (!campaign) return;
@@ -823,16 +810,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       label: `Campaign: ${campaign.name || campaign.campaignTypeName || "Untitled"}`,
     });
     setSelectedCampaignId("");
-  };
-
-  const handleAddContentItemLink = () => {
-    const item = linkContentItems.find((c) => c.id === selectedContentItemId);
-    if (!item) return;
-    createLinkMutation.mutate({
-      url: `${window.location.origin}/admin/content-calendar?itemId=${item.id}`,
-      label: `Content: ${item.title || "Untitled"}`,
-    });
-    setSelectedContentItemId("");
   };
 
   // Month options for the Target Month selector (3 back, 14 ahead)
@@ -2083,14 +2060,14 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 ))}
 
                 <div className="space-y-2">
-                  <Select value={newLinkType} onValueChange={(v) => setNewLinkType(v as "external" | "campaign" | "content")}>
+                  <Select value={newLinkType} onValueChange={(v) => setNewLinkType(v as "external" | "campaign")}>
                     <SelectTrigger className="h-8 text-sm" data-testid="select-link-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="external">External URL</SelectItem>
                       <SelectItem value="campaign">Campaign</SelectItem>
-                      {isAdmin && <SelectItem value="content">Content Calendar Item</SelectItem>}
+
                     </SelectContent>
                   </Select>
 
@@ -2156,33 +2133,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                     </div>
                   )}
 
-                  {newLinkType === "content" && (
-                    <div className="flex items-center gap-2">
-                      <Select value={selectedContentItemId} onValueChange={setSelectedContentItemId}>
-                        <SelectTrigger className="h-8 text-sm flex-1" data-testid="select-link-content-item">
-                          <SelectValue placeholder={linkContentItems.length === 0 ? "No content items found" : "Select a content item..."} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linkContentItems.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.title || "Untitled"}{item.scheduledDate ? ` (${item.scheduledDate})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAddContentItemLink}
-                        disabled={!selectedContentItemId || createLinkMutation.isPending}
-                        className="h-8"
-                        data-testid="button-add-content-link"
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                  )}
+
                 </div>
               </div>
             )}
