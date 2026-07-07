@@ -537,6 +537,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/task-categories/all", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const categories = await storage.getAllTaskCategories();
+      res.json(categories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/companies/:companyId/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);

@@ -35,7 +35,7 @@ export default function AdminTasks() {
     queryKey: ["/api/admin/campaign-requests"],
   });
 
-  // Fetch categories for the selected company (when a specific company is selected)
+  // Fetch categories for the selected company (or all companies when "all" is selected)
   const { data: companyCategories = [] } = useQuery<TaskCategory[]>({
     queryKey: ["/api/companies", selectedCompany, "task-categories"],
     queryFn: async () => {
@@ -45,6 +45,16 @@ export default function AdminTasks() {
       return r.json();
     },
     enabled: selectedCompany !== "all",
+  });
+
+  const { data: allCategories = [] } = useQuery<TaskCategory[]>({
+    queryKey: ["/api/task-categories/all"],
+    queryFn: async () => {
+      const r = await fetch("/api/task-categories/all");
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: selectedCompany === "all",
   });
 
   const handleCompanyChange = (company: string) => {
@@ -128,7 +138,7 @@ export default function AdminTasks() {
         <ProjectBoard
           companyId={selectedCompany}
           tasks={boardTasks}
-          categories={companyCategories}
+          categories={selectedCompany === "all" ? allCategories : companyCategories}
           tasksLoading={isLoading}
           onTaskClick={setSelectedTask}
           showCompanyLabel={selectedCompany === "all"}

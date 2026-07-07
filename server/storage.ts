@@ -200,6 +200,7 @@ export interface IStorage {
   deleteAdminInvitation(id: string): Promise<void>;
 
   getTaskCategories(companyId: string): Promise<TaskCategory[]>;
+  getAllTaskCategories(): Promise<TaskCategory[]>;
   getTaskCategory(id: string): Promise<TaskCategory | undefined>;
   createTaskCategory(category: InsertTaskCategory): Promise<TaskCategory>;
   updateTaskCategory(id: string, data: Partial<TaskCategory>): Promise<TaskCategory | undefined>;
@@ -635,6 +636,13 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(taskCategories)
       .where(eq(taskCategories.companyId, companyId))
+      .orderBy(taskCategories.sortOrder);
+  }
+
+  async getAllTaskCategories(): Promise<TaskCategory[]> {
+    return await db
+      .select()
+      .from(taskCategories)
       .orderBy(taskCategories.sortOrder);
   }
 

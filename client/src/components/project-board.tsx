@@ -753,7 +753,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
         type: "assigned",
         creditCost: "1",
         priority: "medium",
-        categoryId: id !== "uncategorized" && id !== "completed" && id !== "pending" && id !== "in_progress" && id !== "review" && id !== "approved" ? id : null,
+        categoryId: id !== "uncategorized" && id !== "completed" && id !== "pending" && id !== "in_progress" && id !== "review" && id !== "approved" && !id.startsWith("cat-name:") ? id : null,
         dueDate: dueDate || null,
       });
       return response.json();
@@ -1400,13 +1400,32 @@ export function ProjectBoard({
       isCompleted: true,
     };
 
-    // All-companies view: group by status (categories are per-company, meaningless cross-company)
-    if (isAllCompanies) {
+    // All-companies view: group by category name (deduped across companies)
+    if (isAllCompanies && categories.length > 0) {
+      // Build a map: categoryId → name for all known categories
+      const idToName = new Map(categories.map((c) => [c.id, c.name]));
+      // Deduplicate column names; keep first color seen for each name
+      const nameToColor = new Map<string, string | null>();
+      categories.forEach((c) => {
+        if (!nameToColor.has(c.name)) nameToColor.set(c.name, c.color);
+      });
+      const uniqueNames = [...nameToColor.keys()];
+      const categorizedIds = new Set(categories.map((c) => c.id));
       return [
-        { id: "pending", label: "Not Started", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "pending")), isCompleted: false },
-        { id: "in_progress", label: "In Progress", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "in_progress")), isCompleted: false },
-        { id: "review", label: "In Review", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "review")), isCompleted: false },
-        { id: "approved", label: "Approved", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "approved")), isCompleted: false },
+        ...uniqueNames.map((name) => ({
+          id: `cat-name:${name}`,
+          label: name,
+          color: nameToColor.get(name) ?? null,
+          tasks: sortByDue(activeTasks.filter((t) => t.categoryId && idToName.get(t.categoryId) === name)),
+          isCompleted: false,
+        })),
+        {
+          id: "uncategorized",
+          label: "Uncategorized",
+          color: null as string | null,
+          tasks: sortByDue(activeTasks.filter((t) => !t.categoryId || !categorizedIds.has(t.categoryId))),
+          isCompleted: false,
+        },
         completedCol,
       ];
     }
