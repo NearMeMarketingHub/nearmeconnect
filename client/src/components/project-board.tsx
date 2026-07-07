@@ -60,12 +60,15 @@ import {
   Pause,
   X,
   Building2,
+  User,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { Task, TaskCategory, TaskChecklistItem } from "@shared/schema";
 
 type BoardViewMode = "board" | "by-month" | "by-due-date" | "list";
 type OutstandingFilter = null | "overdue" | "this-week" | "in-progress" | "in-review";
+type AssigneeFilter = "all" | "me";
 
 export interface ProjectBoardProps {
   companyId: string;
@@ -133,7 +136,8 @@ function getDueDateBucket(task: Task): "overdue" | "today" | "this-week" | "this
   return "later";
 }
 
-function getMonthKey(dateStr: string | null): string {
+function getMonthKey(dateStr: string | null, isOverdue?: boolean): string {
+  if (isOverdue) return "0000-00";
   if (!dateStr) return "9999-99";
   const d = parseLocalDate(dateStr);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -144,6 +148,29 @@ function getMonthLabel(monthKey: string): string {
   if (monthKey === "0000-00") return "⚠ Overdue";
   const [y, m] = monthKey.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+// Group tasks by category within a set of tasks
+function groupByCategory(
+  tasks: Task[],
+  categories: TaskCategory[]
+): { id: string; name: string; color: string | null; tasks: Task[] }[] {
+  const catMap = new Map(categories.map((c) => [c.id, c]));
+  const groups = new Map<string, { id: string; name: string; color: string | null; tasks: Task[] }>();
+
+  // Ensure each category appears (sorted by sortOrder)
+  const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const cat of sorted) {
+    groups.set(cat.id, { id: cat.id, name: cat.name, color: cat.color, tasks: [] });
+  }
+  groups.set("uncategorized", { id: "uncategorized", name: "Uncategorized", color: null, tasks: [] });
+
+  for (const task of tasks) {
+    const catId = task.categoryId && catMap.has(task.categoryId) ? task.categoryId : "uncategorized";
+    groups.get(catId)!.tasks.push(task);
+  }
+
+  return [...groups.values()].filter((g) => g.tasks.length > 0);
 }
 
 // ─── Inline Checklist ─────────────────────────────────────────────────────────
@@ -287,13 +314,7 @@ function BoardTaskAvatars({ taskId }: { taskId: string }) {
 
 // ─── Quick Action Menu ─────────────────────────────────────────────────────────
 
-interface QuickActionMenuProps {
-  task: Task;
-  companyId: string;
-  onOpen: () => void;
-}
-
-function QuickActionMenu({ task, companyId, onOpen }: QuickActionMenuProps) {
+function QuickActionMenu({ task, companyId, onOpen }: { task: Task; companyId: string; onOpen: () => void }) {
   const { toast } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -331,32 +352,16 @@ function QuickActionMenu({ task, companyId, onOpen }: QuickActionMenuProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuItem
-            onClick={() => updateMutation.mutate({ status: "in_progress" })}
-            disabled={task.status === "in_progress"}
-            data-testid={`action-in-progress-${task.id}`}
-          >
+          <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "in_progress" })} disabled={task.status === "in_progress"} data-testid={`action-in-progress-${task.id}`}>
             <Play className="h-3.5 w-3.5 mr-2 text-blue-500" /> Mark In Progress
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => updateMutation.mutate({ status: "review" })}
-            disabled={task.status === "review"}
-            data-testid={`action-review-${task.id}`}
-          >
+          <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "review" })} disabled={task.status === "review"} data-testid={`action-review-${task.id}`}>
             <AlertTriangle className="h-3.5 w-3.5 mr-2 text-yellow-500" /> Mark In Review
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => updateMutation.mutate({ status: "pending" })}
-            disabled={task.status === "pending"}
-            data-testid={`action-pending-${task.id}`}
-          >
+          <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "pending" })} disabled={task.status === "pending"} data-testid={`action-pending-${task.id}`}>
             <Pause className="h-3.5 w-3.5 mr-2 text-muted-foreground" /> Mark Pending
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => updateMutation.mutate({ status: "completed" })}
-            disabled={task.status === "completed"}
-            data-testid={`action-complete-${task.id}`}
-          >
+          <DropdownMenuItem onClick={() => updateMutation.mutate({ status: "completed" })} disabled={task.status === "completed"} data-testid={`action-complete-${task.id}`}>
             <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-green-500" /> Mark Completed
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -372,11 +377,7 @@ function QuickActionMenu({ task, companyId, onOpen }: QuickActionMenuProps) {
             <ExternalLink className="h-3.5 w-3.5 mr-2" /> Open Details
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => setConfirmDelete(true)}
-            data-testid={`action-delete-${task.id}`}
-          >
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setConfirmDelete(true)} data-testid={`action-delete-${task.id}`}>
             <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -508,20 +509,28 @@ function BoardCard({ task, companyId, onTaskClick, isDragging, categories, dragg
 // ─── Inline Quick-Add Form ────────────────────────────────────────────────────
 
 interface InlineAddTaskProps {
-  onAdd: (title: string) => void;
+  onAdd: (title: string, dueDate?: string) => void;
   isPending?: boolean;
 }
 
 function InlineAddTask({ onAdd, isPending }: InlineAddTaskProps) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const submit = () => {
     if (!title.trim()) return;
-    onAdd(title.trim());
+    onAdd(title.trim(), dueDate || undefined);
     setTitle("");
+    setDueDate("");
     setOpen(false);
+  };
+
+  const cancel = () => {
+    setOpen(false);
+    setTitle("");
+    setDueDate("");
   };
 
   if (!open) {
@@ -546,15 +555,22 @@ function InlineAddTask({ onAdd, isPending }: InlineAddTaskProps) {
         className="h-7 text-xs"
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
-          if (e.key === "Escape") { setOpen(false); setTitle(""); }
+          if (e.key === "Escape") cancel();
         }}
         data-testid="input-inline-task-title"
+      />
+      <Input
+        type="date"
+        value={dueDate}
+        onChange={(e) => setDueDate(e.target.value)}
+        className="h-7 text-xs"
+        data-testid="input-inline-task-due-date"
       />
       <div className="flex gap-1">
         <Button size="sm" className="h-6 text-xs" onClick={submit} disabled={!title.trim() || isPending}>
           {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Add"}
         </Button>
-        <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => { setOpen(false); setTitle(""); }}>
+        <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={cancel}>
           Cancel
         </Button>
       </div>
@@ -582,7 +598,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
   const { setNodeRef, isOver } = useDroppable({ id });
 
   const createInlineMutation = useMutation({
-    mutationFn: async (title: string) => {
+    mutationFn: async ({ title, dueDate }: { title: string; dueDate?: string }) => {
       const response = await apiRequest("POST", "/api/tasks", {
         companyId,
         title,
@@ -590,7 +606,8 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
         type: "assigned",
         creditCost: "1",
         priority: "medium",
-        categoryId: id !== "uncategorized" && id !== "completed" ? id : null,
+        categoryId: id !== "uncategorized" && id !== "completed" && !companies?.find((c) => c.id === id) ? id : null,
+        dueDate: dueDate || null,
       });
       return response.json();
     },
@@ -600,7 +617,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
     },
   });
 
-  const getCompanyName = (companyId: string) => companies?.find((c) => c.id === companyId)?.name;
+  const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
 
   return (
     <div className="flex flex-col min-w-[260px] max-w-[300px]" data-testid={`board-column-${id}`}>
@@ -612,11 +629,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{tasks.length}</Badge>
         </div>
         {onAddTask && !isCompleted && (
-          <Button
-            variant="ghost" size="icon" className="h-6 w-6"
-            onClick={() => onAddTask()}
-            data-testid={`button-add-task-header-${id}`}
-          >
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onAddTask()} data-testid={`button-add-task-header-${id}`}>
             <Plus className="h-3.5 w-3.5" />
           </Button>
         )}
@@ -645,12 +658,10 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
           )}
         </div>
 
-        {onAddTask && !isCompleted && (
+        {!isCompleted && (
           <div className="border-t bg-background/50">
             <InlineAddTask
-              onAdd={(title) => {
-                createInlineMutation.mutate(title);
-              }}
+              onAdd={(title, dueDate) => createInlineMutation.mutate({ title, dueDate })}
               isPending={createInlineMutation.isPending}
             />
           </div>
@@ -662,13 +673,11 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
 
 // ─── Outstanding Summary Bar ──────────────────────────────────────────────────
 
-interface OutstandingBarProps {
+function OutstandingBar({ tasks, activeFilter, onFilter }: {
   tasks: Task[];
   activeFilter: OutstandingFilter;
   onFilter: (f: OutstandingFilter) => void;
-}
-
-function OutstandingBar({ tasks, activeFilter, onFilter }: OutstandingBarProps) {
+}) {
   const active = tasks.filter((t) => t.status !== "completed" && t.approvalStatus !== "rejected");
   const overdue = active.filter((t) => t.dueDate && getDaysDiff(t.dueDate) < 0).length;
   const thisWeek = active.filter((t) => t.dueDate && getDaysDiff(t.dueDate) >= 0 && getDaysDiff(t.dueDate) <= 7).length;
@@ -689,9 +698,7 @@ function OutstandingBar({ tasks, activeFilter, onFilter }: OutstandingBarProps) 
           key={key}
           onClick={() => onFilter(activeFilter === key ? null : key)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
-            activeFilter === key
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-background hover:bg-muted border-border"
+            activeFilter === key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border"
           }`}
           data-testid={`outstanding-${key}`}
         >
@@ -762,10 +769,12 @@ export function ProjectBoard({
   disableDnD,
 }: ProjectBoardProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState<BoardViewMode>("board");
   const [outstandingFilter, setOutstandingFilter] = useState<OutstandingFilter>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("active");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [boardStatusFilter, setBoardStatusFilter] = useState<string>("active");
+  const [listStatusFilter, setListStatusFilter] = useState<string>("active");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -782,9 +791,9 @@ export function ProjectBoard({
     onError: () => toast({ title: "Failed to move task", variant: "destructive" }),
   });
 
-  // Correct 90-day window:
+  // 90-day window:
   // - Non-completed tasks: ALWAYS included (no dueDate cutoff)
-  // - Completed tasks: show if completedAt within last 90 days
+  // - Completed tasks: shown if completedAt within last 90 days
   const windowedTasks = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -814,26 +823,64 @@ export function ProjectBoard({
     });
   }, [windowedTasks, outstandingFilter]);
 
+  // Apply assignee filter
+  const assigneeFiltered = useMemo(() => {
+    if (assigneeFilter === "me" && user?.id) {
+      return outstandingFiltered.filter((t) => t.assignedTo === user.id || t.assignedBy === user.id);
+    }
+    return outstandingFiltered;
+  }, [outstandingFiltered, assigneeFilter, user?.id]);
+
   // Apply board status filter
   const boardFilteredTasks = useMemo(() => {
-    if (boardStatusFilter === "active") return outstandingFiltered.filter((t) => t.status !== "completed");
-    if (boardStatusFilter === "all") return outstandingFiltered;
-    return outstandingFiltered.filter((t) => t.status === boardStatusFilter);
-  }, [outstandingFiltered, boardStatusFilter]);
+    if (boardStatusFilter === "active") return assigneeFiltered.filter((t) => t.status !== "completed");
+    if (boardStatusFilter === "all") return assigneeFiltered;
+    return assigneeFiltered.filter((t) => t.status === boardStatusFilter);
+  }, [assigneeFiltered, boardStatusFilter]);
+
+  const sortByDue = (arr: Task[]) =>
+    arr.slice().sort((a, b) => {
+      const da = a.dueDate ? getDaysDiff(a.dueDate) : 9999;
+      const db = b.dueDate ? getDaysDiff(b.dueDate) : 9999;
+      return da - db;
+    });
 
   // Build kanban columns
+  // - Single company: category swimlanes + Uncategorized + Completed
+  // - All companies: company swimlanes + Completed
+  const isAllCompanies = companyId === "all" || disableDnD;
+
   const columns = useMemo(() => {
-    const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     const activeTasks = boardFilteredTasks.filter((t) => t.status !== "completed");
     const completedTasks = boardFilteredTasks.filter((t) => t.status === "completed");
 
-    const sortByDue = (arr: Task[]) =>
-      arr.slice().sort((a, b) => {
-        const da = a.dueDate ? getDaysDiff(a.dueDate) : 9999;
-        const db = b.dueDate ? getDaysDiff(b.dueDate) : 9999;
-        return da - db;
-      });
+    const completedCol = {
+      id: "completed",
+      label: "Completed",
+      color: null as string | null,
+      tasks: completedTasks.slice().sort((a, b) => {
+        if (!a.completedAt || !b.completedAt) return 0;
+        return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
+      }),
+      isCompleted: true,
+    };
 
+    if (isAllCompanies && companies && companies.length > 0) {
+      // Company swimlanes
+      return [
+        ...companies.map((company) => ({
+          id: company.id,
+          label: company.name,
+          color: null as string | null,
+          tasks: sortByDue(activeTasks.filter((t) => t.companyId === company.id)),
+          isCompleted: false,
+        })).filter((col) => col.tasks.length > 0 || true), // show all companies
+        completedCol,
+      ];
+    }
+
+    // Category swimlanes
+    const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     return [
       ...sorted.map((cat) => ({
         id: cat.id,
@@ -845,35 +892,36 @@ export function ProjectBoard({
       {
         id: "uncategorized",
         label: "Uncategorized",
-        color: null,
+        color: null as string | null,
         tasks: sortByDue(activeTasks.filter((t) => !t.categoryId)),
         isCompleted: false,
       },
-      {
-        id: "completed",
-        label: "Completed",
-        color: null,
-        tasks: completedTasks.slice().sort((a, b) => {
-          if (!a.completedAt || !b.completedAt) return 0;
-          return new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime();
-        }),
-        isCompleted: true,
-      },
+      completedCol,
     ];
-  }, [categories, boardFilteredTasks]);
+  }, [categories, boardFilteredTasks, isAllCompanies, companies]);
 
-  // By-month column grouping
+  // By-month column grouping with category sub-groups
   const byMonthColumns = useMemo(() => {
+    const activeTasks = assigneeFiltered.filter((t) => t.status !== "completed");
     const groups = new Map<string, Task[]>();
-    outstandingFiltered.filter((t) => t.status !== "completed").forEach((t) => {
-      const key = t.dueDate && getDaysDiff(t.dueDate) < 0 ? "0000-00" : t.dueDate ? getMonthKey(t.dueDate) : "9999-99";
+    activeTasks.forEach((t) => {
+      const isOverdue = t.dueDate != null && getDaysDiff(t.dueDate) < 0;
+      const key = getMonthKey(t.dueDate, isOverdue);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(t);
     });
     return [...groups.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, tasks]) => ({ key, label: getMonthLabel(key), tasks }));
-  }, [outstandingFiltered]);
+      .map(([key, monthTasks]) => ({
+        key,
+        label: getMonthLabel(key),
+        total: monthTasks.length,
+        // Sub-group by category within each month
+        categoryGroups: isAllCompanies
+          ? [{ id: "all", name: "", color: null, tasks: sortByDue(monthTasks) }]
+          : groupByCategory(monthTasks, categories),
+      }));
+  }, [assigneeFiltered, categories, isAllCompanies]);
 
   // By-due-date grouping
   const byDueDateGroups = useMemo(() => {
@@ -885,24 +933,24 @@ export function ProjectBoard({
       later: { label: "Later", tasks: [], order: 4 },
       none: { label: "No Due Date", tasks: [], order: 5 },
     };
-    outstandingFiltered.filter((t) => t.status !== "completed").forEach((t) => {
+    assigneeFiltered.filter((t) => t.status !== "completed").forEach((t) => {
       buckets[getDueDateBucket(t)].tasks.push(t);
     });
     return Object.values(buckets).filter((b) => b.tasks.length > 0).sort((a, b) => a.order - b.order);
-  }, [outstandingFiltered]);
+  }, [assigneeFiltered]);
 
   // List view tasks
   const listTasks = useMemo(() => {
-    let t = outstandingFiltered.filter((task) => task.status !== "cadence_parent");
-    if (statusFilter === "active") t = t.filter((task) => task.status !== "completed");
-    else if (statusFilter !== "all") t = t.filter((task) => task.status === statusFilter);
+    let t = assigneeFiltered.filter((task) => task.status !== "cadence_parent");
+    if (listStatusFilter === "active") t = t.filter((task) => task.status !== "completed");
+    else if (listStatusFilter !== "all") t = t.filter((task) => task.status === listStatusFilter);
     return t.sort((a, b) => {
       if (!a.dueDate && !b.dueDate) return 0;
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
       return getDaysDiff(a.dueDate) - getDaysDiff(b.dueDate);
     });
-  }, [outstandingFiltered, statusFilter]);
+  }, [assigneeFiltered, listStatusFilter]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveTaskId(event.active.id as string);
@@ -917,6 +965,8 @@ export function ProjectBoard({
     if (newColumnId === "completed") return;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
+    // Don't allow dropping onto company columns (no-op for category)
+    if (isAllCompanies) return;
     const newCategoryId = newColumnId === "uncategorized" ? null : newColumnId;
     if (task.categoryId === newCategoryId) return;
     updateCategoryMutation.mutate({ taskId, categoryId: newCategoryId });
@@ -924,6 +974,7 @@ export function ProjectBoard({
 
   const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : null;
   const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
+  const canDnD = !disableDnD && !isAllCompanies;
 
   if (tasksLoading) {
     return (
@@ -933,35 +984,59 @@ export function ProjectBoard({
     );
   }
 
-  const canDnD = !disableDnD && companyId !== "all";
-
   return (
     <div className="space-y-4">
       {/* Outstanding Bar */}
       <OutstandingBar tasks={windowedTasks} activeFilter={outstandingFilter} onFilter={setOutstandingFilter} />
 
-      {/* View Toggle + Filters */}
+      {/* View Toggle + Assignee Filter */}
       <div className="flex items-center gap-2 flex-wrap justify-between">
-        <div className="flex items-center border rounded-lg overflow-hidden">
-          {([
-            { mode: "board" as const, icon: LayoutGrid, label: "Board" },
-            { mode: "by-month" as const, icon: Calendar, label: "By Month" },
-            { mode: "by-due-date" as const, icon: CalendarDays, label: "By Due Date" },
-            { mode: "list" as const, icon: List, label: "List" },
-          ]).map(({ mode, icon: Icon, label }) => (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border rounded-lg overflow-hidden">
+            {([
+              { mode: "board" as const, icon: LayoutGrid, label: "Board" },
+              { mode: "by-month" as const, icon: Calendar, label: "By Month" },
+              { mode: "by-due-date" as const, icon: CalendarDays, label: "By Due Date" },
+              { mode: "list" as const, icon: List, label: "List" },
+            ]).map(({ mode, icon: Icon, label }) => (
+              <Button
+                key={mode}
+                variant={viewMode === mode ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none border-0 h-8"
+                onClick={() => setViewMode(mode)}
+                data-testid={`view-toggle-${mode}`}
+              >
+                <Icon className="h-3.5 w-3.5 mr-1.5" />
+                {label}
+              </Button>
+            ))}
+          </div>
+
+          {/* Assignee filter — always visible */}
+          <div className="flex items-center border rounded-lg overflow-hidden">
             <Button
-              key={mode}
-              variant={viewMode === mode ? "default" : "ghost"}
+              variant={assigneeFilter === "all" ? "default" : "ghost"}
               size="sm"
               className="rounded-none border-0 h-8"
-              onClick={() => setViewMode(mode)}
-              data-testid={`view-toggle-${mode}`}
+              onClick={() => setAssigneeFilter("all")}
+              data-testid="assignee-filter-all"
             >
-              <Icon className="h-3.5 w-3.5 mr-1.5" />
-              {label}
+              All
             </Button>
-          ))}
+            <Button
+              variant={assigneeFilter === "me" ? "default" : "ghost"}
+              size="sm"
+              className="rounded-none border-0 h-8"
+              onClick={() => setAssigneeFilter("me")}
+              data-testid="assignee-filter-me"
+            >
+              <User className="h-3.5 w-3.5 mr-1" />
+              Mine
+            </Button>
+          </div>
         </div>
+
         <div className="flex items-center gap-1">
           {/* Board status filter */}
           {viewMode === "board" && (
@@ -986,10 +1061,10 @@ export function ProjectBoard({
               {(["active", "all", "pending", "in_progress", "review", "completed"] as const).map((s) => (
                 <Button
                   key={s}
-                  variant={statusFilter === s ? "default" : "outline"}
+                  variant={listStatusFilter === s ? "default" : "outline"}
                   size="sm"
                   className="h-7 text-xs"
-                  onClick={() => setStatusFilter(s)}
+                  onClick={() => setListStatusFilter(s)}
                   data-testid={`list-filter-${s}`}
                 >
                   {s === "active" ? "Active" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -997,8 +1072,11 @@ export function ProjectBoard({
               ))}
             </div>
           )}
-          {outstandingFilter && (
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setOutstandingFilter(null)}>
+          {(outstandingFilter || assigneeFilter === "me") && (
+            <Button
+              variant="ghost" size="sm" className="h-7 text-xs"
+              onClick={() => { setOutstandingFilter(null); setAssigneeFilter("all"); }}
+            >
               <X className="h-3.5 w-3.5 mr-1" /> Clear
             </Button>
           )}
@@ -1016,10 +1094,10 @@ export function ProjectBoard({
                 label={col.label}
                 color={col.color}
                 tasks={col.tasks}
-                companyId={companyId}
+                companyId={col.isCompleted ? companyId : (isAllCompanies && !col.isCompleted ? col.id : companyId)}
                 categories={categories}
                 onTaskClick={onTaskClick}
-                onAddTask={!col.isCompleted && onAddTask
+                onAddTask={!col.isCompleted && !isAllCompanies && onAddTask
                   ? () => onAddTask(col.id === "uncategorized" ? undefined : col.id)
                   : undefined}
                 isCompleted={col.isCompleted}
@@ -1046,33 +1124,51 @@ export function ProjectBoard({
         </DndContext>
       )}
 
-      {/* ── By Month View (horizontal month columns) ──────────────────── */}
+      {/* ── By Month View (horizontal month columns, with category sub-groups) ─ */}
       {viewMode === "by-month" && (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4" data-testid="by-month-columns">
           {byMonthColumns.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground text-sm w-full">No tasks in window.</div>
           ) : (
             byMonthColumns.map((group) => (
-              <div key={group.key} className="flex flex-col min-w-[260px] max-w-[300px]" data-testid={`month-col-${group.key}`}>
+              <div key={group.key} className="flex flex-col min-w-[280px] max-w-[320px]" data-testid={`month-col-${group.key}`}>
                 <div className="flex items-center justify-between px-3 py-2 rounded-t-lg border border-b-0 bg-muted/40">
                   <span className="text-sm font-semibold truncate">{group.label}</span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{group.tasks.length}</Badge>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{group.total}</Badge>
                 </div>
-                <div className="flex-1 p-2 space-y-2 rounded-b-lg border bg-muted/20 overflow-y-auto max-h-[60vh]">
-                  {group.tasks.map((task) => (
-                    <BoardCard
-                      key={task.id}
-                      task={task}
-                      companyId={task.companyId || companyId}
-                      onTaskClick={onTaskClick}
-                      categories={categories}
-                      draggable={false}
-                      companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
-                    />
+                <div className="rounded-b-lg border bg-muted/20 overflow-y-auto max-h-[60vh]">
+                  {group.categoryGroups.map((catGroup) => (
+                    <div key={catGroup.id} className="p-2">
+                      {/* Category sub-header (omit when only one group or no label) */}
+                      {catGroup.name && group.categoryGroups.length > 1 && (
+                        <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                          {catGroup.color && (
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: catGroup.color }} />
+                          )}
+                          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                            {catGroup.name}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">({catGroup.tasks.length})</span>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {catGroup.tasks.map((task) => (
+                          <BoardCard
+                            key={task.id}
+                            task={task}
+                            companyId={task.companyId || companyId}
+                            onTaskClick={onTaskClick}
+                            categories={categories}
+                            draggable={false}
+                            companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
+                          />
+                        ))}
+                      </div>
+                      {catGroup.tasks.length === 0 && (
+                        <div className="text-center py-2 text-xs text-muted-foreground">Empty</div>
+                      )}
+                    </div>
                   ))}
-                  {group.tasks.length === 0 && (
-                    <div className="text-center py-4 text-xs text-muted-foreground">Empty</div>
-                  )}
                 </div>
               </div>
             ))
