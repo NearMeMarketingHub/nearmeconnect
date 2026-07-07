@@ -852,7 +852,9 @@ export function ProjectBoard({
 
   const columns = useMemo(() => {
     const activeTasks = boardFilteredTasks.filter((t) => t.status !== "completed");
-    const completedTasks = boardFilteredTasks.filter((t) => t.status === "completed");
+    // Completed column always uses the 90-day windowed + assignee-filtered set,
+    // independent of boardStatusFilter, so completed tasks are always visible.
+    const completedTasks = assigneeFiltered.filter((t) => t.status === "completed");
 
     const completedCol = {
       id: "completed",
