@@ -20,6 +20,8 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import type { Client } from "@shared/schema";
+
 const menuItems = [
   {
     title: "Dashboard",
@@ -44,7 +46,7 @@ const menuItems = [
 ];
 
 interface AppSidebarProps {
-  client: { id: string; credits?: number; name?: string; [key: string]: any } | null;
+  client: Client | null;
 }
 
 export function AppSidebar({ client }: AppSidebarProps) {

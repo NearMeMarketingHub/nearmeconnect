@@ -331,37 +331,6 @@ export async function getHubSpotCompanyById(hubspotCompanyId: string) {
   }
 }
 
-// Fetch brand-relevant fields from HubSpot for a given company record
-export async function getHubSpotBrandData(hubspotCompanyId: string) {
-  try {
-    const client = getHubSpotClient();
-    const company = await client.crm.companies.basicApi.getById(
-      hubspotCompanyId,
-      [
-        'name', 'description', 'about_us', 'domain', 'phone',
-        'city', 'state', 'country',
-        'facebook_company_page', 'linkedin_company_page', 'linkedinbio',
-      ]
-    );
-    const p = company.properties;
-    return {
-      success: true,
-      data: {
-        brandVoiceSummary: p.about_us || p.description || '',
-        geographicFocus: [p.city, p.state, p.country].filter(Boolean).join(', '),
-        website: p.domain || '',
-        phone: p.phone || '',
-        facebookPage: p.facebook_company_page || '',
-        linkedinPage: p.linkedin_company_page || '',
-        linkedinBio: p.linkedinbio || '',
-      },
-    };
-  } catch (error: any) {
-    console.error('HubSpot brand data error:', error.message);
-    return { success: false, error: error.message, data: null };
-  }
-}
-
 // Sync all companies and their members to HubSpot
 export async function syncAllToHubSpot(
   companies: Array<{ id: string; name: string; industry?: string | null; subscriptionTier: string; credits: number; monthlyCredits: number }>,

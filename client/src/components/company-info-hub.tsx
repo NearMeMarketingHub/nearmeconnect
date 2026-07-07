@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { ClientOnboarding, CompanyCredential, CompanyKnowledgeItem } from "@shared/schema";
 import {
   CheckCircle,
@@ -50,11 +50,23 @@ interface SocialPlatform {
   notes?: string;
 }
 
+interface LoginCredentialEntry {
+  platform: string;
+  username?: string;
+  password?: string;
+  twoFactorMethod?: string;
+  recoveryNotes?: string;
+}
+
 function parseSocialPlatforms(json: string | null | undefined): SocialPlatform[] {
   if (!json) return [];
   try { return JSON.parse(json) as SocialPlatform[]; } catch { return []; }
 }
 
+function parseLoginCredentials(json: string | null | undefined): LoginCredentialEntry[] {
+  if (!json) return [];
+  try { return JSON.parse(json) as LoginCredentialEntry[]; } catch { return []; }
+}
 
 const KNOWLEDGE_SECTIONS = [
   { key: "links" as const, label: "Links", icon: Link2, description: "Important URLs, social profiles, tools" },
@@ -63,68 +75,21 @@ const KNOWLEDGE_SECTIONS = [
   { key: "resources" as const, label: "Resources", icon: BookOpen, description: "Reference materials, templates, guides" },
 ] as const;
 
-type CredentialWithMeta = CompanyCredential & { hasPassword?: boolean };
-
 // ─── Credential row ───────────────────────────────────────────────────────────
-function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyId: string }) {
-  const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId: string }) {
+  const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  // Sync hasPassword from props so it reflects the latest server state after edits
-  const [hasPassword, setHasPassword] = useState(cred.hasPassword ?? false);
-  useEffect(() => { setHasPassword(cred.hasPassword ?? false); }, [cred.hasPassword]);
-  const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
+  const [form, setForm] = useState({ label: cred.label, username: cred.username || "", password: cred.password || "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" });
   const { toast } = useToast();
 
-  // Auto-clear revealed password after 30 seconds
-  const clearRevealed = () => {
-    setRevealedPassword(null);
-    setCopied(false);
-  };
-
-  const revealMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/credentials/${cred.id}/reveal`);
-      return res.json() as Promise<{ password: string | null }>;
-    },
-    onSuccess: (data) => {
-      if (data.password) {
-        setRevealedPassword(data.password);
-        setHasPassword(true);
-        setTimeout(clearRevealed, 30000);
-      } else {
-        setHasPassword(false);
-        toast({ title: "No password stored for this credential" });
-      }
-    },
-    onError: () => toast({ title: "Failed to reveal password", variant: "destructive" }),
-  });
-
   const updateMutation = useMutation({
-    ...retryTransient,
-    mutationFn: async () => {
-      const payload: Record<string, string | null> = {
-        label: form.label,
-        username: form.username || null,
-        url: form.url || null,
-        notes: form.notes || null,
-        category: form.category || null,
-      };
-      // Only send password if admin typed a new one
-      if (form.password) payload.password = form.password;
-      return apiRequest("PATCH", `/api/companies/${companyId}/credentials/${cred.id}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] });
-      setEditOpen(false);
-      clearRevealed();
-      toast({ title: "Credential updated" });
-    },
+    mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/credentials/${cred.id}`, form),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] }); setEditOpen(false); toast({ title: "Credential updated" }); },
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
-    ...retryTransient,
     mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/credentials/${cred.id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credentials"] }); toast({ title: "Credential deleted" }); },
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
@@ -143,24 +108,16 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
             {cred.category && <Badge variant="secondary" className="text-xs">{cred.category}</Badge>}
           </div>
           {cred.username && <p className="text-xs text-muted-foreground"><span className="font-medium">User:</span> {cred.username}</p>}
-          {hasPassword && (
+          {cred.password && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground font-medium">Pass:</span>
-              <span className="text-xs font-mono" data-testid={`text-cred-password-${cred.id}`}>
-                {revealedPassword ? revealedPassword : "••••••••"}
-              </span>
-              {revealedPassword ? (
-                <>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={clearRevealed} data-testid={`button-hide-password-${cred.id}`}>
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(revealedPassword)} data-testid={`button-copy-password-${cred.id}`}>
-                    {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                  </Button>
-                </>
-              ) : (
-                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => revealMutation.mutate()} disabled={revealMutation.isPending} data-testid={`button-reveal-password-${cred.id}`}>
-                  {revealMutation.isPending ? <span className="h-3 w-3 animate-spin border border-current border-t-transparent rounded-full inline-block" /> : <Eye className="h-3 w-3" />}
+              <span className="text-xs font-mono" data-testid={`text-cred-password-${cred.id}`}>{revealed ? cred.password : "••••••••"}</span>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setRevealed(v => !v)} data-testid={`button-toggle-password-${cred.id}`}>
+                {revealed ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+              </Button>
+              {revealed && (
+                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => copyToClipboard(cred.password!)} data-testid={`button-copy-password-${cred.id}`}>
+                  {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                 </Button>
               )}
             </div>
@@ -173,7 +130,7 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
           {cred.notes && <p className="text-xs text-muted-foreground">{cred.notes}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setForm({ label: cred.label, username: cred.username || "", password: "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" }); setEditOpen(true); }} data-testid={`button-edit-cred-${cred.id}`}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setForm({ label: cred.label, username: cred.username || "", password: cred.password || "", url: cred.url || "", notes: cred.notes || "", category: cred.category || "" }); setEditOpen(true); }} data-testid={`button-edit-cred-${cred.id}`}>
             <Pencil className="h-3.5 w-3.5" />
           </Button>
           <AlertDialog>
@@ -188,17 +145,14 @@ function CredentialRow({ cred, companyId }: { cred: CredentialWithMeta; companyI
         </div>
       </div>
 
-      <Dialog open={editOpen} onOpenChange={open => { setEditOpen(open); if (!open) setForm(p => ({ ...p, password: "" })); }}>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Edit Credential</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Label *</Label><Input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} data-testid="input-edit-cred-label" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Username / Email</Label><Input value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} data-testid="input-edit-cred-username" /></div>
-              <div>
-                <Label>New Password</Label>
-                <Input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="Leave blank to keep existing" data-testid="input-edit-cred-password" />
-              </div>
+              <div><Label>Password</Label><Input type="text" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} data-testid="input-edit-cred-password" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>URL</Label><Input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://" data-testid="input-edit-cred-url" /></div>
@@ -223,14 +177,12 @@ function KnowledgeItemRow({ item, companyId }: { item: CompanyKnowledgeItem; com
   const { toast } = useToast();
 
   const updateMutation = useMutation({
-    ...retryTransient,
     mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/knowledge/${item.id}`, { title: form.title, content: form.content || null, url: form.url || null }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "knowledge"] }); setEditOpen(false); toast({ title: "Item updated" }); },
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
-    ...retryTransient,
     mutationFn: async () => apiRequest("DELETE", `/api/companies/${companyId}/knowledge/${item.id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "knowledge"] }); toast({ title: "Item deleted" }); },
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
@@ -359,8 +311,9 @@ type OnboardingEditForm = {
   gbpContactEmail: string;
   gbpContactPhone: string;
   gbpAdditionalContext: string;
-  // Social JSON (editable as serialized JSON)
+  // Social & Login JSON (editable as serialized JSON)
   socialPlatformsJson: string;
+  loginCredentialsJson: string;
   // Brand Assets
   brandAssetLinks: string;
   brandAssetFilesJson: string;
@@ -378,9 +331,12 @@ type OnboardingEditForm = {
   loginCredentialsProvided: boolean;
   brandAssetsProvided: boolean;
   seasonalPreferencesConfirmed: boolean;
+  // Authorization
+  authorizationName: string;
+  authorizationDate: string;
 };
 
-function buildFormFromOnboarding(o: AdminOnboarding): OnboardingEditForm {
+function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
   return {
     primaryContactName: o.primaryContactName || "",
     primaryContactEmail: o.primaryContactEmail || "",
@@ -402,32 +358,25 @@ function buildFormFromOnboarding(o: AdminOnboarding): OnboardingEditForm {
     gbpContactPhone: o.gbpContactPhone || "",
     gbpAdditionalContext: o.gbpAdditionalContext || "",
     socialPlatformsJson: o.socialPlatforms ? JSON.stringify(parseSocialPlatforms(o.socialPlatforms), null, 2) : "[]",
+    loginCredentialsJson: o.loginCredentials ? JSON.stringify(parseLoginCredentials(o.loginCredentials), null, 2) : "[]",
     brandAssetLinks: o.brandAssetLinks || "",
-    brandAssetFilesJson: (() => { try { return o.brandAssetFiles ? JSON.stringify(JSON.parse(o.brandAssetFiles), null, 2) : "[]"; } catch { return "[]"; } })(),
-    seasonalPreferencesJson: (() => { try { return o.seasonalPreferences ? JSON.stringify(JSON.parse(o.seasonalPreferences), null, 2) : "[]"; } catch { return "[]"; } })(),
-    holidayPreferencesJson: (() => { try { return o.holidayPreferences ? JSON.stringify(JSON.parse(o.holidayPreferences), null, 2) : "[]"; } catch { return "[]"; } })(),
     seasonalNotes: o.seasonalNotes || "",
     otherHolidays: o.otherHolidays || "",
-    authorizationName: o.authorizationName || "",
-    authorizationDate: o.authorizationDate || "",
-    authorizationSignature: o.authorizationSignature || "",
     socialProfilesListed: o.socialProfilesListed ?? false,
     loginCredentialsProvided: o.loginCredentialsProvided ?? false,
     brandAssetsProvided: o.brandAssetsProvided ?? false,
     seasonalPreferencesConfirmed: o.seasonalPreferencesConfirmed ?? false,
+    authorizationName: o.authorizationName || "",
+    authorizationDate: o.authorizationDate || "",
   };
 }
-
-// The admin GET /api/companies/:id/onboarding endpoint strips loginCredentials
-// and adds credentialsProvidedCount. Use this type instead of ClientOnboarding directly.
-type AdminOnboarding = Omit<ClientOnboarding, "loginCredentials"> & { credentialsProvidedCount?: number };
 
 function OnboardingEditPanel({
   onboarding,
   companyId,
   onClose,
 }: {
-  onboarding: AdminOnboarding;
+  onboarding: ClientOnboarding;
   companyId: string;
   onClose: () => void;
 }) {
@@ -439,7 +388,6 @@ function OnboardingEditPanel({
     setForm(p => ({ ...p, [field]: v === true }));
 
   const saveMutation = useMutation({
-    ...retryTransient,
     mutationFn: async () => {
       const payload: Partial<ClientOnboarding> = {
         primaryContactName: form.primaryContactName || null,
@@ -462,10 +410,8 @@ function OnboardingEditPanel({
         gbpContactPhone: form.gbpContactPhone || null,
         gbpAdditionalContext: form.gbpAdditionalContext || null,
         socialPlatforms: (() => { try { return JSON.stringify(JSON.parse(form.socialPlatformsJson)); } catch { return null; } })(),
+        loginCredentials: (() => { try { return JSON.stringify(JSON.parse(form.loginCredentialsJson)); } catch { return null; } })(),
         brandAssetLinks: form.brandAssetLinks || null,
-        brandAssetFiles: (() => { try { return JSON.stringify(JSON.parse(form.brandAssetFilesJson)); } catch { return null; } })(),
-        seasonalPreferences: (() => { try { return JSON.stringify(JSON.parse(form.seasonalPreferencesJson)); } catch { return null; } })(),
-        holidayPreferences: (() => { try { return JSON.stringify(JSON.parse(form.holidayPreferencesJson)); } catch { return null; } })(),
         seasonalNotes: form.seasonalNotes || null,
         otherHolidays: form.otherHolidays || null,
         socialProfilesListed: form.socialProfilesListed,
@@ -474,7 +420,6 @@ function OnboardingEditPanel({
         seasonalPreferencesConfirmed: form.seasonalPreferencesConfirmed,
         authorizationName: form.authorizationName || null,
         authorizationDate: form.authorizationDate || null,
-        authorizationSignature: form.authorizationSignature || null,
       };
       await apiRequest("PATCH", `/api/companies/${companyId}/onboarding`, payload);
     },
@@ -574,15 +519,26 @@ function OnboardingEditPanel({
 
       <Separator />
 
+      {/* Login Credentials JSON */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Login Credentials (client-submitted)</h4>
+        <p className="text-xs text-muted-foreground">Edit as JSON array. Each entry: {"{"} platform, username, password, twoFactorMethod, recoveryNotes {"}"}.</p>
+        <Textarea
+          id="oe-login-creds"
+          value={form.loginCredentialsJson}
+          onChange={set("loginCredentialsJson")}
+          rows={6}
+          className="font-mono text-xs"
+          data-testid="input-oe-login-credentials"
+        />
+      </div>
+
+      <Separator />
+
       {/* Brand Assets */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Brand Assets</h4>
         <div><Label htmlFor="oe-brand">Brand Asset Links</Label><Textarea id="oe-brand" value={form.brandAssetLinks} onChange={set("brandAssetLinks")} rows={2} placeholder="Google Drive link, Dropbox, etc." data-testid="input-oe-brand" /></div>
-        <div>
-          <Label htmlFor="oe-brand-files">Brand Asset Files (JSON)</Label>
-          <p className="text-xs text-muted-foreground mb-1">JSON array of uploaded files. Each entry: {"{"} name, objectPath, uploadedAt {"}"}.</p>
-          <Textarea id="oe-brand-files" value={form.brandAssetFilesJson} onChange={set("brandAssetFilesJson")} rows={4} className="font-mono text-xs" data-testid="input-oe-brand-files" />
-        </div>
       </div>
 
       <Separator />
@@ -590,16 +546,6 @@ function OnboardingEditPanel({
       {/* Seasonal */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Seasonal & Holiday Preferences</h4>
-        <div>
-          <Label htmlFor="oe-seasonal-prefs">Seasonal Preferences (JSON)</Label>
-          <p className="text-xs text-muted-foreground mb-1">JSON array of selected seasons (e.g. ["spring","summer"]).</p>
-          <Textarea id="oe-seasonal-prefs" value={form.seasonalPreferencesJson} onChange={set("seasonalPreferencesJson")} rows={3} className="font-mono text-xs" data-testid="input-oe-seasonal-prefs" />
-        </div>
-        <div>
-          <Label htmlFor="oe-holiday-prefs">Holiday Preferences (JSON)</Label>
-          <p className="text-xs text-muted-foreground mb-1">JSON array of holidays (e.g. ["christmas","thanksgiving"]).</p>
-          <Textarea id="oe-holiday-prefs" value={form.holidayPreferencesJson} onChange={set("holidayPreferencesJson")} rows={3} className="font-mono text-xs" data-testid="input-oe-holiday-prefs" />
-        </div>
         <div><Label htmlFor="oe-seasonal-notes">Seasonal Notes</Label><Textarea id="oe-seasonal-notes" value={form.seasonalNotes} onChange={set("seasonalNotes")} rows={2} data-testid="input-oe-seasonal-notes" /></div>
         <div><Label htmlFor="oe-holidays">Other Holidays / Notes</Label><Textarea id="oe-holidays" value={form.otherHolidays} onChange={set("otherHolidays")} rows={2} data-testid="input-oe-holidays" /></div>
       </div>
@@ -633,7 +579,6 @@ function OnboardingEditPanel({
           <div><Label htmlFor="oe-auth-name">Authorized By</Label><Input id="oe-auth-name" value={form.authorizationName} onChange={set("authorizationName")} data-testid="input-oe-auth-name" /></div>
           <div><Label htmlFor="oe-auth-date">Authorization Date</Label><Input id="oe-auth-date" type="date" value={form.authorizationDate} onChange={set("authorizationDate")} data-testid="input-oe-auth-date" /></div>
         </div>
-        <div><Label htmlFor="oe-auth-sig">Authorization Signature</Label><Input id="oe-auth-sig" value={form.authorizationSignature} onChange={set("authorizationSignature")} placeholder="Typed/digital signature" data-testid="input-oe-auth-signature" /></div>
       </div>
 
       <div className="flex gap-2 pt-2">
@@ -654,7 +599,7 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
   const [addingKnowledgeSection, setAddingKnowledgeSection] = useState<"links" | "profile" | "ideas" | "resources" | null>(null);
   const [openKnowledgeSections, setOpenKnowledgeSections] = useState<Record<string, boolean>>({ links: true, profile: false, ideas: false, resources: false });
 
-  const { data: onboarding } = useQuery<AdminOnboarding | null>({
+  const { data: onboarding } = useQuery<ClientOnboarding | null>({
     queryKey: ["/api/companies", companyId, "onboarding"],
     queryFn: async () => { const r = await fetch(`/api/companies/${companyId}/onboarding`); if (!r.ok) return null; return r.json(); },
     enabled: !!companyId,
@@ -679,42 +624,8 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
       (onboarding.googleBusinessInviteDate || onboarding.googleBusinessNA)
     : false;
 
-  const progressSteps = onboarding ? [
-    !!onboarding.socialProfilesListed,
-    !!accessComplete,
-    !!onboarding.loginCredentialsProvided,
-    !!onboarding.brandAssetsProvided,
-    !!onboarding.seasonalPreferencesConfirmed,
-    !!onboarding.isCompleted,
-  ] : [];
-  const progressPercent = progressSteps.length > 0
-    ? Math.round(progressSteps.filter(Boolean).length / progressSteps.length * 100)
-    : 0;
-
   return (
     <div className="space-y-6">
-      {/* ── Progress Bar ──────────────────────────────────────── */}
-      {onboarding && (
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Onboarding Progress</span>
-              <span className={`text-sm font-medium ${progressPercent === 100 ? "text-green-600 dark:text-green-400" : "text-primary"}`}>
-                {progressPercent === 100 ? "✓ Complete" : `${progressPercent}%`}
-              </span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-500 ${progressPercent === 100 ? "bg-green-500" : "bg-primary"}`}
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              {progressSteps.filter(Boolean).length} of {progressSteps.length} steps complete
-            </p>
-          </CardContent>
-        </Card>
-      )}
       {/* ── Onboarding Status card ───────────────────────────── */}
       {onboarding ? (
         <>
@@ -731,43 +642,37 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
-              {[
-                { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed, count: undefined as number | undefined },
-                { label: "Access invitations sent", done: !!accessComplete, count: undefined as number | undefined },
-                { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided, count: onboarding.credentialsProvidedCount },
-                { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided, count: undefined as number | undefined },
-                { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed, count: undefined as number | undefined },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-2.5">
-                  {item.done ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />}
-                  <span className="text-sm">{item.label}</span>
-                  {item.count != null && item.count > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">{item.count} stored</span>
+              {!editingOnboarding && (
+                <>
+                  {[
+                    { label: "Social media profiles listed", done: !!onboarding.socialProfilesListed },
+                    { label: "Access invitations sent", done: !!accessComplete },
+                    { label: "Login credentials provided", done: !!onboarding.loginCredentialsProvided },
+                    { label: "Brand assets shared", done: !!onboarding.brandAssetsProvided },
+                    { label: "Seasonal preferences confirmed", done: !!onboarding.seasonalPreferencesConfirmed },
+                  ].map(item => (
+                    <div key={item.label} className="flex items-center gap-2.5">
+                      {item.done ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" /> : <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />}
+                      <span className="text-sm">{item.label}</span>
+                    </div>
+                  ))}
+                  {onboarding.authorizationName && (
+                    <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-sm">
+                      <div><p className="text-xs text-muted-foreground">Authorized by</p><p className="font-medium">{onboarding.authorizationName}</p></div>
+                      {onboarding.authorizationDate && <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{new Date(onboarding.authorizationDate).toLocaleDateString()}</p></div>}
+                    </div>
                   )}
-                </div>
-              ))}
-              {onboarding.authorizationName && (
-                <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-2 text-sm">
-                  <div><p className="text-xs text-muted-foreground">Authorized by</p><p className="font-medium">{onboarding.authorizationName}</p></div>
-                  {onboarding.authorizationDate && <div><p className="text-xs text-muted-foreground">Date</p><p className="font-medium">{new Date(onboarding.authorizationDate).toLocaleDateString()}</p></div>}
-                  {onboarding.authorizationSignature && <div className="col-span-2"><p className="text-xs text-muted-foreground">Signature</p><p className="font-medium">{onboarding.authorizationSignature}</p></div>}
-                </div>
+                </>
               )}
-            </CardContent>
-          </Card>
-
-          {/* ── Edit form — shown as its own card so status checklist remains visible ── */}
-          {editingOnboarding && (
-            <Card>
-              <CardContent className="pt-5">
+              {editingOnboarding && (
                 <OnboardingEditPanel
                   onboarding={onboarding}
                   companyId={companyId}
                   onClose={() => setEditingOnboarding(false)}
                 />
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* ── Client details read view ─────────────────────── */}
           {!editingOnboarding && (
@@ -808,6 +713,29 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
                       <div key={p.platform} className="flex items-center justify-between p-2.5 border rounded-lg text-sm">
                         <div><p className="font-medium capitalize">{p.platform.replace("_", " ")}</p>{p.handle && <p className="text-xs text-muted-foreground">{p.handle}</p>}</div>
                         {p.accountEmail && <p className="text-xs text-muted-foreground">{p.accountEmail}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Onboarding login credentials (client-submitted) */}
+          {!editingOnboarding && (() => {
+            const creds = parseLoginCredentials(onboarding.loginCredentials);
+            if (!creds.length) return null;
+            return (
+              <Card>
+                <CardHeader className="pb-3"><CardTitle className="text-base">Login Credentials (client-submitted)</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {creds.map((c, i) => (
+                      <div key={i} className="p-2.5 border rounded-lg text-sm space-y-1">
+                        <p className="font-medium">{c.platform}</p>
+                        {c.username && <p className="text-xs text-muted-foreground">User: {c.username}</p>}
+                        {c.twoFactorMethod && <p className="text-xs text-muted-foreground">2FA: {c.twoFactorMethod}</p>}
+                        {c.recoveryNotes && <p className="text-xs text-muted-foreground">{c.recoveryNotes}</p>}
                       </div>
                     ))}
                   </div>

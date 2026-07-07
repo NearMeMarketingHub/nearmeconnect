@@ -50,7 +50,7 @@ export default function SettingsPage({ client }: SettingsPageProps) {
                 <Label htmlFor="companyName">Company Name</Label>
                 <Input
                   id="companyName"
-                  value={(client as any).companyName || client.name}
+                  value={client.companyName}
                   disabled
                   data-testid="input-settings-company"
                 />
@@ -73,7 +73,7 @@ export default function SettingsPage({ client }: SettingsPageProps) {
                 </Label>
                 <Input
                   id="contactName"
-                  value={(client as any).contactName}
+                  value={client.contactName}
                   disabled
                   data-testid="input-settings-contact"
                 />
@@ -85,13 +85,13 @@ export default function SettingsPage({ client }: SettingsPageProps) {
                 </Label>
                 <Input
                   id="email"
-                  value={(client as any).email}
+                  value={client.email}
                   disabled
                   data-testid="input-settings-email"
                 />
               </div>
             </div>
-            {(client as any).phone && (
+            {client.phone && (
               <div className="space-y-2">
                 <Label htmlFor="phone" className="flex items-center gap-2">
                   <Phone className="w-4 h-4" />
@@ -99,7 +99,7 @@ export default function SettingsPage({ client }: SettingsPageProps) {
                 </Label>
                 <Input
                   id="phone"
-                  value={(client as any).phone}
+                  value={client.phone}
                   disabled
                   className="max-w-sm"
                   data-testid="input-settings-phone"

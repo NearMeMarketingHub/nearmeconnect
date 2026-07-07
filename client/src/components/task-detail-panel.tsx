@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,10 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
-import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target, Mail, ListTodo, Lock } from "lucide-react";
-import { EmailHistory } from "@/components/email-history";
-import { EmailComposerDialog } from "@/components/email-composer-dialog";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Circle, CheckCircle2, Plus, Trash2, User, Calendar, CreditCard, MessageCircle, Send, Loader2, UserPlus, Users, Repeat, StopCircle, Edit2, Check, X, Paperclip, Download, Upload, FileText, Timer, Play, Pause, RotateCcw, ImageUp, Tag, Layers, Link2, ExternalLink, Building2, Target } from "lucide-react";
 import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
@@ -56,11 +53,9 @@ interface TaskDetailPanelProps {
   onNavigateToChat?: (threadId: string, companyId: string) => void;
   onNavigateToMediaUploads?: () => void;
   onViewCampaign?: (campaignRequestId: string) => void;
-  onOpenTask?: (task: Task) => void;
-  onDelete?: (taskId: string) => void;
 }
 
-export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign, onOpenTask, onDelete }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, companyId, onNavigateToChat, onNavigateToMediaUploads, onViewCampaign }: TaskDetailPanelProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const currentUserId = user?.id;
@@ -68,7 +63,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [messageInput, setMessageInput] = useState("");
   const [messageMentions, setMessageMentions] = useState<string[]>([]);
   const [showChat, setShowChat] = useState(false);
-  const [composeEmailOpen, setComposeEmailOpen] = useState(false);
   const [showMemberSelector, setShowMemberSelector] = useState(false);
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [editingCredits, setEditingCredits] = useState(false);
@@ -81,8 +75,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [rejectionReason, setRejectionReason] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newLinkLabel, setNewLinkLabel] = useState("");
-  const [newLinkType, setNewLinkType] = useState<"external" | "campaign">("external");
-  const [selectedCampaignId, setSelectedCampaignId] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [editingRecurrence, setEditingRecurrence] = useState(false);
@@ -91,16 +83,13 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [recurrenceDay, setRecurrenceDay] = useState("1");
   const [recurrenceWeekday, setRecurrenceWeekday] = useState("1");
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState("1");
-  const [showAddSubtask, setShowAddSubtask] = useState(false);
-  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
-  const [newSubtaskAssignee, setNewSubtaskAssignee] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch fresh task data to stay in sync
   const { data: task } = useQuery<Task>({
     queryKey: ["/api/tasks", initialTask?.id],
     queryFn: async () => {
-      if (!initialTask) throw new Error("No task selected");
+      if (!initialTask) return null;
       const response = await fetch(`/api/tasks/${initialTask.id}`);
       if (!response.ok) throw new Error("Failed to fetch task");
       return response.json();
@@ -109,41 +98,15 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     initialData: initialTask || undefined,
   });
 
-  const { data: checklistItemsRaw, isLoading: checklistLoading } = useQuery<TaskChecklistItem[]>({
+  const { data: checklistItems, isLoading: checklistLoading } = useQuery<TaskChecklistItem[]>({
     queryKey: ["/api/tasks", task?.id, "checklist"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/checklist`);
-      if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      if (!response.ok) throw new Error("Failed to fetch checklist");
+      return response.json();
     },
     enabled: !!task,
-  });
-  const checklistItems: TaskChecklistItem[] = Array.isArray(checklistItemsRaw) ? checklistItemsRaw : [];
-
-  const { data: subtasksRaw } = useQuery<Task[]>({
-    queryKey: ["/api/tasks", task?.id, "subtasks"],
-    queryFn: async () => {
-      if (!task) return [];
-      const r = await fetch(`/api/tasks/${task.id}/subtasks`);
-      if (!r.ok) return [];
-      const d = await r.json();
-      return Array.isArray(d) ? d : [];
-    },
-    enabled: !!task && !task.parentTaskId,
-  });
-  const subtasks: Task[] = Array.isArray(subtasksRaw) ? subtasksRaw : [];
-
-  const { data: parentTask } = useQuery<Task | null>({
-    queryKey: ["/api/tasks", task?.parentTaskId],
-    queryFn: async () => {
-      if (!task?.parentTaskId) return null;
-      const r = await fetch(`/api/tasks/${task.parentTaskId}`);
-      if (!r.ok) return null;
-      return r.json();
-    },
-    enabled: !!task?.parentTaskId,
   });
 
   const { data: membershipData } = useQuery<any>({
@@ -153,76 +116,49 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       const res = await fetch(`/api/companies/${companyId}/members`);
       if (!res.ok) return null;
       const members = await res.json();
-      if (!Array.isArray(members)) return null;
       return members.find((m: any) => m.userId === currentUserId) || null;
     },
     enabled: !isAdmin && !!companyId && !!currentUserId && open,
   });
   const isCompanyApprover = !isAdmin && (membershipData?.role === "company_owner" || membershipData?.role === "company_admin");
 
-  const { data: taskCategoriesRaw } = useQuery<any[]>({
+  const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
     queryFn: async () => {
       if (!companyId) return [];
       const response = await fetch(`/api/companies/${companyId}/task-categories`);
       if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      return response.json();
     },
     enabled: !!companyId && open,
   });
-  const taskCategoriesData: any[] = Array.isArray(taskCategoriesRaw) ? taskCategoriesRaw : [];
 
   const { data: adminUsersData } = useQuery<any>({
     queryKey: ["/api/admin/users"],
     enabled: isAdmin && open,
-    staleTime: 60000,
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/admin/users", { credentials: "include" });
-        if (!res.ok) return { admins: [] };
-        return res.json();
-      } catch {
-        return { admins: [] };
-      }
-    },
   });
   const adminUsers = Array.isArray(adminUsersData) ? adminUsersData : (adminUsersData?.admins || []);
 
-  const { data: companyUsersRaw } = useQuery<any[]>({
+  const { data: companyUsers } = useQuery<any[]>({
     queryKey: ["/api/admin/companies", companyId, "users"],
     enabled: isAdmin && !!companyId && open,
-    staleTime: 60000,
-    queryFn: async () => {
-      try {
-        const res = await fetch(`/api/admin/companies/${companyId}/users`, { credentials: "include" });
-        if (!res.ok) return [];
-        const d = await res.json();
-        return Array.isArray(d) ? d : [];
-      } catch {
-        return [];
-      }
-    },
   });
-  const companyUsers: any[] = Array.isArray(companyUsersRaw) ? companyUsersRaw : [];
 
   const { data: deliverableTypes } = useQuery<DeliverableType[]>({
     queryKey: ["/api/deliverable-types"],
     enabled: (isAdmin || isCompanyApprover) && open,
   });
 
-  const { data: taskAssigneesRaw } = useQuery<any[]>({
+  const { data: taskAssignees } = useQuery<any[]>({
     queryKey: ["/api/tasks", initialTask?.id, "assignees"],
     queryFn: async () => {
       if (!initialTask) return [];
       const response = await fetch(`/api/tasks/${initialTask.id}/assignees`);
       if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      return response.json();
     },
     enabled: !!initialTask && open,
   });
-  const taskAssignees: any[] = Array.isArray(taskAssigneesRaw) ? taskAssigneesRaw : [];
 
   const addAssigneeMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -238,7 +174,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const removeAssigneeMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (userId: string) => {
       return apiRequest("DELETE", `/api/tasks/${task?.id}/assignees/${userId}`);
     },
@@ -279,6 +214,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       return res.json() as Promise<Task>;
     },
     onMutate: async (data) => {
+      if (data.status === undefined) return;
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
       if (companyId) await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
       if (task?.id) await queryClient.cancelQueries({ queryKey: ["/api/tasks", task.id] });
@@ -467,42 +403,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     },
   });
 
-  const deleteTaskMutation = useMutation({
-    mutationFn: async () => {
-      if (!task?.id) throw new Error("No task selected");
-      return apiRequest("DELETE", `/api/tasks/${task.id}`);
-    },
-    onSuccess: () => {
-      const deletedId = task?.id;
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-      toast({ title: "Task deleted" });
-      if (deletedId) onDelete?.(deletedId);
-      onClose();
-    },
-    onError: (error) => {
-      const detail = error instanceof Error ? error.message : undefined;
-      toast({ title: "Failed to delete task", description: detail, variant: "destructive" });
-    },
-  });
-
-  const createSubtaskMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", `/api/tasks/${task?.id}/subtasks`, {
-        title: newSubtaskTitle.trim(),
-        assignedTo: newSubtaskAssignee || null,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id, "subtasks"] });
-      setNewSubtaskTitle("");
-      setNewSubtaskAssignee("");
-      setShowAddSubtask(false);
-      toast({ title: "Subtask created" });
-    },
-    onError: (e: any) => toast({ title: "Failed to create subtask", description: e.message, variant: "destructive" }),
-  });
-
   const createChecklistItemMutation = useMutation({
     mutationFn: async (title: string) => {
       return apiRequest("POST", `/api/tasks/${task?.id}/checklist`, { title });
@@ -517,7 +417,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const updateChecklistItemMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, data }: { id: string; data: Partial<TaskChecklistItem> }) => {
       return apiRequest("PATCH", `/api/checklist-items/${id}`, data);
     },
@@ -530,7 +429,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteChecklistItemMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/checklist-items/${id}`);
     },
@@ -616,18 +514,16 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
 
-  const { data: commentsRaw = [], isLoading: commentsLoading } = useQuery<TaskComment[]>({
+  const { data: comments = [], isLoading: commentsLoading } = useQuery<TaskComment[]>({
     queryKey: ["/api/tasks", task?.id, "comments"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/comments`);
-      if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      if (!response.ok) throw new Error("Failed to fetch comments");
+      return response.json();
     },
     enabled: !!task,
   });
-  const comments: TaskComment[] = Array.isArray(commentsRaw) ? commentsRaw : [];
 
   const createCommentMutation = useMutation({
     mutationFn: async (content: string) => {
@@ -643,7 +539,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const updateCommentMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, content }: { id: string; content: string }) => {
       return apiRequest("PATCH", `/api/comments/${id}`, { content });
     },
@@ -658,7 +553,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteCommentMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/comments/${id}`);
     },
@@ -674,18 +568,16 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const { data: attachmentsRaw = [], isLoading: attachmentsLoading } = useQuery<TaskAttachment[]>({
+  const { data: attachments = [], isLoading: attachmentsLoading } = useQuery<TaskAttachment[]>({
     queryKey: ["/api/tasks", task?.id, "attachments"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/attachments`);
-      if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      if (!response.ok) throw new Error("Failed to fetch attachments");
+      return response.json();
     },
     enabled: !!task,
   });
-  const attachments: TaskAttachment[] = Array.isArray(attachmentsRaw) ? attachmentsRaw : [];
 
   const uploadAttachmentMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -714,7 +606,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteAttachmentMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/attachments/${id}`);
     },
@@ -738,18 +629,16 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     }
   };
 
-  const { data: taskLinksRaw = [], isLoading: linksLoading } = useQuery<TaskLink[]>({
+  const { data: taskLinksData = [], isLoading: linksLoading } = useQuery<TaskLink[]>({
     queryKey: ["/api/tasks", task?.id, "links"],
     queryFn: async () => {
       if (!task) return [];
       const response = await fetch(`/api/tasks/${task.id}/links`);
-      if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      if (!response.ok) throw new Error("Failed to fetch links");
+      return response.json();
     },
     enabled: !!task,
   });
-  const taskLinksData: TaskLink[] = Array.isArray(taskLinksRaw) ? taskLinksRaw : [];
 
   const createLinkMutation = useMutation({
     mutationFn: async (data: { url: string; label: string }) => {
@@ -766,7 +655,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   });
 
   const deleteLinkMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/task-links/${id}`);
     },
@@ -786,50 +674,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
       finalUrl = `https://${finalUrl}`;
     }
     createLinkMutation.mutate({ url: finalUrl, label: newLinkLabel.trim() });
-  };
-
-  // Company campaigns + content calendar items for typed link inputs
-  const { data: linkCampaignsRaw = [] } = useQuery<any[]>({
-    queryKey: ["/api/companies", companyId, "campaign-requests"],
-    queryFn: async () => {
-      const res = await fetch(`/api/companies/${companyId}/campaign-requests`, { credentials: "include" });
-      if (!res.ok) return [];
-      const d = await res.json();
-      return Array.isArray(d) ? d : [];
-    },
-    enabled: !!companyId && open && newLinkType === "campaign",
-  });
-  const linkCampaigns: any[] = Array.isArray(linkCampaignsRaw) ? linkCampaignsRaw : [];
-
-  const handleAddCampaignLink = () => {
-    const campaign = linkCampaigns.find((c) => c.id === selectedCampaignId);
-    if (!campaign) return;
-    const basePath = isAdmin ? "/admin/campaigns" : "/client/campaigns";
-    createLinkMutation.mutate({
-      url: `${window.location.origin}${basePath}?campaignId=${campaign.id}`,
-      label: `Campaign: ${campaign.name || campaign.campaignTypeName || "Untitled"}`,
-    });
-    setSelectedCampaignId("");
-  };
-
-  // Month options for the Target Month selector (3 back, 14 ahead)
-  const targetMonthOptions = (() => {
-    const opts: string[] = [];
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - 3);
-    for (let i = 0; i < 18; i++) {
-      opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-      d.setMonth(d.getMonth() + 1);
-    }
-    if (task?.targetMonth && !opts.includes(task.targetMonth)) opts.unshift(task.targetMonth);
-    return opts;
-  })();
-
-  const formatMonthLabel = (ym: string) => {
-    const [y, m] = ym.split("-").map(Number);
-    if (!y || !m) return ym;
-    return new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
   };
 
   const handleDownloadAttachment = async (attachment: TaskAttachment) => {
@@ -871,25 +715,22 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     enabled: !!task && open,
   });
 
-  const { data: chatMessagesRaw = [], isLoading: messagesLoading } = useQuery<ChatMessage[]>({
+  const { data: chatMessages = [], isLoading: messagesLoading } = useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/threads", taskChat?.id, "messages"],
     queryFn: async () => {
       if (!taskChat) return [];
       const response = await fetch(`/api/chat/threads/${taskChat.id}/messages`);
       if (!response.ok) return [];
-      const d = await response.json();
-      return Array.isArray(d) ? d : [];
+      return response.json();
     },
     enabled: !!taskChat && showChat,
   });
-  const chatMessages: ChatMessage[] = Array.isArray(chatMessagesRaw) ? chatMessagesRaw : [];
 
   // Get thread members for existing chat
-  const { data: threadMembersRaw = [] } = useQuery<{ userId: string }[]>({
+  const { data: threadMembers = [] } = useQuery<{ userId: string }[]>({
     queryKey: ["/api/chat/threads", taskChat?.id, "members"],
     enabled: !!taskChat,
   });
-  const threadMembers: { userId: string }[] = Array.isArray(threadMembersRaw) ? threadMembersRaw : [];
 
   const createTaskChatMutation = useMutation({
     mutationFn: async (memberIds: string[]): Promise<ChatThread> => {
@@ -1112,38 +953,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 </div>
               )}
             </div>
-            {isAdmin && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    className="mt-1 shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors"
-                    data-testid="button-delete-task"
-                    title="Delete task"
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive transition-colors" />
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete task?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This permanently deletes <strong>{task.title}</strong> along with all its comments, attachments, and checklist items. This cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={(e) => { e.preventDefault(); deleteTaskMutation.mutate(); }}
-                      disabled={deleteTaskMutation.isPending}
-                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                      data-testid="button-confirm-delete-task"
-                    >
-                      {deleteTaskMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
           </div>
         </SheetHeader>
 
@@ -1180,8 +989,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               </div>
             </div>
           </div>
-
-          <NextTaskLinker task={task} isAdmin={isAdmin} companyId={companyId} onUpdate={(nextTaskId) => updateTaskMutation.mutate({ nextTaskId })} onOpenTask={onOpenTask} />
 
           {(taskCategoriesData || []).length > 0 && (
             <div className="space-y-2">
@@ -1224,36 +1031,6 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               )}
             </div>
           )}
-
-          <div className="space-y-2">
-            <Label className="text-muted-foreground text-xs">Target Month</Label>
-            {isAdmin ? (
-              <Select
-                value={task.targetMonth || "none"}
-                onValueChange={(val) => {
-                  updateTaskMutation.mutate({ targetMonth: val === "none" ? null : val } as any);
-                }}
-              >
-                <SelectTrigger className="h-9" data-testid="select-target-month">
-                  <SelectValue placeholder="No target month" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No target month</SelectItem>
-                  {targetMonthOptions.map((ym) => (
-                    <SelectItem key={ym} value={ym}>
-                      {formatMonthLabel(ym)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <div className="flex items-center gap-2 h-9 px-3 border rounded-md" data-testid="text-target-month">
-                {task.targetMonth
-                  ? <span>{formatMonthLabel(task.targetMonth)}</span>
-                  : <span className="text-muted-foreground">No target month</span>}
-              </div>
-            )}
-          </div>
 
           <div className="flex items-center gap-4 text-sm flex-wrap">
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -2060,217 +1837,39 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                 ))}
 
                 <div className="space-y-2">
-                  <Select value={newLinkType} onValueChange={(v) => setNewLinkType(v as "external" | "campaign")}>
-                    <SelectTrigger className="h-8 text-sm" data-testid="select-link-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="external">External URL</SelectItem>
-                      <SelectItem value="campaign">Campaign</SelectItem>
-
-                    </SelectContent>
-                  </Select>
-
-                  {newLinkType === "external" && (
-                    <>
-                      <Input
-                        value={newLinkUrl}
-                        onChange={(e) => setNewLinkUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="h-8 text-sm"
-                        data-testid="input-link-url"
-                        onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      />
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={newLinkLabel}
-                          onChange={(e) => setNewLinkLabel(e.target.value)}
-                          placeholder="Label (optional)"
-                          className="h-8 text-sm flex-1"
-                          data-testid="input-link-label"
-                          onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleAddLink}
-                          disabled={!newLinkUrl.trim() || createLinkMutation.isPending}
-                          className="h-8"
-                          data-testid="button-add-link"
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" />
-                          Add
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {newLinkType === "campaign" && (
-                    <div className="flex items-center gap-2">
-                      <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-                        <SelectTrigger className="h-8 text-sm flex-1" data-testid="select-link-campaign">
-                          <SelectValue placeholder={linkCampaigns.length === 0 ? "No campaigns found" : "Select a campaign..."} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {linkCampaigns.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name || c.campaignTypeName || "Untitled campaign"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAddCampaignLink}
-                        disabled={!selectedCampaignId || createLinkMutation.isPending}
-                        className="h-8"
-                        data-testid="button-add-campaign-link"
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                  )}
-
-
+                  <Input
+                    value={newLinkUrl}
+                    onChange={(e) => setNewLinkUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="h-8 text-sm"
+                    data-testid="input-link-url"
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={newLinkLabel}
+                      onChange={(e) => setNewLinkLabel(e.target.value)}
+                      placeholder="Label (optional)"
+                      className="h-8 text-sm flex-1"
+                      data-testid="input-link-label"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddLink}
+                      disabled={!newLinkUrl.trim() || createLinkMutation.isPending}
+                      className="h-8"
+                      data-testid="button-add-link"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      Add
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
           </div>
-
-          {/* Parent Task link */}
-          {task.parentTaskId && parentTask && (
-            <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg border text-sm" data-testid="parent-task-link">
-              <ListTodo className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">Part of:</span>
-              <button
-                className="font-medium hover:underline text-foreground truncate"
-                onClick={() => onOpenTask?.(parentTask)}
-                data-testid="button-open-parent-task"
-              >
-                {parentTask.title}
-              </button>
-            </div>
-          )}
-
-          {/* Subtasks section */}
-          {!task.parentTaskId && (
-            <div className="space-y-3" data-testid="subtasks-section">
-              <div className="flex items-center justify-between">
-                <Label className="text-muted-foreground text-xs flex items-center gap-1.5">
-                  <ListTodo className="w-3.5 h-3.5" />
-                  Subtasks
-                  {subtasks && subtasks.length > 0 && (
-                    <span className="ml-1">
-                      {subtasks.filter(s => s.status === "completed").length} / {subtasks.length}
-                    </span>
-                  )}
-                </Label>
-                {isAdmin && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-xs px-2"
-                    onClick={() => setShowAddSubtask(!showAddSubtask)}
-                    data-testid="button-add-subtask"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add
-                  </Button>
-                )}
-              </div>
-
-              {subtasks && subtasks.length > 0 && (
-                <div className="space-y-1.5" data-testid="subtasks-list">
-                  {subtasks.map((st, idx) => {
-                    const prevDone = idx === 0 || subtasks[idx - 1]?.status === "completed";
-                    const isBlocked = !prevDone && st.status === "pending";
-                    return (
-                      <div
-                        key={st.id}
-                        className="flex items-center gap-2.5 p-2.5 rounded-md border bg-muted/30 text-sm cursor-pointer hover:bg-muted/50 transition-colors group"
-                        onClick={() => onOpenTask?.(st)}
-                        data-testid={`subtask-row-${st.id}`}
-                      >
-                        <span className="text-xs text-muted-foreground w-4 text-center shrink-0 font-mono">{idx + 1}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-medium truncate text-sm ${isBlocked ? "text-muted-foreground" : ""}`}>{st.title}</p>
-                          {st.assignedTo && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {assignableUsers.find(u => u.id === st.assignedTo)?.name || "Assigned"}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {isBlocked && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700">
-                              <Lock className="w-2.5 h-2.5 mr-0.5" />
-                              Blocked
-                            </Badge>
-                          )}
-                          <Badge
-                            variant={st.status === "completed" ? "secondary" : "outline"}
-                            className={`text-[10px] px-1.5 py-0 ${st.status === "in_progress" ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700" : ""}`}
-                          >
-                            {st.status.replace(/_/g, " ")}
-                          </Badge>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {isAdmin && showAddSubtask && (
-                <div className="p-3 border rounded-lg space-y-2 bg-muted/20" data-testid="add-subtask-form">
-                  <p className="text-xs font-medium text-muted-foreground">New Subtask</p>
-                  <Input
-                    placeholder="Subtask title"
-                    value={newSubtaskTitle}
-                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                    className="h-8 text-sm"
-                    data-testid="input-new-subtask-title"
-                    onKeyDown={(e) => { if (e.key === "Enter" && newSubtaskTitle.trim()) createSubtaskMutation.mutate(); }}
-                  />
-                  <Select value={newSubtaskAssignee || "unassigned"} onValueChange={(v) => setNewSubtaskAssignee(v === "unassigned" ? "" : v)}>
-                    <SelectTrigger className="h-8 text-sm" data-testid="select-new-subtask-assignee">
-                      <SelectValue placeholder="Assignee (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">No assignee</SelectItem>
-                      {assignableUsers.map(u => (
-                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="h-7"
-                      disabled={!newSubtaskTitle.trim() || createSubtaskMutation.isPending}
-                      onClick={() => createSubtaskMutation.mutate()}
-                      data-testid="button-save-subtask"
-                    >
-                      {createSubtaskMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add Subtask"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7"
-                      onClick={() => { setShowAddSubtask(false); setNewSubtaskTitle(""); setNewSubtaskAssignee(""); }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {subtasks?.length === 0 && !showAddSubtask && isAdmin && (
-                <p className="text-xs text-muted-foreground italic" data-testid="text-no-subtasks">No subtasks yet — click Add to create one</p>
-              )}
-            </div>
-          )}
 
           <Separator />
 
@@ -2767,48 +2366,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               </div>
             </>
           )}
-
-          {/* Workflow Emails — Admin only */}
-          {isAdmin && (
-            <>
-              <Separator />
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-muted-foreground text-xs flex items-center gap-2">
-                    <Mail className="w-4 h-4" />
-                    Workflow Emails
-                  </Label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs px-2"
-                    onClick={() => setComposeEmailOpen(true)}
-                    data-testid="button-compose-task-email"
-                  >
-                    <Mail className="h-3.5 w-3.5 mr-1" />
-                    Compose
-                  </Button>
-                </div>
-                <EmailHistory
-                  companyId={companyId}
-                  isAdmin={true}
-                  relatedTaskId={task.id}
-                  compact={true}
-                />
-              </div>
-            </>
-          )}
         </div>
       </SheetContent>
-
-      <EmailComposerDialog
-        open={composeEmailOpen}
-        onOpenChange={setComposeEmailOpen}
-        companyId={companyId}
-        defaultRelatedTaskId={task.id}
-        defaultTemplate="approval_request"
-        onSuccess={() => setComposeEmailOpen(false)}
-      />
 
       {/* Member selector for creating new task chat */}
       <ChatMemberSelector
@@ -2890,79 +2449,5 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
         </DialogContent>
       </Dialog>
     </Sheet>
-  );
-}
-
-function NextTaskLinker({ task, isAdmin, companyId, onUpdate, onOpenTask }: {
-  task: Task;
-  isAdmin: boolean;
-  companyId: string;
-  onUpdate: (nextTaskId: string | null) => void;
-  onOpenTask?: (task: Task) => void;
-}) {
-  const { data: companyTasksRaw } = useQuery<Task[]>({
-    queryKey: ["/api/tasks", { companyId }],
-    queryFn: async () => {
-      try {
-        const res = await fetch(`/api/tasks?companyId=${companyId}`, { credentials: "include" });
-        if (!res.ok) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-      } catch {
-        return [];
-      }
-    },
-    enabled: !!companyId && !!task?.id,
-  });
-
-  const companyTasks: Task[] = Array.isArray(companyTasksRaw) ? companyTasksRaw : [];
-  const candidates = useMemo(
-    () => companyTasks.filter(t => t && t.id !== task.id && t.status !== "completed"),
-    [companyTasks, task.id]
-  );
-  const linked = task.nextTaskId ? companyTasks.find(t => t && t.id === task.nextTaskId) : null;
-
-  return (
-    <div className="space-y-2">
-      <Label className="text-muted-foreground text-xs flex items-center gap-1">
-        <Link2 className="w-3 h-3" /> Next task (auto-activates on completion)
-      </Label>
-      {isAdmin ? (
-        <Select
-          value={task.nextTaskId || "none"}
-          onValueChange={(val) => onUpdate(val === "none" ? null : val)}
-        >
-          <SelectTrigger className="h-9" data-testid="select-next-task">
-            <SelectValue placeholder="No next task" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">No next task</SelectItem>
-            {candidates.map(t => (
-              <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : (
-        <div className="flex items-center gap-2 h-9 px-3 border rounded-md text-sm">
-          {linked ? (
-            <button
-              type="button"
-              className="text-primary hover:underline truncate"
-              onClick={() => onOpenTask?.(linked)}
-              data-testid="link-next-task"
-            >
-              {linked.title}
-            </button>
-          ) : (
-            <span className="text-muted-foreground">No next task</span>
-          )}
-        </div>
-      )}
-      {isAdmin && linked && (
-        <p className="text-xs text-muted-foreground">
-          When this task is completed, "{linked.title}" will be set to pending and its assignee will be emailed.
-        </p>
-      )}
-    </div>
   );
 }

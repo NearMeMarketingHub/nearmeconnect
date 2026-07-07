@@ -42,28 +42,10 @@ interface EnrichedCampaignRequest {
   meetingScheduled: boolean;
   meetingUrl: string | null;
   adminNotes: string | null;
-  isRush: boolean;
-  rushDisabled: boolean;
-  requestMeetingQuantities: string | null;
-  campaignMemberIds: string[];
-  campaignMeetingTypeIds: string[];
   createdAt: string;
   companyName?: string;
   campaignTypeName?: string;
   requestedByName?: string;
-  purpose: string | null;
-  offer: string | null;
-  objective: string | null;
-  targetServices: string | null;
-  ownerName: string | null;
-  launchDate: string | null;
-  clientVisible: boolean;
-  sharepointFolderUrl: string | null;
-  assetLinks: string | null;
-  approvalFlow: string | null;
-  campaignNotes: string | null;
-  reportingIncluded: boolean;
-  publishedUrls: string | null;
 }
 
 export default function AdminCampaignRequests() {

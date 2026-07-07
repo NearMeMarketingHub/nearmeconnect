@@ -34,10 +34,6 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "typecheck"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -47,17 +43,6 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
-[[workflows.workflow]]
-name = "typecheck"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run check"
-
-[workflows.workflow.metadata]
-isValidation = true
-
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0", "sharepoint:1.0.0", "resend:1.0.0", "hubspot:1.0.0", "javascript_stripe:1.0.0"]
 
@@ -65,7 +50,6 @@ integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.
 
 [userenv.shared]
 EMAIL_SENDER_ADDRESS = "Hello@nearmemarketinghub.com"
-HUBSPOT_REDIRECT_URI = "https://portal.nearmemarketinghub.com/api/hubspot/callback"
 
 [postMerge]
 path = "scripts/post-merge.sh"

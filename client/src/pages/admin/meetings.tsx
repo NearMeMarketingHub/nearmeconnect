@@ -22,8 +22,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useSearch, useLocation } from "wouter";
 import { 
   Video, Coins, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, 
-  Users, Building2, CalendarPlus, ExternalLink, Loader2, AlertTriangle, Plus, Pencil, Trash2, Calendar, FileText, Save, Search,
-  CheckSquare, ShieldAlert, ListChecks, NotebookPen
+  Users, Building2, CalendarPlus, ExternalLink, Loader2, AlertTriangle, Plus, Pencil, Trash2, Calendar, FileText, Save, Search
 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import type { MeetingType, MeetingRequest, Company } from "@shared/schema";
@@ -80,13 +79,6 @@ export default function AdminMeetings() {
 
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesText, setNotesText] = useState("");
-  const [decisionsText, setDecisionsText] = useState("");
-  const [blockersText, setBlockersText] = useState("");
-  const [nextStepsText, setNextStepsText] = useState("");
-  const [followUpTaskOpen, setFollowUpTaskOpen] = useState(false);
-  const [followUpMeeting, setFollowUpMeeting] = useState<MeetingRequestWithCompany | null>(null);
-  const [followUpTaskTitle, setFollowUpTaskTitle] = useState("");
-  const [followUpTaskDesc, setFollowUpTaskDesc] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -275,56 +267,27 @@ export default function AdminMeetings() {
   });
 
   const saveNotesMutation = useMutation({
-    mutationFn: async ({ id, notes, decisions, blockers, nextSteps }: { id: string; notes: string; decisions: string; blockers: string; nextSteps: string }) => {
-      return apiRequest("PATCH", `/api/meeting-requests/${id}`, { notes, decisions, blockers, nextSteps });
+    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+      return apiRequest("PATCH", `/api/meeting-requests/${id}`, { notes });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meeting-requests"] });
       toast({ title: "Meeting notes saved" });
       setEditingNotesId(null);
-      setNotesText(""); setDecisionsText(""); setBlockersText(""); setNextStepsText("");
+      setNotesText("");
     },
     onError: () => {
       toast({ title: "Failed to save notes", variant: "destructive" });
     },
   });
 
-  const generateRecapMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/meeting-requests/${id}/recap-note`, {}),
-    onSuccess: () => {
-      toast({ title: "Recap note created", description: "A meeting recap note has been added to the company notepad." });
-    },
-    onError: () => toast({ title: "Failed to create recap note", variant: "destructive" }),
-  });
-
-  const createFollowUpTaskMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", `/api/tasks`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      setFollowUpTaskOpen(false);
-      setFollowUpMeeting(null); setFollowUpTaskTitle(""); setFollowUpTaskDesc("");
-      toast({ title: "Follow-up task created" });
-    },
-    onError: () => toast({ title: "Failed to create task", variant: "destructive" }),
-  });
-
   const startEditingNotes = (request: MeetingRequestWithCompany) => {
     setEditingNotesId(request.id);
     setNotesText(request.notes || "");
-    setDecisionsText((request as any).decisions || "");
-    setBlockersText((request as any).blockers || "");
-    setNextStepsText((request as any).nextSteps || "");
   };
 
   const handleSaveNotes = (id: string) => {
-    saveNotesMutation.mutate({ id, notes: notesText, decisions: decisionsText, blockers: blockersText, nextSteps: nextStepsText });
-  };
-
-  const openFollowUpTask = (meeting: MeetingRequestWithCompany) => {
-    setFollowUpMeeting(meeting);
-    setFollowUpTaskTitle(`Follow-up: ${meeting.title}`);
-    setFollowUpTaskDesc((meeting as any).nextSteps || "");
-    setFollowUpTaskOpen(true);
+    saveNotesMutation.mutate({ id, notes: notesText });
   };
 
   const pendingRequests = enrichedRequests.filter(r => r.status === "pending");
@@ -669,101 +632,50 @@ export default function AdminMeetings() {
     </div>
   );
 
-  const renderNotesSection = (request: MeetingRequestWithCompany) => {
-    const decisions = (request as any).decisions as string | null;
-    const blockers = (request as any).blockers as string | null;
-    const nextSteps = (request as any).nextSteps as string | null;
-    const hasAnyContent = request.notes || decisions || blockers || nextSteps;
-    return (
-      <div className="pt-3 border-t space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground flex items-center gap-1">
-            <FileText className="w-3 h-3" />
-            Meeting Notes &amp; Recap
-          </Label>
-          <div className="flex items-center gap-1.5">
-            {request.status === "completed" && (
-              <>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => generateRecapMutation.mutate(request.id)} disabled={generateRecapMutation.isPending} data-testid={`button-recap-note-${request.id}`}>
-                  {generateRecapMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <NotebookPen className="w-3 h-3" />}
-                  Generate Recap Note
-                </Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => openFollowUpTask(request)} data-testid={`button-followup-task-${request.id}`}>
-                  <CheckSquare className="w-3 h-3" />
-                  Follow-up Task
-                </Button>
-              </>
-            )}
-            {editingNotesId !== request.id && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => startEditingNotes(request)} data-testid={`button-edit-notes-${request.id}`}>
-                <Pencil className="w-3 h-3 mr-1" />
-                {hasAnyContent ? "Edit" : "Add Notes"}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {editingNotesId === request.id ? (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1 text-muted-foreground"><FileText className="w-3 h-3" />Notes</Label>
-              <Textarea value={notesText} onChange={(e) => setNotesText(e.target.value)} placeholder="Key discussion points, outcomes..." className="min-h-[80px]" data-testid={`textarea-notes-${request.id}`} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1 text-muted-foreground"><CheckSquare className="w-3 h-3 text-green-500" />Decisions Made</Label>
-              <Textarea value={decisionsText} onChange={(e) => setDecisionsText(e.target.value)} placeholder="What was decided in this meeting..." className="min-h-[60px]" data-testid={`textarea-decisions-${request.id}`} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1 text-muted-foreground"><ShieldAlert className="w-3 h-3 text-red-500" />Blockers</Label>
-              <Textarea value={blockersText} onChange={(e) => setBlockersText(e.target.value)} placeholder="Issues or blockers raised..." className="min-h-[60px]" data-testid={`textarea-blockers-${request.id}`} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1 text-muted-foreground"><ListChecks className="w-3 h-3 text-blue-500" />Next Steps</Label>
-              <Textarea value={nextStepsText} onChange={(e) => setNextStepsText(e.target.value)} placeholder="Action items and next steps..." className="min-h-[60px]" data-testid={`textarea-nextsteps-${request.id}`} />
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => { setEditingNotesId(null); setDecisionsText(""); setBlockersText(""); setNextStepsText(""); }} data-testid={`button-cancel-notes-${request.id}`}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={() => handleSaveNotes(request.id)} disabled={saveNotesMutation.isPending} data-testid={`button-save-notes-${request.id}`}>
-                {saveNotesMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
-                Save Notes
-              </Button>
-            </div>
-          </div>
-        ) : !hasAnyContent ? (
-          <p className="text-sm text-muted-foreground italic">No notes added yet</p>
-        ) : (
-          <div className="space-y-2">
-            {request.notes && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><FileText className="w-3 h-3" />Notes</p>
-                <p className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3">{request.notes}</p>
-              </div>
-            )}
-            {decisions && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><CheckSquare className="w-3 h-3 text-green-500" />Decisions</p>
-                <p className="text-sm whitespace-pre-wrap bg-green-50 dark:bg-green-950/30 rounded-md p-3">{decisions}</p>
-              </div>
-            )}
-            {blockers && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><ShieldAlert className="w-3 h-3 text-red-500" />Blockers</p>
-                <p className="text-sm whitespace-pre-wrap bg-red-50 dark:bg-red-950/30 rounded-md p-3">{blockers}</p>
-              </div>
-            )}
-            {nextSteps && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1"><ListChecks className="w-3 h-3 text-blue-500" />Next Steps</p>
-                <p className="text-sm whitespace-pre-wrap bg-blue-50 dark:bg-blue-950/30 rounded-md p-3">{nextSteps}</p>
-              </div>
-            )}
-          </div>
+  const renderNotesSection = (request: MeetingRequestWithCompany) => (
+    <div className="pt-3 border-t">
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-xs text-muted-foreground flex items-center gap-1">
+          <FileText className="w-3 h-3" />
+          Meeting Notes
+        </Label>
+        {editingNotesId !== request.id && (
+          <Button variant="ghost" size="sm" onClick={() => startEditingNotes(request)} data-testid={`button-edit-notes-${request.id}`}>
+            <Pencil className="w-3 h-3 mr-1" />
+            {request.notes ? "Edit Notes" : "Add Notes"}
+          </Button>
         )}
       </div>
-    );
-  };
+      {editingNotesId === request.id ? (
+        <div className="space-y-2">
+          <Textarea
+            value={notesText}
+            onChange={(e) => setNotesText(e.target.value)}
+            placeholder="Add meeting notes, action items, key takeaways..."
+            className="min-h-[120px]"
+            data-testid={`textarea-notes-${request.id}`}
+          />
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditingNotesId(null)} data-testid={`button-cancel-notes-${request.id}`}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => handleSaveNotes(request.id)} disabled={saveNotesMutation.isPending} data-testid={`button-save-notes-${request.id}`}>
+              {saveNotesMutation.isPending ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <Save className="w-3 h-3 mr-1" />
+              )}
+              Save Notes
+            </Button>
+          </div>
+        </div>
+      ) : request.notes ? (
+        <p className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3">{request.notes}</p>
+      ) : (
+        <p className="text-sm text-muted-foreground italic">No notes added yet</p>
+      )}
+    </div>
+  );
 
   const renderMeetingCardHeader = (request: MeetingRequestWithCompany, iconColorClass: string, isExpanded: boolean) => (
     <div className="flex items-center justify-between gap-3">
@@ -1848,53 +1760,6 @@ export default function AdminMeetings() {
             >
               {requestMeetingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Create Meeting
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Follow-up Task Dialog */}
-      <Dialog open={followUpTaskOpen} onOpenChange={setFollowUpTaskOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Follow-up Task</DialogTitle>
-            {followUpMeeting && (
-              <p className="text-sm text-muted-foreground">From: {followUpMeeting.title}</p>
-            )}
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Title</Label>
-              <input
-                className="mt-1 w-full border rounded-md px-3 py-2 text-sm bg-background"
-                value={followUpTaskTitle}
-                onChange={e => setFollowUpTaskTitle(e.target.value)}
-                data-testid="input-followup-task-title"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Description / Next Steps</Label>
-              <Textarea value={followUpTaskDesc} onChange={e => setFollowUpTaskDesc(e.target.value)} rows={4} className="mt-1 resize-none" data-testid="textarea-followup-task-desc" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFollowUpTaskOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (!followUpMeeting) return;
-                createFollowUpTaskMutation.mutate({
-                  title: followUpTaskTitle,
-                  description: followUpTaskDesc,
-                  companyId: followUpMeeting.companyId,
-                  status: "pending",
-                  priority: "medium",
-                });
-              }}
-              disabled={!followUpTaskTitle.trim() || createFollowUpTaskMutation.isPending}
-              data-testid="button-submit-followup-task"
-            >
-              {createFollowUpTaskMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Task
             </Button>
           </DialogFooter>
         </DialogContent>

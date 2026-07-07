@@ -5,43 +5,19 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema, insertContentPillarSchema, insertContentAssetSchema, insertNotepadSchema, insertMessageBoardPostSchema, insertMessageBoardReplySchema, insertCheckinQuestionSchema, insertCheckinResponseSchema, insertHillChartSchema, insertSeoDirectorySchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { registerHubSpotOAuthRoutes } from "./hubspot-oauth/routes";
 import { uploadToSharePoint, uploadToSharePointWithIds, downloadFromSharePoint, deleteFromSharePoint } from "./sharepoint";
 import { broadcastInvalidation, broadcastNotificationToUser, broadcastNotificationToUsers } from "./websocket";
 import multer from "multer";
-import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendNextTaskActivatedEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail, sendEmail, buildApprovalRequestEmail, buildMeetingRecapEmail, buildTaskReminderEmail, buildMonthlyReportReadyEmail, buildMonthlyReportClientEmail, buildPlanningGapAlertEmail, sendWorkflowEmail } from "./email";
+import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionEmail, sendTrainingAssignmentEmail, sendTrainingReminderEmail, sendOnboardingCompletionEmail, sendTaskAssignmentEmail, sendTaskStatusChangeEmail, sendTaskInReviewEmail, sendTaskDueReminderEmail, sendTestEmail, sendWelcomeEmail, sendCompanyInvitationEmail, sendPasswordResetEmail, sendCampaignResponseEmail, sendCreditPurchaseEmail, sendLowCreditWarningEmail, sendProjectedUsageWarningEmail, sendSignatureRequestEmail, sendSignatureCompletionEmail, sendChatNotificationEmail, sendAdminInvitationEmail, sendMediaUploadNotificationEmail } from "./email";
 import { generateOnboardingPdf } from "./pdf-generator";
-import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById, getHubSpotBrandData } from "./hubspot";
+import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
 
 import type { InsertNotification } from "@shared/schema";
-
-async function syncOnboardingToMarketingHub(storage: any, companyId: string, body: any): Promise<void> {
-  try {
-    if (body.companySummary !== undefined) {
-      await storage.upsertCompanyProfile(companyId, { companySummary: body.companySummary });
-    }
-  } catch (err: any) {
-    console.error("[onboarding] Failed to sync company profile:", err?.message || err);
-  }
-  try {
-    const brandUpdates: Record<string, string> = {};
-    if (body.tagline) brandUpdates.tagline = body.tagline;
-    if (body.brandVoice) brandUpdates.brandVoiceSummary = body.brandVoice;
-    if (body.targetAudience) brandUpdates.targetAudienceDescription = body.targetAudience;
-    if (body.geographicFocus) brandUpdates.geographicFocus = body.geographicFocus;
-    if (body.uniqueValueProposition) brandUpdates.uniqueValueProposition = body.uniqueValueProposition;
-    if (Object.keys(brandUpdates).length > 0) {
-      await storage.upsertBrandProfile(companyId, brandUpdates);
-    }
-  } catch (err: any) {
-    console.error("[onboarding] Failed to sync brand profile:", err?.message || err);
-  }
-}
 
 async function createAndBroadcastNotification(data: InsertNotification) {
   const notification = await storage.createNotification(data);
@@ -218,7 +194,6 @@ export async function registerRoutes(
   setupAuth(app);
   registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
-  registerHubSpotOAuthRoutes(app);
 
   app.get("/api/me", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
@@ -272,7 +247,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const company = await storage.getCompany((req.params.id as string));
+      const company = await storage.getCompany(req.params.id);
       
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -330,7 +305,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       
       if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, (req.params.id as string));
+        const member = await storage.getCompanyMember(userId, req.params.id);
         if (!member || (member.role !== "company_owner" && member.role !== "company_admin")) {
           return res.status(403).json({ error: "Only admins or company owners can update companies" });
         }
@@ -339,18 +314,18 @@ export async function registerRoutes(
         for (const key of allowedFields) {
           if (key in req.body) filtered[key] = req.body[key];
         }
-        const company = await storage.updateCompany((req.params.id as string), filtered);
+        const company = await storage.updateCompany(req.params.id, filtered);
         if (!company) return res.status(404).json({ error: "Failed to update company" });
         return res.json(company);
       }
       
       // Check if clientType is changing
-      const existingCompany = await storage.getCompany((req.params.id as string));
+      const existingCompany = await storage.getCompany(req.params.id);
       if (!existingCompany) {
         return res.status(404).json({ error: "Company not found" });
       }
       
-      const company = await storage.updateCompany((req.params.id as string), req.body);
+      const company = await storage.updateCompany(req.params.id, req.body);
       if (!company) {
         return res.status(404).json({ error: "Failed to update company" });
       }
@@ -403,12 +378,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can pause companies" });
       }
       
-      const company = await storage.getCompany((req.params.id as string));
+      const company = await storage.getCompany(req.params.id);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
       
-      const updatedCompany = await storage.updateCompany((req.params.id as string), {
+      const updatedCompany = await storage.updateCompany(req.params.id, {
         isPaused: true,
         pausedAt: new Date().toISOString(),
       });
@@ -430,7 +405,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can resume companies" });
       }
       
-      const company = await storage.getCompany((req.params.id as string));
+      const company = await storage.getCompany(req.params.id);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -439,7 +414,7 @@ export async function registerRoutes(
       const now = new Date();
       const currentMonthYear = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       
-      const updatedCompany = await storage.updateCompany((req.params.id as string), {
+      const updatedCompany = await storage.updateCompany(req.params.id, {
         isPaused: false,
         pausedAt: null,
         credits: company.monthlyCredits,
@@ -459,7 +434,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -499,7 +474,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -534,22 +509,21 @@ export async function registerRoutes(
       }
       
       const member = await storage.createCompanyMember({
-        companyId: (req.params.id as string),
+        companyId: req.params.id,
         userId: req.body.userId,
         role: req.body.role || "team_member",
       });
 
       // Auto-add new member to company-wide chat thread if it exists
       try {
-        const companyWideThread = await storage.getCompanyWideThread((req.params.id as string));
+        const companyWideThread = await storage.getCompanyWideThread(req.params.id);
         if (companyWideThread) {
           const existingMember = await storage.getChatThreadMember(companyWideThread.id, req.body.userId);
           if (!existingMember) {
             await storage.addChatThreadMember({
               threadId: companyWideThread.id,
               userId: req.body.userId,
-              isAdmin: false,
-              joinedAt: new Date().toISOString(),
+              role: "member",
             });
           }
         }
@@ -563,82 +537,16 @@ export async function registerRoutes(
     }
   });
 
-  // ── Global task categories (Settings page) ───────────────────────────────
-  app.get("/api/admin/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      const categories = await storage.getGlobalTaskCategories();
-      res.json(categories);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/admin/task-categories/seed", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      await storage.seedGlobalTaskCategories();
-      broadcastInvalidation(["/api/admin/task-categories"]);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/admin/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      const parsed = insertTaskCategorySchema.safeParse({ ...req.body, isGlobal: true });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
-      const category = await storage.createTaskCategory(parsed.data);
-      broadcastInvalidation(["/api/admin/task-categories"]);
-      res.json(category);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/admin/task-categories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      const updateSchema = insertTaskCategorySchema.partial();
-      const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
-      const category = await storage.updateTaskCategory((req.params.id as string), parsed.data);
-      if (!category) return res.status(404).json({ message: "Category not found" });
-      broadcastInvalidation(["/api/admin/task-categories"]);
-      res.json(category);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.delete("/api/admin/task-categories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      await storage.deleteTaskCategory((req.params.id as string));
-      broadcastInvalidation(["/api/admin/task-categories"]);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   app.get("/api/companies/:companyId/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) {
-        const membership = await storage.getCompanyMembership((req.params.companyId as string), req.user!.id);
+        const membership = await storage.getCompanyMembership(req.params.companyId, req.user!.id);
         if (!membership) {
           return res.status(403).json({ message: "Access denied" });
         }
       }
-      const categories = await storage.getTaskCategories((req.params.companyId as string));
+      const categories = await storage.getTaskCategories(req.params.companyId);
       res.json(categories);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -651,11 +559,11 @@ export async function registerRoutes(
       if (!isAdmin) return res.status(403).json({ message: "Admin only" });
       const parsed = insertTaskCategorySchema.safeParse({
         ...req.body,
-        companyId: (req.params.companyId as string),
+        companyId: req.params.companyId,
       });
       if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
       const category = await storage.createTaskCategory(parsed.data);
-      broadcastInvalidation([`companies/${(req.params.companyId as string)}/task-categories`]);
+      broadcastInvalidation(`companies/${req.params.companyId}/task-categories`);
       res.json(category);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -669,9 +577,9 @@ export async function registerRoutes(
       const updateSchema = insertTaskCategorySchema.partial().omit({ companyId: true });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
-      const category = await storage.updateTaskCategory((req.params.id as string), parsed.data);
+      const category = await storage.updateTaskCategory(req.params.id, parsed.data);
       if (!category) return res.status(404).json({ message: "Category not found" });
-      broadcastInvalidation([`companies/${category.companyId}/task-categories`]);
+      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
       res.json(category);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -682,11 +590,11 @@ export async function registerRoutes(
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ message: "Admin only" });
-      const category = await storage.getTaskCategory((req.params.id as string));
+      const category = await storage.getTaskCategory(req.params.id);
       if (!category) return res.status(404).json({ message: "Category not found" });
-      await storage.deleteTaskCategory((req.params.id as string));
-      broadcastInvalidation([`companies/${category.companyId}/task-categories`]);
-      broadcastInvalidation(["tasks"]);
+      await storage.deleteTaskCategory(req.params.id);
+      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      broadcastInvalidation("tasks");
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -700,15 +608,14 @@ export async function registerRoutes(
       const companyId = req.query.companyId as string | undefined;
 
       const enrichWithCreatorName = async (tasks: any[]) => {
-        const uniqueCreatorIds = [...new Set(tasks.map(t => t.assignedBy).filter(Boolean))];
-        const creators = await storage.getUsersByIds(uniqueCreatorIds);
-        const creatorMap = new Map(creators.map(u => [
-          u.id,
-          `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Unknown"
-        ]));
-        return tasks.map(t => ({
-          ...t,
-          assignedByName: t.assignedBy ? (creatorMap.get(t.assignedBy) ?? "Unknown") : null,
+        const creatorCache = new Map<string, string>();
+        return Promise.all(tasks.map(async (t) => {
+          if (!t.assignedBy) return { ...t, assignedByName: null };
+          if (creatorCache.has(t.assignedBy)) return { ...t, assignedByName: creatorCache.get(t.assignedBy) };
+          const creator = await storage.getUser(t.assignedBy);
+          const name = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email || "Unknown" : "Unknown";
+          creatorCache.set(t.assignedBy, name);
+          return { ...t, assignedByName: name };
         }));
       };
       
@@ -729,70 +636,10 @@ export async function registerRoutes(
           return res.status(403).json({ error: "Access denied" });
         }
         const tasks = await storage.getTasks(companyId);
-        res.json(await enrichWithCreatorName(tasks.filter(t => !t.isInternal && t.clientVisible !== false)));
+        res.json(await enrichWithCreatorName(tasks));
       }
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch tasks" });
-    }
-  });
-
-  // Bulk task creation across multiple companies (admin-only).
-  // Body: { companyIds: string[], task: { title, description?, priority?, dueDate?, creditCost?, noCredit?, clientVisible?, priority? } }
-  app.post("/api/tasks/bulk-companies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const { companyIds, task } = req.body || {};
-      if (!Array.isArray(companyIds) || companyIds.length === 0) {
-        return res.status(400).json({ error: "companyIds must be a non-empty array" });
-      }
-      if (!task || typeof task.title !== "string" || !task.title.trim()) {
-        return res.status(400).json({ error: "task.title is required" });
-      }
-
-      const created: Array<{ companyId: string; taskId: string }> = [];
-      const failed: Array<{ companyId: string; error: string }> = [];
-
-      for (const companyId of companyIds) {
-        try {
-          const company = await storage.getCompany(companyId);
-          if (!company) {
-            failed.push({ companyId, error: "Company not found" });
-            continue;
-          }
-          const creditCost = task.noCredit ? "0" : (task.creditCost ? String(task.creditCost) : "1");
-          const newTask = await storage.createTask({
-            companyId,
-            title: task.title.trim(),
-            description: task.description || null,
-            status: "pending",
-            priority: task.priority || "medium",
-            creditCost,
-            type: "assigned",
-            deliverableType: task.deliverableType || null,
-            dueDate: task.dueDate || null,
-            assignedBy: userId,
-            assignedTo: task.assignedTo || null,
-            creditsDeducted: false,
-            approvalStatus: "approved",
-            noCredit: !!task.noCredit,
-            taskOwnership: "agency",
-            clientVisible: task.clientVisible !== false,
-          } as any);
-          created.push({ companyId, taskId: newTask.id });
-        } catch (err: any) {
-          console.error(`Bulk task create failed for company ${companyId}:`, err?.message || err);
-          failed.push({ companyId, error: err?.message || "Failed to create task" });
-        }
-      }
-
-      broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications"]);
-      res.status(201).json({ created, failed, total: companyIds.length });
-    } catch (error: any) {
-      console.error("Bulk task creation failed:", error?.message || error);
-      res.status(500).json({ error: "Bulk task creation failed" });
     }
   });
 
@@ -816,7 +663,7 @@ export async function registerRoutes(
 
       if (data.categoryId) {
         const category = await storage.getTaskCategory(data.categoryId);
-        if (!category || (!category.isGlobal && category.companyId !== data.companyId)) {
+        if (!category || category.companyId !== data.companyId) {
           return res.status(400).json({ error: "Invalid category for this company" });
         }
       }
@@ -1018,7 +865,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const existingTask = await storage.getTask((req.params.id as string));
+      const existingTask = await storage.getTask(req.params.id);
       if (!existingTask) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -1032,11 +879,11 @@ export async function registerRoutes(
             return res.status(403).json({ error: "Agency-managed tasks can only be updated by agency admins. Use approve/request changes for review tasks." });
           }
           const isPendingTask = existingTask.approvalStatus === "pending_internal_approval" || existingTask.approvalStatus === "pending_approval";
-          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost", "categoryId"] : ["status", "categoryId"];
+          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost"] : ["status"];
           const bodyKeys = Object.keys(req.body);
           const hasDisallowedFields = bodyKeys.some(k => !allowedFields.includes(k));
           if (hasDisallowedFields) {
-            return res.status(403).json({ error: isPendingTask ? "Company admins can only change status, deliverable type, and category on pending tasks" : "Company admins can only change task status and category" });
+            return res.status(403).json({ error: isPendingTask ? "Company admins can only change status and deliverable type on pending tasks" : "Company admins can only change task status" });
           }
         } else if (existingTask.taskOwnership === "client") {
           const allowedClientStatusChanges = ["pending", "in_progress", "review", "completed"];
@@ -1056,30 +903,8 @@ export async function registerRoutes(
 
       if (req.body.categoryId !== undefined && req.body.categoryId !== null) {
         const category = await storage.getTaskCategory(req.body.categoryId);
-        if (!category || (!category.isGlobal && category.companyId !== existingTask.companyId)) {
+        if (!category || category.companyId !== existingTask.companyId) {
           return res.status(400).json({ error: "Invalid category for this company" });
-        }
-      }
-
-      if (req.body.nextTaskId !== undefined && req.body.nextTaskId !== null) {
-        const candidateId = req.body.nextTaskId as string;
-        if (candidateId === existingTask.id) {
-          return res.status(400).json({ error: "A task cannot link to itself as next task" });
-        }
-        const candidate = await storage.getTask(candidateId);
-        if (!candidate || candidate.companyId !== existingTask.companyId) {
-          return res.status(400).json({ error: "Next task must belong to the same company" });
-        }
-        // Cycle prevention: walk forward chain from candidate; bail if we reach existingTask.id
-        const visited = new Set<string>();
-        let cursor: string | null | undefined = candidate.nextTaskId;
-        while (cursor && !visited.has(cursor)) {
-          if (cursor === existingTask.id) {
-            return res.status(400).json({ error: "Linking would create a cycle in the task chain" });
-          }
-          visited.add(cursor);
-          const node = await storage.getTask(cursor);
-          cursor = node?.nextTaskId ?? null;
         }
       }
 
@@ -1106,22 +931,6 @@ export async function registerRoutes(
       }
 
       const newStatus = req.body.status;
-
-      // Sequential subtask blocking: if this is a subtask and status is changing, ensure all previous subtasks are completed
-      if (newStatus && newStatus !== existingTask.status && existingTask.parentTaskId) {
-        const siblings = await storage.getSubtasks(existingTask.parentTaskId);
-        const sorted = [...siblings].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-        const myIndex = sorted.findIndex(s => s.id === existingTask.id);
-        if (myIndex > 0) {
-          const blockers = sorted.slice(0, myIndex).filter(s => s.status !== "completed");
-          if (blockers.length > 0) {
-            return res.status(400).json({
-              error: `This subtask is blocked. ${blockers.length} previous subtask${blockers.length > 1 ? "s" : ""} must be completed first.`,
-            });
-          }
-        }
-      }
-
       if (newStatus === "completed" && existingTask.status !== "completed") {
         req.body.completedAt = new Date().toISOString();
         req.body.completedBy = userId;
@@ -1159,13 +968,6 @@ export async function registerRoutes(
           req.body.creditsDeductedAt = new Date().toISOString();
           req.body.creditCostAtDeduction = String(creditCost);
           creditActionTaken = true;
-
-          // Consume any credit reservation linked to this task
-          storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
-            if (reservation && reservation.status === "reserved") {
-              storage.updateCreditReservation(reservation.id, { status: "consumed" }).catch(() => {});
-            }
-          }).catch(() => {});
 
           // Low credit warning
           const lowCreditThreshold = 10;
@@ -1219,13 +1021,6 @@ export async function registerRoutes(
           req.body.creditsDeductedAt = new Date().toISOString();
           req.body.creditCostAtDeduction = String(creditCost);
           creditActionTaken = true;
-
-          // Consume any credit reservation linked to this task
-          storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
-            if (reservation && reservation.status === "reserved") {
-              storage.updateCreditReservation(reservation.id, { status: "consumed" }).catch(() => {});
-            }
-          }).catch(() => {});
         }
       }
 
@@ -1249,13 +1044,6 @@ export async function registerRoutes(
             req.body.creditsDeductedAt = null;
             req.body.creditCostAtDeduction = null;
             creditActionTaken = true;
-
-            // Re-open the credit reservation if it exists
-            storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
-              if (reservation && reservation.status === "consumed") {
-                storage.updateCreditReservation(reservation.id, { status: "reserved" }).catch(() => {});
-              }
-            }).catch(() => {});
           }
         }
       }
@@ -1280,13 +1068,6 @@ export async function registerRoutes(
             req.body.creditsDeductedAt = null;
             req.body.creditCostAtDeduction = null;
             creditActionTaken = true;
-
-            // Release the credit reservation permanently
-            storage.getCreditReservationByTaskId(existingTask.id).then(reservation => {
-              if (reservation && reservation.status !== "released") {
-                storage.updateCreditReservation(reservation.id, { status: "released" }).catch(() => {});
-              }
-            }).catch(() => {});
           }
         }
       }
@@ -1484,7 +1265,7 @@ export async function registerRoutes(
         }
       }
 
-      const task = await storage.updateTask((req.params.id as string), req.body);
+      const task = await storage.updateTask(req.params.id, req.body);
 
       // Respond immediately — the task is persisted; all side-effects run after
       res.json(task);
@@ -1686,52 +1467,6 @@ export async function registerRoutes(
             checkProjectedUsageAndNotify(existingTask.companyId).catch(err => console.error("Projected usage check failed:", err));
           }
 
-          // Next-task activation: if a linked next task is set, activate it + email assignee
-          if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.nextTaskId) {
-            try {
-              const nextTask = await storage.getTask(existingTask.nextTaskId);
-              if (nextTask && (nextTask.status === "pending" || nextTask.status === "blocked")) {
-                if (nextTask.status === "blocked") {
-                  await storage.updateTask(nextTask.id, { status: "pending" });
-                }
-                const nextCompany = await storage.getCompany(nextTask.companyId);
-                const recipientIds = new Set<string>();
-                if (nextTask.assignedTo) recipientIds.add(nextTask.assignedTo);
-                try {
-                  const extras = await storage.getTaskAssignees(nextTask.id);
-                  for (const a of extras) if (a.userId) recipientIds.add(a.userId);
-                } catch {}
-                for (const rid of Array.from(recipientIds)) {
-                  await createAndBroadcastNotification({
-                    userId: rid,
-                    type: "task_assigned",
-                    title: "Task Ready to Start",
-                    message: `"${existingTask.title}" was completed — you can now start "${nextTask.title}".`,
-                    link: `/client/tasks?taskId=${nextTask.id}`,
-                    createdBy: userId,
-                    relatedTaskId: nextTask.id,
-                  });
-                  const u = await storage.getUser(rid);
-                  if (u?.email && nextCompany) {
-                    sendNextTaskActivatedEmail({
-                      recipientEmail: u.email,
-                      recipientName: [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Team Member',
-                      taskTitle: nextTask.title,
-                      taskDescription: nextTask.description || undefined,
-                      dueDate: nextTask.dueDate || undefined,
-                      previousTaskTitle: existingTask.title,
-                      companyName: nextCompany.name,
-                      portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${nextTask.id}`,
-                    }).catch(err => console.error("Failed to send next-task email:", err));
-                  }
-                }
-                broadcastInvalidation(["/api/tasks", "/api/notifications"]);
-              }
-            } catch (nextErr) {
-              console.error("Failed to activate next task:", nextErr);
-            }
-          }
-
           // Campaign auto-complete: targeted query replaces full table scan
           if (newStatus === "completed" && existingTask.campaignRequestId) {
             try {
@@ -1756,247 +1491,13 @@ export async function registerRoutes(
     }
   });
 
-  // Strategy Board (freeform whiteboard, one per company)
-  app.get("/api/companies/:companyId/strategy-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      const board = await storage.getStrategyBoard(companyId);
-      res.json(board || null);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch strategy board" });
-    }
-  });
-
-  app.put("/api/companies/:companyId/strategy-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { snapshot, notes } = req.body || {};
-      const board = await storage.upsertStrategyBoard(
-        companyId,
-        {
-          ...(snapshot !== undefined ? { snapshot } : {}),
-          ...(notes !== undefined ? { notes: typeof notes === "string" ? notes : null } : {}),
-        },
-        userId,
-      );
-      broadcastInvalidation([`/api/companies/${companyId}/strategy-board`]);
-      res.json(board);
-    } catch (error: any) {
-      console.error("Failed to save strategy board:", error?.message || error);
-      res.status(500).json({ error: "Failed to save strategy board" });
-    }
-  });
-
-  // ── Company Service Delivery Config ─────────────────────────────────────────
-  app.get("/api/companies/:companyId/service-config", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      const config = await storage.getCompanyServiceConfig(companyId);
-      res.json(config ?? null);
-    } catch (error: any) {
-      console.error("Failed to fetch service config:", error?.message || error);
-      res.status(500).json({ error: "Failed to fetch service config" });
-    }
-  });
-
-  app.put("/api/companies/:companyId/service-config", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      const {
-        hubspotHubs, hubspotPortalId,
-        socialTool, socialToolNotes,
-        landingPagePlatform, landingPageNotes,
-        blogPlatform, blogNotes,
-        websiteAccess, websiteUrl, websiteNotes,
-      } = req.body || {};
-      const config = await storage.upsertCompanyServiceConfig(companyId, {
-        hubspotHubs: typeof hubspotHubs === "string" ? hubspotHubs : (hubspotHubs ? JSON.stringify(hubspotHubs) : null),
-        hubspotPortalId: hubspotPortalId ?? null,
-        socialTool: socialTool ?? null,
-        socialToolNotes: socialToolNotes ?? null,
-        landingPagePlatform: landingPagePlatform ?? null,
-        landingPageNotes: landingPageNotes ?? null,
-        blogPlatform: blogPlatform ?? null,
-        blogNotes: blogNotes ?? null,
-        websiteAccess: websiteAccess ?? null,
-        websiteUrl: websiteUrl ?? null,
-        websiteNotes: websiteNotes ?? null,
-      });
-      broadcastInvalidation([`/api/companies/${companyId}/service-config`]);
-      res.json(config);
-    } catch (error: any) {
-      console.error("Failed to save service config:", error?.message || error);
-      res.status(500).json({ error: "Failed to save service config" });
-    }
-  });
-
-  // ── Company Profile ───────────────────────────────────────────────────────────
-  app.get("/api/companies/:companyId/company-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      res.json(await storage.getCompanyProfile(companyId) ?? null);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/companies/:companyId/company-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      const profile = await storage.upsertCompanyProfile(companyId, req.body || {});
-      broadcastInvalidation([`/api/companies/${companyId}/company-profile`]);
-      res.json(profile);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Government Profile ────────────────────────────────────────────────────────
-  app.get("/api/companies/:companyId/government-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      res.json(await storage.getGovernmentProfile(companyId) ?? null);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/companies/:companyId/government-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      const profile = await storage.upsertGovernmentProfile(companyId, req.body || {});
-      broadcastInvalidation([`/api/companies/${companyId}/government-profile`]);
-      res.json(profile);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Government Portals ────────────────────────────────────────────────────────
-  app.get("/api/companies/:companyId/government-portals", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      res.json(await storage.getGovernmentPortals(companyId));
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/companies/:companyId/government-portals", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.params.companyId as string;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      const portal = await storage.createGovernmentPortal({ ...req.body, companyId });
-      broadcastInvalidation([`/api/companies/${companyId}/government-portals`]);
-      res.status(201).json(portal);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/government-portals/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdminUser = await storage.isAdmin(req.user!.id);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      const portal = await storage.updateGovernmentPortal(req.params.id as string, req.body || {});
-      if (!portal) return res.status(404).json({ error: "Portal not found" });
-      broadcastInvalidation([`/api/companies/${portal.companyId}/government-portals`]);
-      res.json(portal);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/government-portals/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdminUser = await storage.isAdmin(req.user!.id);
-      if (!isAdminUser) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteGovernmentPortal(req.params.id as string);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Returns task IDs (scoped to a company) where the current user is a secondary assignee
-  app.get("/api/tasks/my-secondary-task-ids", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const companyId = req.query.companyId as string | undefined;
-      const assigneeRows = await storage.getTasksByAssignee(userId);
-      if (!assigneeRows.length) return res.json([]);
-      const taskIds = assigneeRows.map(r => r.taskId);
-      // Filter to the requested company if provided
-      if (companyId) {
-        const { db } = await import("./db");
-        const { tasks } = await import("../shared/schema");
-        const { inArray, and, eq } = await import("drizzle-orm");
-        const rows = await db.select({ id: tasks.id }).from(tasks).where(
-          and(inArray(tasks.id, taskIds), eq(tasks.companyId, companyId))
-        );
-        return res.json(rows.map(r => r.id));
-      }
-      res.json(taskIds);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch secondary task assignments" });
-    }
-  });
-
   app.get("/api/tasks/campaign/:campaignRequestId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const campaignTasks = await storage.getTasksByCampaignRequest((req.params.campaignRequestId as string));
+      const allTasks = await storage.getAllTasks();
+      const campaignTasks = allTasks.filter(t => t.campaignRequestId === req.params.campaignRequestId);
       res.json(campaignTasks);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch campaign tasks" });
-    }
-  });
-
-  app.delete("/api/tasks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-      const task = await storage.getTask((req.params.id as string));
-      if (!task) {
-        return res.status(404).json({ error: "Task not found" });
-      }
-      await storage.deleteTask((req.params.id as string));
-      broadcastInvalidation(["/api/tasks", "/api/companies"]);
-      res.json({ deleted: true });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error("Error deleting task:", req.params.id, msg, error);
-      res.status(500).json({ error: "Failed to delete task", detail: msg });
     }
   });
 
@@ -2008,7 +1509,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2067,7 +1568,7 @@ export async function registerRoutes(
         updateData.creditsDeducted = false;
       }
 
-      const updatedTask = await storage.updateTask((req.params.id as string), updateData);
+      const updatedTask = await storage.updateTask(req.params.id, updateData);
 
       broadcastInvalidation(["/api/tasks", "/api/companies"]);
       res.json(updatedTask);
@@ -2082,7 +1583,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2176,7 +1677,7 @@ export async function registerRoutes(
         updateData.status = "approved";
       }
 
-      const updatedTask = await storage.updateTask((req.params.id as string), updateData);
+      const updatedTask = await storage.updateTask(req.params.id, updateData);
       
       const company = await storage.getCompany(task.companyId);
       
@@ -2420,7 +1921,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2442,7 +1943,7 @@ export async function registerRoutes(
       }
 
       if (action === "approve") {
-        const updatedTask = await storage.updateTask((req.params.id as string), {
+        const updatedTask = await storage.updateTask(req.params.id, {
           approvalStatus: "pending_approval",
         });
 
@@ -2467,7 +1968,7 @@ export async function registerRoutes(
         broadcastInvalidation(["/api/tasks", "/api/companies", "/api/notifications"]);
         res.json(updatedTask);
       } else {
-        const updatedTask = await storage.updateTask((req.params.id as string), {
+        const updatedTask = await storage.updateTask(req.params.id, {
           approvalStatus: "rejected",
           status: "rejected",
         });
@@ -2507,7 +2008,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2516,7 +2017,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Timer is already running" });
       }
 
-      const updatedTask = await storage.updateTask((req.params.id as string), {
+      const updatedTask = await storage.updateTask(req.params.id, {
         timerStartedAt: new Date().toISOString(),
       });
       res.json(updatedTask);
@@ -2534,7 +2035,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -2548,7 +2049,7 @@ export async function registerRoutes(
       const elapsedSeconds = Math.floor((now - startTime) / 1000);
       const newTotalTime = (task.totalTimeTracked || 0) + elapsedSeconds;
 
-      const updatedTask = await storage.updateTask((req.params.id as string), {
+      const updatedTask = await storage.updateTask(req.params.id, {
         timerStartedAt: null,
         totalTimeTracked: newTotalTime,
       });
@@ -2567,12 +2068,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can control task timer" });
       }
       
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
 
-      const updatedTask = await storage.updateTask((req.params.id as string), {
+      const updatedTask = await storage.updateTask(req.params.id, {
         timerStartedAt: null,
         totalTimeTracked: 0,
       });
@@ -2654,7 +2155,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -2887,7 +2388,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can update deliverable types" });
       }
       
-      const deliverable = await storage.updateDeliverableType((req.params.id as string), req.body);
+      const deliverable = await storage.updateDeliverableType(req.params.id, req.body);
       if (!deliverable) {
         return res.status(404).json({ error: "Deliverable type not found" });
       }
@@ -2906,7 +2407,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can delete deliverable types" });
       }
       
-      await storage.deleteDeliverableType((req.params.id as string));
+      await storage.deleteDeliverableType(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete deliverable type" });
@@ -2953,7 +2454,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Only admins can update subscription tiers" });
       }
-      const tier = await storage.updateSubscriptionTierDefinition((req.params.id as string), req.body);
+      const tier = await storage.updateSubscriptionTierDefinition(req.params.id, req.body);
       if (!tier) {
         return res.status(404).json({ error: "Subscription tier not found" });
       }
@@ -2988,7 +2489,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Only admins can view assignees" });
       }
       
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const companyMembersList = await storage.getCompanyMembers(companyId);
       const admins = await storage.getAllAdminUsers();
       
@@ -3048,6 +2549,7 @@ export async function registerRoutes(
       if (allCompanies.length === 0 && !existingAdmins) {
         await storage.createAdminUser({
           userId,
+          createdAt: new Date().toISOString(),
         });
         return res.json({ success: true, message: "You are now an admin" });
       }
@@ -3063,6 +2565,7 @@ export async function registerRoutes(
       
       await storage.createAdminUser({
         userId: targetUserId,
+        createdAt: new Date().toISOString(),
       });
       
       res.json({ success: true });
@@ -3191,6 +2694,7 @@ export async function registerRoutes(
       if (existingUser) {
         await storage.createAdminUser({
           userId: existingUser.id,
+          createdAt: new Date().toISOString(),
         });
         await storage.markAdminInvitationUsed(token, existingUser.id);
       }
@@ -3224,7 +2728,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteAdminInvitation((req.params.id as string));
+      await storage.deleteAdminInvitation(req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to delete admin invitation:", error);
@@ -3240,7 +2744,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const targetUserId = (req.params.targetUserId as string);
+      const targetUserId = req.params.targetUserId;
 
       if (targetUserId === userId) {
         return res.status(400).json({ error: "You cannot revoke your own admin access" });
@@ -3264,32 +2768,6 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:userId/name", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const requesterId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(requesterId);
-      if (!isUserAdmin) {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-
-      const schema = z.object({
-        firstName: z.string().min(1, "First name is required").max(100),
-        lastName: z.string().min(1, "Last name is required").max(100),
-      });
-      const { firstName, lastName } = schema.parse(req.body);
-
-      await storage.updateUserName((req.params.userId as string), firstName, lastName);
-      broadcastInvalidation(["/api/admin/users"]);
-      res.json({ success: true });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: error.errors });
-      }
-      console.error("Failed to update user name:", error);
-      res.status(500).json({ error: "Failed to update name" });
-    }
-  });
-
   app.patch("/api/admin/members/:memberId/role", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
@@ -3298,7 +2776,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { memberId } = req.params as Record<string, string>;
+      const { memberId } = req.params;
       const { role, customRoleId } = req.body;
 
       const validRoles = ["company_owner", "company_admin", "team_member", "custom"];
@@ -3323,74 +2801,10 @@ export async function registerRoutes(
     }
   });
 
-  // ── Subtask routes ─────────────────────────────────────────────────────────
-  app.get("/api/tasks/:id/subtasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const task = await storage.getTask(req.params.id as string);
-      if (!task) return res.status(404).json({ error: "Task not found" });
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, task.companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      const subtasks = await storage.getSubtasks(req.params.id as string);
-      res.json(subtasks);
-    } catch {
-      res.status(500).json({ error: "Failed to fetch subtasks" });
-    }
-  });
-
-  app.post("/api/tasks/:id/subtasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const parentTask = await storage.getTask(req.params.id as string);
-      if (!parentTask) return res.status(404).json({ error: "Parent task not found" });
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Only admins can create subtasks" });
-      const { title, assignedTo, dueDate, creditCost, priority } = req.body;
-      if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
-      const existingSubtasks = await storage.getSubtasks(req.params.id as string);
-      const sortOrder = existingSubtasks.length;
-      const subtask = await storage.createTask({
-        companyId: parentTask.companyId,
-        title: title.trim(),
-        assignedTo: assignedTo || null,
-        assignedBy: userId,
-        dueDate: dueDate || null,
-        creditCost: creditCost ?? parentTask.creditCost,
-        priority: priority || parentTask.priority,
-        status: "pending",
-        type: parentTask.type,
-        taskOwnership: parentTask.taskOwnership,
-        parentTaskId: parentTask.id,
-        sortOrder,
-        categoryId: parentTask.categoryId || null,
-      });
-      res.json(subtask);
-    } catch {
-      res.status(500).json({ error: "Failed to create subtask" });
-    }
-  });
-
-  app.patch("/api/tasks/:id/subtasks/reorder", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Only admins can reorder subtasks" });
-      const { orderedIds } = req.body as { orderedIds: string[] };
-      if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds must be an array" });
-      await Promise.all(orderedIds.map((id, index) => storage.updateTask(id, { sortOrder: index } as any)));
-      res.json({ ok: true });
-    } catch {
-      res.status(500).json({ error: "Failed to reorder subtasks" });
-    }
-  });
-
   // Task checklist item routes
   app.get("/api/tasks/:id/checklist", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3405,7 +2819,7 @@ export async function registerRoutes(
         }
       }
 
-      const items = await storage.getTaskChecklistItems((req.params.id as string));
+      const items = await storage.getTaskChecklistItems(req.params.id);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch checklist items" });
@@ -3414,7 +2828,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/checklist", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3431,7 +2845,7 @@ export async function registerRoutes(
 
       const data = insertTaskChecklistItemSchema.parse({
         ...req.body,
-        taskId: (req.params.id as string),
+        taskId: req.params.id,
       });
       const item = await storage.createTaskChecklistItem(data);
       broadcastInvalidation(["/api/tasks"]);
@@ -3446,7 +2860,7 @@ export async function registerRoutes(
 
   app.patch("/api/checklist-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const checklistItem = await storage.getTaskChecklistItem((req.params.id as string));
+      const checklistItem = await storage.getTaskChecklistItem(req.params.id);
       if (!checklistItem) {
         return res.status(404).json({ error: "Checklist item not found" });
       }
@@ -3466,7 +2880,7 @@ export async function registerRoutes(
         }
       }
 
-      const item = await storage.updateTaskChecklistItem((req.params.id as string), req.body);
+      const item = await storage.updateTaskChecklistItem(req.params.id, req.body);
       broadcastInvalidation(["/api/tasks"]);
       res.json(item);
     } catch (error) {
@@ -3476,7 +2890,7 @@ export async function registerRoutes(
 
   app.delete("/api/checklist-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const checklistItem = await storage.getTaskChecklistItem((req.params.id as string));
+      const checklistItem = await storage.getTaskChecklistItem(req.params.id);
       if (!checklistItem) {
         return res.status(404).json({ error: "Checklist item not found" });
       }
@@ -3496,7 +2910,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteTaskChecklistItem((req.params.id as string));
+      await storage.deleteTaskChecklistItem(req.params.id);
       broadcastInvalidation(["/api/tasks"]);
       res.json({ success: true });
     } catch (error) {
@@ -3507,7 +2921,7 @@ export async function registerRoutes(
   // Task comments endpoints
   app.get("/api/tasks/:id/comments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3522,7 +2936,7 @@ export async function registerRoutes(
         }
       }
 
-      const comments = await storage.getTaskComments((req.params.id as string));
+      const comments = await storage.getTaskComments(req.params.id);
       res.json(comments);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch comments" });
@@ -3531,7 +2945,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/comments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3557,16 +2971,16 @@ export async function registerRoutes(
       
       if (isAdmin) {
         const admin = await storage.getAdminUser(userId);
-        userName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
+        userName = admin?.name || admin?.email || "Admin";
         userType = "admin";
       } else {
         const member = await storage.getCompanyMemberById(userId);
-        userName = member ? (`${member.firstName || ""} ${member.lastName || ""}`.trim() || member.email) : "Client";
+        userName = member?.name || member?.email || "Client";
         userType = "client";
       }
 
       const comment = await storage.createTaskComment({
-        taskId: (req.params.id as string),
+        taskId: req.params.id,
         userId,
         userName,
         userType,
@@ -3584,7 +2998,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const comment = await storage.getTaskComment((req.params.id as string));
+      const comment = await storage.getTaskComment(req.params.id);
       
       if (!comment) {
         return res.status(404).json({ error: "Comment not found" });
@@ -3599,7 +3013,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Comment content is required" });
       }
 
-      const updated = await storage.updateTaskComment((req.params.id as string), content.trim());
+      const updated = await storage.updateTaskComment(req.params.id, content.trim());
       broadcastInvalidation(["/api/tasks"]);
       res.json(updated);
     } catch (error) {
@@ -3611,7 +3025,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const comment = await storage.getTaskComment((req.params.id as string));
+      const comment = await storage.getTaskComment(req.params.id);
 
       if (!comment) {
         return res.status(404).json({ error: "Comment not found" });
@@ -3621,7 +3035,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "You can only delete your own comments" });
       }
 
-      await storage.deleteTaskComment((req.params.id as string));
+      await storage.deleteTaskComment(req.params.id);
       broadcastInvalidation(["/api/tasks"]);
       res.json({ success: true });
     } catch (error) {
@@ -3632,7 +3046,7 @@ export async function registerRoutes(
   // Task attachments endpoints
   app.get("/api/tasks/:id/attachments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3647,7 +3061,7 @@ export async function registerRoutes(
         }
       }
 
-      const attachments = await storage.getTaskAttachments((req.params.id as string));
+      const attachments = await storage.getTaskAttachments(req.params.id);
       res.json(attachments);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch attachments" });
@@ -3662,7 +3076,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/attachments", isAuthenticated, taskAttachmentUpload.single("file"), async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -3691,7 +3105,7 @@ export async function registerRoutes(
       let uploaderName = "Unknown";
       if (isAdmin) {
         const admin = await storage.getAdminUser(userId);
-        uploaderName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
+        uploaderName = admin?.name || admin?.email || "Admin";
       } else {
         const user = await storage.getUser(userId);
         uploaderName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.email || "Client";
@@ -3699,11 +3113,11 @@ export async function registerRoutes(
 
       const { uploadBuffer } = await import("./object-storage-helpers");
       const { randomUUID } = await import("crypto");
-      const objectRelPath = `attachments/${(req.params.id as string)}/${randomUUID()}_${req.file.originalname}`;
+      const objectRelPath = `attachments/${req.params.id}/${randomUUID()}_${req.file.originalname}`;
       const storedPath = await uploadBuffer(objectRelPath, req.file.buffer, req.file.mimetype);
 
       const attachment = await storage.createTaskAttachment({
-        taskId: (req.params.id as string),
+        taskId: req.params.id,
         fileName: req.file.originalname,
         fileSize: req.file.size,
         contentType: req.file.mimetype,
@@ -3724,7 +3138,7 @@ export async function registerRoutes(
 
   app.get("/api/attachments/:id/download", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const attachment = await storage.getTaskAttachment((req.params.id as string));
+      const attachment = await storage.getTaskAttachment(req.params.id);
       if (!attachment) {
         return res.status(404).json({ error: "Attachment not found" });
       }
@@ -3776,7 +3190,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const attachment = await storage.getTaskAttachment((req.params.id as string));
+      const attachment = await storage.getTaskAttachment(req.params.id);
       if (!attachment) {
         return res.status(404).json({ error: "Attachment not found" });
       }
@@ -3788,7 +3202,7 @@ export async function registerRoutes(
         await deleteFromSharePoint(attachment.driveId, attachment.itemId);
       }
 
-      await storage.deleteTaskAttachment((req.params.id as string));
+      await storage.deleteTaskAttachment(req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Attachment delete error:", error);
@@ -3798,7 +3212,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id/links", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: "Task not found" });
 
       const userId = req.user!.id;
@@ -3808,7 +3222,7 @@ export async function registerRoutes(
         if (!member) return res.status(403).json({ error: "Access denied" });
       }
 
-      const links = await storage.getTaskLinks((req.params.id as string));
+      const links = await storage.getTaskLinks(req.params.id);
       res.json(links);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch links" });
@@ -3817,7 +3231,7 @@ export async function registerRoutes(
 
   app.post("/api/tasks/:id/links", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: "Task not found" });
 
       const userId = req.user!.id;
@@ -3833,14 +3247,14 @@ export async function registerRoutes(
       let createdByName = "Unknown";
       if (isAdmin) {
         const admin = await storage.getAdminUser(userId);
-        createdByName = admin ? (`${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email) : "Admin";
+        createdByName = admin?.name || admin?.email || "Admin";
       } else {
         const user = await storage.getUser(userId);
         createdByName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || user?.email || "Client";
       }
 
       const link = await storage.createTaskLink({
-        taskId: (req.params.id as string),
+        taskId: req.params.id,
         url,
         label: label || null,
         createdBy: userId,
@@ -3858,14 +3272,14 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
 
-      const link = await storage.getTaskLink((req.params.id as string));
+      const link = await storage.getTaskLink(req.params.id);
       if (!link) return res.status(404).json({ error: "Link not found" });
 
       if (!isAdmin && link.createdBy !== userId) {
         return res.status(403).json({ error: "You can only delete your own links" });
       }
 
-      await storage.deleteTaskLink((req.params.id as string));
+      await storage.deleteTaskLink(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete link" });
@@ -3874,7 +3288,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id/assignees", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const assignees = await storage.getTaskAssignees((req.params.id as string));
+      const assignees = await storage.getTaskAssignees(req.params.id);
       const enriched = await Promise.all(
         assignees.map(async (a) => {
           const user = await storage.getUser(a.userId);
@@ -3895,9 +3309,9 @@ export async function registerRoutes(
     try {
       const { userId } = req.body;
       if (!userId) return res.status(400).json({ error: "userId is required" });
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) return res.status(404).json({ error: "Task not found" });
-      const assignee = await storage.addTaskAssignee({ taskId: (req.params.id as string), userId });
+      const assignee = await storage.addTaskAssignee({ taskId: req.params.id, userId });
       const user = await storage.getUser(userId);
       res.json({
         ...assignee,
@@ -3911,7 +3325,7 @@ export async function registerRoutes(
 
   app.delete("/api/tasks/:id/assignees/:userId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      await storage.removeTaskAssignee((req.params.id as string), (req.params.userId as string));
+      await storage.removeTaskAssignee(req.params.id, req.params.userId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove task assignee" });
@@ -3921,7 +3335,7 @@ export async function registerRoutes(
   // Get single task with details
   app.get("/api/tasks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -4015,7 +3429,7 @@ export async function registerRoutes(
 
   app.get("/api/invitations/:token", async (req, res) => {
     try {
-      const invitation = await storage.getCompanyInvitation((req.params.token as string));
+      const invitation = await storage.getCompanyInvitation(req.params.token);
       
       if (!invitation) {
         return res.status(404).json({ error: "Invitation not found" });
@@ -4047,7 +3461,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/invitations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const isAdmin = await storage.isAdmin(userId);
       
       // Check if user is admin OR company owner/admin
@@ -4076,7 +3490,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(userId);
       
       if (!isAdmin) {
-        const invitation = await storage.getCompanyInvitationById((req.params.id as string));
+        const invitation = await storage.getCompanyInvitationById(req.params.id);
         if (!invitation) {
           return res.status(404).json({ error: "Invitation not found" });
         }
@@ -4086,7 +3500,7 @@ export async function registerRoutes(
         }
       }
 
-      await storage.deleteCompanyInvitation((req.params.id as string));
+      await storage.deleteCompanyInvitation(req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to delete company invitation:", error);
@@ -4095,96 +3509,21 @@ export async function registerRoutes(
   });
 
   // Client onboarding routes
-
-  // Admin-only: full onboarding record (used by the admin Info Hub)
   app.get("/api/companies/:id/onboarding", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-      const onboarding = await storage.getClientOnboarding((req.params.id as string));
-      if (!onboarding) return res.json(null);
-      // Count credentials from the encrypted system — never return plaintext loginCredentials
-      const encryptedCreds = await storage.getCompanyCredentials((req.params.id as string));
-      const { loginCredentials: _stripped, ...safeOnboarding } = onboarding;
-      res.json({ ...safeOnboarding, credentialsProvidedCount: encryptedCreds.length });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch onboarding data" });
-    }
-  });
-
-  // Client-safe: stripped onboarding record for the onboarding wizard flow.
-  // Omits sensitive admin-only fields (loginCredentials, brandAssetFiles, etc.).
-  // Must be registered before the parameterized /:id routes.
-  app.get("/api/companies/:id/onboarding/flow", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
+      
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      const onboarding = await storage.getClientOnboarding(companyId);
-      if (!onboarding) return res.json(null);
-      // Sanitize socialPlatforms — only expose client-safe fields, strip any admin-added keys
-      type SocialPlatformEntry = {
-        platform?: unknown;
-        exists?: unknown;
-        handle?: unknown;
-        accountEmail?: unknown;
-        accountCreator?: unknown;
-        notes?: unknown;
-      };
-      let safeSocialPlatforms: string | null = null;
-      if (onboarding.socialPlatforms) {
-        try {
-          const parsed: unknown = JSON.parse(onboarding.socialPlatforms);
-          if (Array.isArray(parsed)) {
-            const sanitized = (parsed as SocialPlatformEntry[]).map((p) => ({
-              platform: typeof p.platform === "string" ? p.platform : "",
-              exists: typeof p.exists === "boolean" ? p.exists : false,
-              handle: typeof p.handle === "string" ? p.handle : "",
-              accountEmail: typeof p.accountEmail === "string" ? p.accountEmail : "",
-              accountCreator: typeof p.accountCreator === "string" ? p.accountCreator : "",
-              notes: typeof p.notes === "string" ? p.notes : "",
-            }));
-            safeSocialPlatforms = JSON.stringify(sanitized);
-          }
-        } catch {
-          safeSocialPlatforms = null;
+        if (!member) {
+          return res.status(403).json({ error: "Access denied" });
         }
       }
-      // Return only the fields needed by the client wizard — never expose admin-only data
-      const {
-        id, companyId: cId, currentStep, isCompleted, completedAt,
-        primaryContactName, primaryContactEmail, primaryContactPhone, website,
-        youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
-        googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
-        metaBusinessNA, googleBusinessNA, accessInvitesSent,
-        brandAssetLinks, seasonalPreferences, holidayPreferences,
-        seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
-        brandAssetsProvided, seasonalPreferencesConfirmed,
-        authorizationName, authorizationDate, specialNotes,
-        needsGbpRecovery, gbpBusinessName, gbpBusinessAddress,
-        gbpContactEmail, gbpContactPhone, gbpAdditionalContext,
-      } = onboarding;
-      res.json({
-        id, companyId: cId, currentStep, isCompleted, completedAt,
-        primaryContactName, primaryContactEmail, primaryContactPhone, website,
-        youtubeInviteDate, youtubeFeatureEligibilityDate, metaBusinessInviteDate,
-        googleBusinessInviteDate, youtubeInviteNA, youtubeFeatureNA,
-        metaBusinessNA, googleBusinessNA, accessInvitesSent,
-        socialPlatforms: safeSocialPlatforms,
-        brandAssetLinks, seasonalPreferences, holidayPreferences,
-        seasonalNotes, otherHolidays, socialProfilesListed, loginCredentialsProvided,
-        brandAssetsProvided, seasonalPreferencesConfirmed,
-        authorizationName, authorizationDate, specialNotes,
-        needsGbpRecovery, gbpBusinessName, gbpBusinessAddress,
-        gbpContactEmail, gbpContactPhone, gbpAdditionalContext,
-      });
+      
+      const onboarding = await storage.getClientOnboarding(companyId);
+      res.json(onboarding || null);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch onboarding data" });
     }
@@ -4194,60 +3533,16 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
         if (!member) {
           return res.status(403).json({ error: "Access denied" });
         }
-        // Block non-admins from updating onboarding after it has been completed
-        const existing = await storage.getClientOnboarding(companyId);
-        if (existing?.isCompleted) {
-          return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
-        }
       }
       
       const body = { ...req.body };
-
-      // Intercept loginCredentials submitted by clients — route to encrypted storage
-      // instead of persisting plaintext in the onboarding record
-      const loginCredentialsJson = body.loginCredentials;
-      delete body.loginCredentials;
-
-      if (loginCredentialsJson) {
-        let creds: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }>;
-        try {
-          creds = JSON.parse(loginCredentialsJson);
-        } catch {
-          // Malformed JSON — skip credential handling; do not surface to caller
-          creds = [];
-        }
-        if (Array.isArray(creds) && creds.length > 0) {
-          // Write-first-then-prune: create new credentials before deleting old ones so
-          // a write failure never causes data loss. Encryption errors bubble up and abort
-          // the entire request rather than being silently swallowed.
-          const existingCreds = await storage.getCompanyCredentials(companyId);
-          const toDelete = existingCreds.filter(c => c.category === "onboarding-submitted");
-          await Promise.all(creds.map(c => storage.createCompanyCredential({
-            companyId,
-            label: c.platform || "Unknown Platform",
-            username: c.username || null,
-            password: c.password || null,
-            url: null,
-            notes: [
-              c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
-              c.recoveryNotes || null,
-            ].filter(Boolean).join("\n") || null,
-            category: "onboarding-submitted",
-          })));
-          // All writes succeeded — safe to prune old set now
-          await Promise.all(toDelete.map(c => storage.deleteCompanyCredential(c.id)));
-          body.loginCredentialsProvided = true;
-          console.log(`[onboarding] Stored ${creds.length} encrypted credential(s) for company ${companyId}`);
-        }
-      }
-
       const ytOk = !!(body.youtubeInviteDate || body.youtubeInviteNA);
       const ytfOk = !!(body.youtubeFeatureEligibilityDate || body.youtubeFeatureNA);
       const metaOk = !!(body.metaBusinessInviteDate || body.metaBusinessNA);
@@ -4257,8 +3552,6 @@ export async function registerRoutes(
       const existing = await storage.getClientOnboarding(companyId);
       if (existing) {
         const updated = await storage.updateClientOnboarding(companyId, body);
-        // Sync marketing fields to Marketing Hub data stores
-        await syncOnboardingToMarketingHub(storage, companyId, body);
         return res.json(updated);
       }
       
@@ -4266,8 +3559,6 @@ export async function registerRoutes(
         ...body,
         companyId,
       });
-      // Sync marketing fields to Marketing Hub data stores
-      await syncOnboardingToMarketingHub(storage, companyId, body);
       res.status(201).json(onboarding);
     } catch (error) {
       res.status(500).json({ error: "Failed to save onboarding data" });
@@ -4278,15 +3569,13 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
 
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
       
       const body = { ...req.body };
-      // Never allow loginCredentials to be written back — credentials live in the encrypted system
-      delete body.loginCredentials;
       const existing = await storage.getClientOnboarding(companyId);
       if (!existing) {
         return res.status(404).json({ error: "Onboarding data not found" });
@@ -4309,102 +3598,15 @@ export async function registerRoutes(
   });
 
   // Admin-only: credentials CRUD
-  // ── Brand Profile ────────────────────────────────────────────────────────────
-  app.get("/api/companies/:id/brand-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const profile = await storage.getBrandProfile(req.params.id as string);
-      if (!profile) return res.status(404).json({ error: "No brand profile yet" });
-      res.json(profile);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch brand profile" });
-    }
-  });
-
-  app.put("/api/companies/:id/brand-profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const profile = await storage.upsertBrandProfile(req.params.id as string, req.body);
-      res.json(profile);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to save brand profile" });
-    }
-  });
-
-  // GET HubSpot brand data for a portal company (uses the linked hubspotCompanyId)
-  app.get("/api/companies/:id/hubspot-brand", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const company = await storage.getCompany(req.params.id as string);
-      if (!company) return res.status(404).json({ error: "Company not found" });
-      if (!company.hubspotCompanyId) return res.status(404).json({ error: "No HubSpot company linked" });
-      const result = await getHubSpotBrandData(company.hubspotCompanyId);
-      if (!result.success) return res.status(502).json({ error: result.error });
-      res.json(result.data);
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to fetch HubSpot brand data" });
-    }
-  });
-
   app.get("/api/companies/:id/credentials", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      // Storage already computes hasPassword from real DB value before stripping password
-      const credentials = await storage.getCompanyCredentials((req.params.id as string));
+      const credentials = await storage.getCompanyCredentials(req.params.id);
       res.json(credentials);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch credentials" });
-    }
-  });
-
-  // Company members (clients) submit credentials during onboarding — atomically replaces all onboarding-submitted entries
-  app.put("/api/companies/:id/credentials/onboarding-batch", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
-      if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-        const existingOnboarding = await storage.getClientOnboarding(companyId);
-        if (existingOnboarding?.isCompleted) {
-          return res.status(403).json({ error: "Onboarding is already complete. Contact your agency to make changes." });
-        }
-      }
-      const credentials: Array<{ platform?: string; username?: string; password?: string; twoFactorMethod?: string; recoveryNotes?: string }> = req.body.credentials ?? [];
-      if (!Array.isArray(credentials)) return res.status(400).json({ error: "credentials must be an array" });
-
-      // Write-first-then-prune: write new credentials before deleting old ones so a
-      // failed write never causes data loss. Only delete the old set after new set is committed.
-      const existing = await storage.getCompanyCredentials(companyId);
-      const toDelete = existing.filter(c => c.category === "onboarding-submitted");
-      const created = await Promise.all(credentials.map(c => storage.createCompanyCredential({
-        companyId,
-        label: c.platform?.trim() || "Unknown Platform",
-        username: c.username || null,
-        password: c.password || null,
-        url: null,
-        notes: [
-          c.twoFactorMethod ? `2FA: ${c.twoFactorMethod}` : null,
-          c.recoveryNotes || null,
-        ].filter(Boolean).join("\n") || null,
-        category: "onboarding-submitted",
-      })));
-      // All writes succeeded — now safe to remove the old set
-      await Promise.all(toDelete.map(c => storage.deleteCompanyCredential(c.id)));
-      res.json({ count: created.length });
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
-        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
-      }
-      res.status(500).json({ error: "Failed to save onboarding credentials" });
     }
   });
 
@@ -4416,7 +3618,7 @@ export async function registerRoutes(
       const { label, username, password, url, notes, category } = req.body;
       if (!label?.trim()) return res.status(400).json({ error: "Label is required" });
       const credential = await storage.createCompanyCredential({
-        companyId: (req.params.id as string),
+        companyId: req.params.id,
         label: label.trim(),
         username: username || null,
         password: password || null,
@@ -4426,9 +3628,6 @@ export async function registerRoutes(
       });
       res.status(201).json(credential);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
-        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
-      }
       res.status(500).json({ error: "Failed to create credential" });
     }
   });
@@ -4438,9 +3637,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential((req.params.credId as string));
-      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
-      const { label, username, password, url, notes, category, lastVerifiedAt } = req.body;
+      const existing = await storage.getCompanyCredential(req.params.credId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      const { label, username, password, url, notes, category } = req.body;
       const allowedFields: Partial<typeof existing> = {};
       if (label !== undefined) allowedFields.label = label;
       if (username !== undefined) allowedFields.username = username || null;
@@ -4448,13 +3647,9 @@ export async function registerRoutes(
       if (url !== undefined) allowedFields.url = url || null;
       if (notes !== undefined) allowedFields.notes = notes || null;
       if (category !== undefined) allowedFields.category = category || null;
-      if (lastVerifiedAt !== undefined) (allowedFields as any).lastVerifiedAt = lastVerifiedAt || null;
-      const updated = await storage.updateCompanyCredential((req.params.credId as string), allowedFields);
+      const updated = await storage.updateCompanyCredential(req.params.credId, allowedFields);
       res.json(updated);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
-        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
-      }
       res.status(500).json({ error: "Failed to update credential" });
     }
   });
@@ -4464,31 +3659,12 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential((req.params.credId as string));
-      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
-      await storage.deleteCompanyCredential((req.params.credId as string));
+      const existing = await storage.getCompanyCredential(req.params.credId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Credential not found" });
+      await storage.deleteCompanyCredential(req.params.credId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credential" });
-    }
-  });
-
-  // Admin-only: reveal decrypted password for a single credential (deliberate action, not cached)
-  app.post("/api/companies/:id/credentials/:credId/reveal", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyCredential((req.params.credId as string));
-      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Credential not found" });
-      const password = await storage.getCompanyCredentialDecrypted((req.params.credId as string));
-      res.json({ password });
-    } catch (error) {
-      console.error("Failed to reveal credential:", error);
-      if (error instanceof Error && error.message.includes("CREDENTIAL_ENCRYPTION_KEY")) {
-        return res.status(503).json({ error: "Credential encryption is not configured on this server. Contact an administrator." });
-      }
-      res.status(500).json({ error: "Failed to reveal credential" });
     }
   });
 
@@ -4498,7 +3674,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const items = await storage.getCompanyKnowledgeItems((req.params.id as string));
+      const items = await storage.getCompanyKnowledgeItems(req.params.id);
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch knowledge items" });
@@ -4513,7 +3689,7 @@ export async function registerRoutes(
       const { section, title, content, url, sortOrder } = req.body;
       if (!section || !title?.trim()) return res.status(400).json({ error: "Section and title are required" });
       const item = await storage.createCompanyKnowledgeItem({
-        companyId: (req.params.id as string),
+        companyId: req.params.id,
         section,
         title: title.trim(),
         content: content || null,
@@ -4531,8 +3707,8 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyKnowledgeItem((req.params.itemId as string));
-      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Item not found" });
+      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
       const { section, title, content, url, sortOrder } = req.body;
       const allowedFields: Partial<typeof existing> = {};
       if (section !== undefined) allowedFields.section = section;
@@ -4540,7 +3716,7 @@ export async function registerRoutes(
       if (content !== undefined) allowedFields.content = content || null;
       if (url !== undefined) allowedFields.url = url || null;
       if (sortOrder !== undefined) allowedFields.sortOrder = sortOrder;
-      const updated = await storage.updateCompanyKnowledgeItem((req.params.itemId as string), allowedFields);
+      const updated = await storage.updateCompanyKnowledgeItem(req.params.itemId, allowedFields);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update knowledge item" });
@@ -4552,9 +3728,9 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getCompanyKnowledgeItem((req.params.itemId as string));
-      if (!existing || existing.companyId !== (req.params.id as string)) return res.status(404).json({ error: "Item not found" });
-      await storage.deleteCompanyKnowledgeItem((req.params.itemId as string));
+      const existing = await storage.getCompanyKnowledgeItem(req.params.itemId);
+      if (!existing || existing.companyId !== req.params.id) return res.status(404).json({ error: "Item not found" });
+      await storage.deleteCompanyKnowledgeItem(req.params.itemId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete knowledge item" });
@@ -4565,7 +3741,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -4616,7 +3792,7 @@ export async function registerRoutes(
                 status: "pending",
                 priority: "medium",
                 dueDate,
-                creditCost: "0",
+                creditCost: 0,
                 type: "assigned",
               });
             }
@@ -4730,7 +3906,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -4746,34 +3922,11 @@ export async function registerRoutes(
     }
   });
 
-  // Stream a media file that lives in Object Storage (used as SharePoint fallback)
-  app.get("/api/companies/:companyId/media-uploads/file", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.companyId as string);
-      if (!isAdmin) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Access denied" });
-      }
-      const objPath = String(req.query.path || "");
-      if (!objPath) return res.status(400).json({ error: "Missing path" });
-      const { downloadBuffer } = await import("./object-storage-helpers");
-      const { buffer, contentType } = await downloadBuffer(objPath);
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "private, max-age=300");
-      res.send(buffer);
-    } catch (err: any) {
-      console.error("[media-uploads/file] download error:", err);
-      res.status(404).json({ error: err.message || "File not found" });
-    }
-  });
-
   app.post("/api/companies/:id/media-uploads", isAuthenticated, upload.single('file'), async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -4803,28 +3956,8 @@ export async function registerRoutes(
         company.clientType as "marketing" | "government" || "marketing"
       );
 
-      let storedPath = result.path || '';
-      let storedUrl: string | undefined = result.webUrl;
-      let storageBackend: 'sharepoint' | 'object_storage' = 'sharepoint';
-
-      // Fallback to Object Storage if SharePoint fails (e.g. expired token, permissions, network)
       if (!result.success) {
-        console.warn('[media-upload] SharePoint failed, falling back to Object Storage:', result.error);
-        try {
-          const { uploadBuffer } = await import("./object-storage-helpers");
-          const safeCompany = company.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-          const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const relPath = `media/${safeCompany}/${Date.now()}-${safeName}`;
-          const fullPath = await uploadBuffer(relPath, req.file.buffer, req.file.mimetype);
-          storedPath = fullPath;
-          storedUrl = `/api/companies/${companyId}/media-uploads/file?path=${encodeURIComponent(fullPath)}`;
-          storageBackend = 'object_storage';
-        } catch (osErr: any) {
-          console.error('[media-upload] Object Storage fallback also failed:', osErr);
-          return res.status(500).json({
-            error: `Upload failed. SharePoint: ${result.error || 'unknown error'}. Object Storage fallback: ${osErr?.message || 'unknown error'}`,
-          });
-        }
+        return res.status(500).json({ error: result.error || "Failed to upload to SharePoint" });
       }
 
       const mediaUpload = await storage.createMediaUpload({
@@ -4833,12 +3966,12 @@ export async function registerRoutes(
         fileName: req.file.originalname,
         fileType: req.file.mimetype,
         fileSize: req.file.size,
-        sharepointPath: storedPath,
-        sharepointUrl: storedUrl,
+        sharepointPath: result.path || '',
+        sharepointUrl: result.webUrl,
         status: 'uploaded',
       });
 
-      res.status(201).json({ ...mediaUpload, storageBackend });
+      res.status(201).json(mediaUpload);
     } catch (error: any) {
       console.error('Media upload error:', error);
       res.status(500).json({ error: error.message || "Failed to upload file" });
@@ -4849,7 +3982,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/brand-assets/upload", isAuthenticated, upload.single('file'), async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const isAdmin = await storage.isAdmin(userId);
 
       if (!isAdmin) {
@@ -4868,16 +4001,24 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Company not found" });
       }
 
-      const { uploadBuffer } = await import("./object-storage-helpers");
-      const timestamp = Date.now();
-      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const relativePath = `brand-assets/${companyId}/${timestamp}-${safeName}`;
-      const objectPath = await uploadBuffer(relativePath, req.file.buffer, req.file.mimetype);
+      const result = await uploadToSharePoint(
+        company.name,
+        req.file.originalname,
+        req.file.buffer,
+        req.file.mimetype,
+        "Brand Assets",
+        company.clientType as "marketing" | "government" || "marketing"
+      );
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to upload to SharePoint" });
+      }
 
       res.status(201).json({
         success: true,
         fileName: req.file.originalname,
-        objectPath,
+        sharepointPath: result.path,
+        sharepointUrl: result.webUrl,
       });
     } catch (error: any) {
       console.error('Brand asset upload error:', error);
@@ -4893,7 +4034,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/chat-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const isAdmin = await storage.isAdmin(userId);
 
       // Check access
@@ -4950,8 +4091,7 @@ export async function registerRoutes(
           await storage.addChatThreadMember({
             threadId,
             userId: member.userId,
-            isAdmin: false,
-            joinedAt: new Date().toISOString(),
+            role: "member",
           });
         }
       }
@@ -4962,8 +4102,7 @@ export async function registerRoutes(
           await storage.addChatThreadMember({
             threadId,
             userId: admin.userId,
-            isAdmin: true,
-            joinedAt: new Date().toISOString(),
+            role: "admin",
           });
         }
       }
@@ -5030,14 +4169,7 @@ export async function registerRoutes(
           if (thread.type === "task" && thread.taskId) {
             const task = await storage.getTask(thread.taskId);
             if (task) {
-              let isRush: boolean | undefined;
-              let rushDisabled: boolean | undefined;
-              if (task.campaignRequestId) {
-                const campaignReq = await storage.getCampaignRequest(task.campaignRequestId);
-                isRush = campaignReq?.isRush;
-                rushDisabled = campaignReq?.rushDisabled;
-              }
-              taskInfo = { isRush, rushDisabled, taskTitle: task.title };
+              taskInfo = { isRush: task.isRush, rushDisabled: task.rushDisabled, taskTitle: task.title };
             }
           }
 
@@ -5072,7 +4204,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5213,7 +4345,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5266,7 +4398,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
       const { memberUserId } = req.body;
 
       if (!thread) {
@@ -5304,7 +4436,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5312,12 +4444,12 @@ export async function registerRoutes(
 
       if (!isAdmin) {
         const member = await storage.getChatThreadMember(thread.id, userId);
-        if (!member?.isAdmin && (req.params.memberId as string) !== userId) {
+        if (!member?.isAdmin && req.params.memberId !== userId) {
           return res.status(403).json({ error: "Only thread admins can remove members" });
         }
       }
 
-      await storage.removeChatThreadMember(thread.id, (req.params.memberId as string));
+      await storage.removeChatThreadMember(thread.id, req.params.memberId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove member" });
@@ -5329,7 +4461,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
       const limit = parseInt(req.query.limit as string) || 100;
 
       if (!thread) {
@@ -5367,7 +4499,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
       const { content, mentions } = req.body;
 
       if (!thread) {
@@ -5492,7 +4624,7 @@ export async function registerRoutes(
   app.post("/api/chat/threads/:id/read", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
       const { messageId } = req.body;
 
       if (!thread) {
@@ -5519,7 +4651,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5568,7 +4700,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5598,7 +4730,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5628,7 +4760,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5659,7 +4791,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const thread = await storage.getChatThread((req.params.id as string));
+      const thread = await storage.getChatThread(req.params.id);
 
       if (!thread) {
         return res.status(404).json({ error: "Thread not found" });
@@ -5716,7 +4848,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const task = await storage.getTask((req.params.id as string));
+      const task = await storage.getTask(req.params.id);
 
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
@@ -5741,7 +4873,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -5868,7 +5000,7 @@ export async function registerRoutes(
       if (updateData.meetingTypeQuantities && typeof updateData.meetingTypeQuantities !== "string") {
         updateData.meetingTypeQuantities = JSON.stringify(updateData.meetingTypeQuantities);
       }
-      const campaignType = await storage.updateCampaignType((req.params.id as string), updateData);
+      const campaignType = await storage.updateCampaignType(req.params.id, updateData);
       if (!campaignType) {
         return res.status(404).json({ error: "Campaign type not found" });
       }
@@ -5887,7 +5019,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCampaignType((req.params.id as string));
+      await storage.deleteCampaignType(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete campaign type" });
@@ -5900,7 +5032,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -5918,7 +5050,7 @@ export async function registerRoutes(
 
   app.get("/api/cadences/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const cadence = await storage.getCadence((req.params.id as string));
+      const cadence = await storage.getCadence(req.params.id);
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -5936,7 +5068,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -5973,14 +5105,14 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence((req.params.id as string));
+      const cadence = await storage.getCadence(req.params.id);
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
 
       const data = req.body;
       if (data.cancel) {
-        await storage.deleteCadence((req.params.id as string));
+        await storage.deleteCadence(req.params.id);
         return res.json({ deleted: true });
       }
 
@@ -5996,7 +5128,7 @@ export async function registerRoutes(
       if (data.noCredit !== undefined) updateData.noCredit = data.noCredit;
       if (data.taskOwnership !== undefined) updateData.taskOwnership = data.taskOwnership;
 
-      const updated = await storage.updateCadence((req.params.id as string), updateData);
+      const updated = await storage.updateCadence(req.params.id, updateData);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update cadence" });
@@ -6027,7 +5159,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence((req.params.id as string));
+      const cadence = await storage.getCadence(req.params.id);
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -6051,7 +5183,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const cadence = await storage.getCadence((req.params.id as string));
+      const cadence = await storage.getCadence(req.params.id);
       if (!cadence) {
         return res.status(404).json({ error: "Cadence not found" });
       }
@@ -6074,7 +5206,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const isAdmin = await storage.isAdmin(userId);
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
 
       if (!isAdmin) {
         const member = await storage.getCompanyMember(userId, companyId);
@@ -6126,7 +5258,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/campaign-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const isAdmin = await storage.isAdmin(userId);
 
       if (!isAdmin) {
@@ -6276,7 +5408,7 @@ export async function registerRoutes(
         }
         updateData.creditOverride = String(parsed);
       }
-      const existingRequest = await storage.getCampaignRequest((req.params.id as string));
+      const existingRequest = await storage.getCampaignRequest(req.params.id);
 
       if (req.body.rushDisabled !== undefined && existingRequest && existingRequest.isRush) {
         const wasDisabled = existingRequest.rushDisabled ?? false;
@@ -6290,7 +5422,7 @@ export async function registerRoutes(
         }
       }
 
-      const request = await storage.updateCampaignRequest((req.params.id as string), updateData);
+      const request = await storage.updateCampaignRequest(req.params.id, updateData);
       if (!request) {
         return res.status(404).json({ error: "Campaign request not found" });
       }
@@ -6439,7 +5571,7 @@ export async function registerRoutes(
             sendCampaignResponseEmail({
               recipientEmail: user.email,
               recipientName: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email,
-              campaignName: request.name || "",
+              campaignName: request.name,
               campaignType: campaignType?.name || "Campaign",
               status: req.body.status,
               adminNotes: req.body.adminNotes,
@@ -6455,91 +5587,6 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to update campaign request" });
     }
   });
-
-  // Manually generate tasks for a campaign (separate from approval flow)
-  app.post("/api/campaign-requests/:id/generate-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const request = await storage.getCampaignRequest((req.params.id as string));
-      if (!request) return res.status(404).json({ error: "Campaign request not found" });
-
-      const company = await storage.getCompany(request.companyId);
-      const campaignType = await storage.getCampaignType(request.campaignTypeId);
-      if (!company || !campaignType) return res.status(400).json({ error: "Company or campaign type not found" });
-
-      const deliverableTypes = await storage.getDeliverableTypes();
-      const effectiveDeliverableIds = request.requestDeliverableIds || campaignType.includedDeliverableIds || [];
-      let quantities: Record<string, number> = {};
-      if (request.requestDeliverableQuantities) {
-        try { quantities = JSON.parse(request.requestDeliverableQuantities); } catch {}
-      } else if (request.deliverableQuantities) {
-        try { quantities = JSON.parse(request.deliverableQuantities); } catch {}
-      } else if (campaignType.deliverableQuantities) {
-        try { quantities = JSON.parse(campaignType.deliverableQuantities); } catch {}
-      }
-
-      const { getBillingPeriod } = await import("@shared/billing");
-      const period = getBillingPeriod(company.billingStartDay);
-      const totalDeliverables = effectiveDeliverableIds.reduce((sum: number, delId: string) => sum + (quantities[delId] || 1), 0);
-      const created: string[] = [];
-
-      for (const delId of effectiveDeliverableIds) {
-        const del = deliverableTypes.find(d => d.id === delId || d.key === delId);
-        if (!del) continue;
-        const qty = quantities[delId] || 1;
-        const rushMultiplier = (request.isRush && !request.rushDisabled) ? 2 : 1;
-        const totalCreditForDeliverable = request.creditOverride != null
-          ? String(parseFloat(String(request.creditOverride)) / totalDeliverables * qty)
-          : String(parseFloat(del.credits) * qty * rushMultiplier);
-
-        const campaignTitle = request.name || campaignType.name;
-        const allDeliverableNames = effectiveDeliverableIds.map((id: string) => {
-          const d = deliverableTypes.find(dt => dt.id === id || dt.key === id);
-          const q = quantities[id] || 1;
-          return d ? (q > 1 ? `${d.name} (x${q})` : d.name) : null;
-        }).filter(Boolean);
-        const taskDescription = [
-          `This task is part of the campaign: ${campaignTitle}`,
-          request.notes ? `\nCampaign Notes: ${request.notes}` : '',
-          request.goals ? `\nGoals: ${request.goals}` : '',
-          request.targetAudience ? `\nTarget Audience: ${request.targetAudience}` : '',
-          `\nDeliverables in this campaign: ${allDeliverableNames.join(', ')}`,
-          `\nThis task covers: ${del.name}${qty > 1 ? ` (x${qty})` : ''}`,
-        ].filter(Boolean).join('');
-
-        const task = await storage.createTask({
-          companyId: request.companyId,
-          title: `${campaignTitle} - ${del.name}`,
-          description: taskDescription,
-          status: "pending",
-          priority: "medium",
-          creditCost: totalCreditForDeliverable,
-          type: "assigned",
-          deliverableType: del.key,
-          dueDate: request.dueDate,
-          assignedBy: userId,
-          creditsDeducted: false,
-          billingPeriodStart: period.startStr,
-          billingPeriodEnd: period.endStr,
-          approvalStatus: "approved",
-          noCredit: false,
-          taskOwnership: "agency",
-          campaignRequestId: request.id,
-          bulkQuantity: qty > 1 ? qty : null,
-        });
-        created.push(task.id);
-      }
-
-      broadcastInvalidation(["/api/admin/campaign-requests", "/api/tasks", "/api/companies"]);
-      res.json({ created: created.length, taskIds: created });
-    } catch (error: any) {
-      res.status(500).json({ error: "Failed to generate tasks", detail: error.message });
-    }
-  });
-
 
   // ==================== MEETING TYPES ====================
 
@@ -6588,7 +5635,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const type = await storage.updateMeetingType((req.params.id as string), req.body);
+      const type = await storage.updateMeetingType(req.params.id, req.body);
       if (!type) {
         return res.status(404).json({ error: "Meeting type not found" });
       }
@@ -6607,7 +5654,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteMeetingType((req.params.id as string));
+      await storage.deleteMeetingType(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete meeting type" });
@@ -6636,7 +5683,7 @@ export async function registerRoutes(
   app.get("/api/companies/:id/meeting-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       // Check access
       const isAdmin = await storage.isAdmin(userId);
@@ -6664,7 +5711,7 @@ export async function registerRoutes(
   app.post("/api/companies/:id/meeting-requests", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       
       // Check access
       const isAdmin = await storage.isAdmin(userId);
@@ -6718,7 +5765,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const existingRequest = await storage.getMeetingRequest((req.params.id as string));
+      const existingRequest = await storage.getMeetingRequest(req.params.id);
       if (!existingRequest) {
         return res.status(404).json({ error: "Meeting request not found" });
       }
@@ -6770,14 +5817,14 @@ export async function registerRoutes(
       }
 
       const updateData: Record<string, any> = {};
-      const allowedFields = ["status", "teamsLink", "outlookMeetingLink", "adminNotes", "notes", "decisions", "blockers", "nextSteps", "linkedCampaignId", "linkedTaskId", "creditsDeducted", "approvedBy", "approvedAt", "proposedDate", "proposedTime", "creditCost", "duration", "rejectionReason", "rejectedAt", "completedAt"];
+      const allowedFields = ["status", "teamsLink", "outlookMeetingLink", "adminNotes", "notes", "creditsDeducted", "approvedBy", "approvedAt", "proposedDate", "proposedTime", "creditCost", "duration", "rejectionReason", "rejectedAt", "completedAt"];
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           updateData[field] = req.body[field];
         }
       }
 
-      const request = await storage.updateMeetingRequest((req.params.id as string), updateData);
+      const request = await storage.updateMeetingRequest(req.params.id, updateData);
 
       // Send email notification when meeting is approved
       if (req.body.status === "approved" && existingRequest.status === "pending") {
@@ -6882,7 +5929,7 @@ export async function registerRoutes(
   app.get("/api/meeting-requests/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const request = await storage.getMeetingRequest((req.params.id as string));
+      const request = await storage.getMeetingRequest(req.params.id);
       
       if (!request) {
         return res.status(404).json({ error: "Meeting request not found" });
@@ -6903,42 +5950,11 @@ export async function registerRoutes(
     }
   });
 
-  // Generate a recap note from a completed meeting
-  app.post("/api/meeting-requests/:id/recap-note", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const userId = req.user!.id;
-      const isAdmin = await storage.isAdmin(userId);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const meeting = await storage.getMeetingRequest(req.params.id as string);
-      if (!meeting) return res.status(404).json({ error: "Meeting not found" });
-      const user = await storage.getUser(userId);
-      const userName = user ? `${user.firstName} ${user.lastName}`.trim() : "Admin";
-      const parts: string[] = [];
-      if (meeting.notes) parts.push(`<h3>Meeting Notes</h3><p>${meeting.notes.replace(/\n/g, "<br/>")}</p>`);
-      if ((meeting as any).decisions) parts.push(`<h3>Decisions</h3><p>${(meeting as any).decisions.replace(/\n/g, "<br/>")}</p>`);
-      if ((meeting as any).blockers) parts.push(`<h3>Blockers</h3><p>${(meeting as any).blockers.replace(/\n/g, "<br/>")}</p>`);
-      if ((meeting as any).nextSteps) parts.push(`<h3>Next Steps</h3><p>${(meeting as any).nextSteps.replace(/\n/g, "<br/>")}</p>`);
-      const note = await storage.createNotepad({
-        companyId: meeting.companyId,
-        title: `Meeting Recap: ${meeting.title}`,
-        content: parts.join("") || "<p>No notes recorded for this meeting.</p>",
-        category: "meeting-notes",
-        isPinned: false,
-        isInternal: false,
-        linkedMeetingId: meeting.id,
-        createdBy: userId,
-        createdByName: userName,
-      } as any);
-      broadcastInvalidation([`/api/companies/${meeting.companyId}/notepads`]);
-      res.json(note);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
   // Get company members with user details (for document assignment)
   app.get("/api/companies/:companyId/members-with-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       
       // Only admins can access this endpoint
       const isAdmin = await storage.isAdmin(userId);
@@ -6974,7 +5990,7 @@ export async function registerRoutes(
   app.get("/api/companies/:companyId/government-documents", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -6996,7 +6012,7 @@ export async function registerRoutes(
   app.get("/api/government-documents/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const doc = await storage.getGovernmentDocument(id);
       if (!doc) {
@@ -7022,7 +6038,7 @@ export async function registerRoutes(
   app.post("/api/companies/:companyId/government-documents", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7094,7 +6110,7 @@ export async function registerRoutes(
   app.post("/api/government-documents/:id/sign", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       const { signatureData, signatureType } = req.body;
       
       if (!signatureData) {
@@ -7192,7 +6208,7 @@ export async function registerRoutes(
   app.delete("/api/government-documents/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7238,7 +6254,6 @@ export async function registerRoutes(
       }
 
       // Store the PDF in object storage
-      // @ts-ignore
       const { Client } = await import("@replit/object-storage");
       const client = new Client();
       
@@ -7273,7 +6288,7 @@ export async function registerRoutes(
   app.get("/api/companies/:companyId/signing-packets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7295,7 +6310,7 @@ export async function registerRoutes(
   app.get("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const packet = await storage.getSigningPacket(id);
       if (!packet) {
@@ -7325,7 +6340,7 @@ export async function registerRoutes(
   app.post("/api/companies/:companyId/signing-packets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7408,7 +6423,7 @@ export async function registerRoutes(
   app.patch("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7459,7 +6474,7 @@ export async function registerRoutes(
   app.post("/api/signing-packets/:id/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7507,7 +6522,7 @@ export async function registerRoutes(
           documentTitle: packet.title,
           senderName: "Near Me Connect",
           dueDate: packet.dueDate || undefined,
-          signUrl: `${baseUrl}/sign?token=${participant.accessToken}`,
+          signUrl: `${baseUrl}/sign?token=${participant.token}`,
         }).catch(err => console.error(`Failed to send signature request email to ${participant.email}:`, err));
       }
 
@@ -7522,7 +6537,7 @@ export async function registerRoutes(
   app.delete("/api/signing-packets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const { id } = req.params as Record<string, string>;
+      const { id } = req.params;
       
       const isAdmin = await storage.isAdmin(userId);
       if (!isAdmin) {
@@ -7549,7 +6564,7 @@ export async function registerRoutes(
   // Get signing session by token (public - for recipients)
   app.get("/api/sign/:token", async (req, res) => {
     try {
-      const { token } = req.params as Record<string, string>;
+      const { token } = req.params;
       
       const participant = await storage.getSigningParticipantByToken(token);
       if (!participant) {
@@ -7621,7 +6636,7 @@ export async function registerRoutes(
   // Submit signature (public - for recipients)
   app.post("/api/sign/:token/submit", async (req, res) => {
     try {
-      const { token } = req.params as Record<string, string>;
+      const { token } = req.params;
       const { fieldValues } = req.body;
       
       const participant = await storage.getSigningParticipantByToken(token);
@@ -7701,7 +6716,7 @@ export async function registerRoutes(
             recipientName: p.name,
             documentTitle: packet.title,
             completedAt,
-            downloadUrl: `${baseUrl}/sign?token=${p.accessToken}`,
+            downloadUrl: `${baseUrl}/sign?token=${p.token}`,
             participants: participantsWithSignDates,
           }).catch(err => console.error(`Failed to send signature completion email to ${p.email}:`, err));
         }
@@ -7772,7 +6787,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid training module data", details: parsed.error.errors });
       }
 
-      const module = await storage.updateTrainingModule((req.params.id as string), parsed.data);
+      const module = await storage.updateTrainingModule(req.params.id, parsed.data);
       res.json(module);
     } catch (error) {
       res.status(500).json({ error: "Failed to update training module" });
@@ -7788,7 +6803,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteTrainingModule((req.params.id as string));
+      await storage.deleteTrainingModule(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete training module" });
@@ -7814,7 +6829,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "File too large (max 50GB)" });
       }
 
-      const module = await storage.getTrainingModule((req.params.id as string));
+      const module = await storage.getTrainingModule(req.params.id);
       if (!module) {
         return res.status(404).json({ error: "Training module not found" });
       }
@@ -7834,7 +6849,7 @@ export async function registerRoutes(
       }
 
       // Update training module with document info
-      await storage.updateTrainingModule((req.params.id as string), {
+      await storage.updateTrainingModule(req.params.id, {
         contentType: "document",
         documentDriveId: result.driveId,
         documentItemId: result.itemId,
@@ -7858,7 +6873,7 @@ export async function registerRoutes(
   // Download training document (authenticated users)
   app.get("/api/training-modules/:id/document/download", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const module = await storage.getTrainingModule((req.params.id as string));
+      const module = await storage.getTrainingModule(req.params.id);
       if (!module) {
         return res.status(404).json({ error: "Training module not found" });
       }
@@ -7868,13 +6883,13 @@ export async function registerRoutes(
       }
 
       const result = await downloadFromSharePoint(module.documentDriveId, module.documentItemId);
-      if (!result.success || !result.buffer) {
+      if (!result.success || !result.content) {
         return res.status(500).json({ error: result.error || "Failed to download document" });
       }
 
       res.setHeader("Content-Type", result.contentType || "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(module.documentFileName || 'document')}"`);
-      res.send(result.buffer);
+      res.send(result.content);
     } catch (error) {
       console.error("Training document download error:", error);
       res.status(500).json({ error: "Failed to download document" });
@@ -7987,7 +7002,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteTrainingAssignment((req.params.id as string));
+      await storage.deleteTrainingAssignment(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete training assignment" });
@@ -8204,7 +7219,7 @@ export async function registerRoutes(
             try {
               await sendTaskDueReminderEmail({
                 recipientEmail: assignee.email,
-                recipientName: `${assignee.firstName || ""} ${assignee.lastName || ""}`.trim() || assignee.email,
+                recipientName: assignee.name,
                 taskTitle: task.title,
                 dueDate: task.dueDate,
                 daysRemaining,
@@ -8267,7 +7282,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       const company = await storage.getCompany(companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -8316,9 +7331,9 @@ export async function registerRoutes(
           const user = await storage.getUser(member.userId);
           if (user) {
             contactsData.push({
-              email: user.email || "",
-              firstName: user.firstName || "",
-              lastName: user.lastName || "",
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName,
               companyName: company.name,
             });
           }
@@ -8341,7 +7356,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { taskId } = req.params as Record<string, string>;
+      const { taskId } = req.params;
       const task = await storage.getTask(taskId);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
@@ -8399,7 +7414,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { hubspotId } = req.params as Record<string, string>;
+      const { hubspotId } = req.params;
       const result = await getHubSpotCompanyById(hubspotId);
       res.json(result);
     } catch (error) {
@@ -8417,7 +7432,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
       
-      const { hubspotId } = req.params as Record<string, string>;
+      const { hubspotId } = req.params;
       const result = await getHubSpotCompanyContacts(hubspotId);
       res.json(result);
     } catch (error) {
@@ -8501,7 +7516,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const pkg = await storage.updateCreditPackage((req.params.id as string), req.body);
+      const pkg = await storage.updateCreditPackage(req.params.id, req.body);
       res.json(pkg);
     } catch (error) {
       res.status(500).json({ error: "Failed to update credit package" });
@@ -8517,7 +7532,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCreditPackage((req.params.id as string));
+      await storage.deleteCreditPackage(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credit package" });
@@ -8563,7 +7578,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const sale = await storage.updateCreditSale((req.params.id as string), req.body);
+      const sale = await storage.updateCreditSale(req.params.id, req.body);
       res.json(sale);
     } catch (error) {
       res.status(500).json({ error: "Failed to update credit sale" });
@@ -8579,7 +7594,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCreditSale((req.params.id as string));
+      await storage.deleteCreditSale(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete credit sale" });
@@ -8708,55 +7723,44 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const members = await storage.getCompanyMembers(companyId);
-      const memberIds = members.map(m => m.userId);
-
-      const [allTags, allCustomRoles, memberUsers, allTagAssignments] = await Promise.all([
-        storage.getUserTags(),
-        storage.getCustomRoles(),
-        storage.getUsersByIds(memberIds),
-        storage.getUserTagAssignmentsForUsers(memberIds),
-      ]);
-
+      const allTags = await storage.getUserTags();
+      const allCustomRoles = await storage.getCustomRoles();
       const customRolesMap = new Map(allCustomRoles.map(r => [r.id, r.name]));
-      const usersMap = new Map(memberUsers.map(u => [u.id, u]));
-      const tagAssignmentsByUser = new Map<string, typeof allTagAssignments>();
-      for (const a of allTagAssignments) {
-        if (!tagAssignmentsByUser.has(a.userId)) tagAssignmentsByUser.set(a.userId, []);
-        tagAssignmentsByUser.get(a.userId)!.push(a);
-      }
-
-      const usersWithDetails = members.map((member) => {
-        const user = usersMap.get(member.userId);
-        const tagAssignments = tagAssignmentsByUser.get(member.userId) ?? [];
-        const userTags = tagAssignments
-          .map(a => allTags.find(t => t.id === a.tagId))
-          .filter(Boolean);
-
-        let roleLabel: string | null = null;
-        if (member.role === "company_owner") {
-          roleLabel = "Owner";
-        } else if (member.role === "company_admin") {
-          roleLabel = "Company Admin";
-        } else if (member.role === "custom" && member.customRoleId) {
-          roleLabel = customRolesMap.get(member.customRoleId) || "Team Member";
-        } else {
-          roleLabel = "Team Member";
-        }
-
-        return {
-          id: member.userId,
-          memberId: member.id,
-          role: member.role,
-          roleLabel,
-          email: user?.email || "",
-          firstName: user?.firstName || "",
-          lastName: user?.lastName || "",
-          createdAt: member.createdAt,
-          tags: userTags,
-        };
-      });
+      
+      const usersWithDetails = await Promise.all(
+        members.map(async (member) => {
+          const user = await storage.getUser(member.userId);
+          const tagAssignments = await storage.getUserTagAssignments(member.userId);
+          const userTags = tagAssignments
+            .map(a => allTags.find(t => t.id === a.tagId))
+            .filter(Boolean);
+          
+          let roleLabel: string | null = null;
+          if (member.role === "company_owner") {
+            roleLabel = "Owner";
+          } else if (member.role === "company_admin") {
+            roleLabel = "Company Admin";
+          } else if (member.role === "custom" && member.customRoleId) {
+            roleLabel = customRolesMap.get(member.customRoleId) || "Team Member";
+          } else {
+            roleLabel = "Team Member";
+          }
+          
+          return {
+            id: member.userId,
+            memberId: member.id,
+            role: member.role,
+            roleLabel,
+            email: user?.email || "",
+            firstName: user?.firstName || "",
+            lastName: user?.lastName || "",
+            createdAt: member.createdAt,
+            tags: userTags,
+          };
+        })
+      );
 
       res.json(usersWithDetails);
     } catch (error) {
@@ -8816,7 +7820,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const tag = await storage.updateUserTag((req.params.id as string), req.body);
+      const tag = await storage.updateUserTag(req.params.id, req.body);
       if (!tag) {
         return res.status(404).json({ error: "Tag not found" });
       }
@@ -8835,7 +7839,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteUserTag((req.params.id as string));
+      await storage.deleteUserTag(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete user tag" });
@@ -8851,7 +7855,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const assignments = await storage.getUserTagAssignments((req.params.userId as string));
+      const assignments = await storage.getUserTagAssignments(req.params.userId);
       const tags = await storage.getUserTags();
       const userTags = assignments
         .map(a => tags.find(t => t.id === a.tagId))
@@ -8877,7 +7881,7 @@ export async function registerRoutes(
       }
 
       const assignment = await storage.assignUserTag({
-        userId: (req.params.userId as string),
+        userId: req.params.userId,
         tagId,
         assignedBy: adminId,
       });
@@ -8896,7 +7900,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.removeUserTag((req.params.userId as string), (req.params.tagId as string));
+      await storage.removeUserTag(req.params.userId, req.params.tagId);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove tag" });
@@ -8933,7 +7937,7 @@ export async function registerRoutes(
   app.patch("/api/notifications/:id/read", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const notification = await storage.markNotificationRead((req.params.id as string));
+      const notification = await storage.markNotificationRead(req.params.id);
       if (!notification) {
         return res.status(404).json({ error: "Notification not found" });
       }
@@ -9014,7 +8018,7 @@ export async function registerRoutes(
   app.get("/api/chat/threads/:id/mentionable-users", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
-      const threadId = (req.params.id as string);
+      const threadId = req.params.id;
       
       const thread = await storage.getChatThread(threadId);
       if (!thread) {
@@ -9314,6 +8318,7 @@ export async function registerRoutes(
         amount: creditAmount,
         type: "allocation",
         description: `Simulated purchase: ${creditAmount} credits`,
+        createdBy: userId,
         balanceAfter: newCredits,
       });
 
@@ -9422,7 +8427,7 @@ export async function registerRoutes(
       const activeCompanies = allCompanies.filter(c => companiesWithTasksInPeriod.has(c.id) || companiesWithTasks.has(c.id));
       
       const avgCreditsPerCompany = allCompanies.length > 0
-        ? allCompanies.reduce((acc, c) => acc + c.credits, 0) / allCompanies.length
+        ? allCompanies.reduce((acc, c) => acc + parseFloat(c.currentCredits), 0) / allCompanies.length
         : null;
 
       // Time series data - tasks completed per day
@@ -9501,7 +8506,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
       if (!month || !year || month < 1 || month > 12) {
@@ -9521,7 +8526,7 @@ export async function registerRoutes(
       if (!isAdmin) {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const companyId = (req.params.id as string);
+      const companyId = req.params.id;
       const { month, year, notes } = req.body;
       if (!month || !year || typeof notes !== "string") {
         return res.status(400).json({ error: "month (1-12), year (number), and notes (string) are required" });
@@ -9653,7 +8658,7 @@ export async function registerRoutes(
           if (company) {
             const members = await storage.getCompanyMembers(company.id);
             const owners = members.filter(m => m.role === "owner" || m.role === "admin");
-            const creditPackage = await storage.getCreditPackage(purchase.packageId!);
+            const creditPackage = await storage.getCreditPackage(purchase.packageId);
             
             const baseUrl = process.env.REPLIT_DEPLOYMENT
               ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
@@ -9670,8 +8675,8 @@ export async function registerRoutes(
                   companyName: company.name,
                   packageName: creditPackage?.name || "Credit Package",
                   creditsAdded: purchase.creditAmount,
-                  amountPaid: Number(purchase.amountPaid || 0),
-                  newBalance: company.credits + Number(purchase.creditAmount || 0),
+                  amountPaid: purchase.amountPaid,
+                  newBalance: company.credits + purchase.creditAmount,
                   transactionId: purchase.id,
                   portalUrl: `${baseUrl}/client/credits`,
                 }).catch(err => console.error("Failed to send credit purchase email:", err));
@@ -9728,7 +8733,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const profile = await storage.getMediaProfile((req.params.id as string));
+      const profile = await storage.getMediaProfile(req.params.id);
       if (!profile) {
         return res.status(404).json({ error: "Profile not found" });
       }
@@ -9791,7 +8796,7 @@ export async function registerRoutes(
       }
 
       const { name, description, isActive } = req.body;
-      const profile = await storage.updateMediaProfile((req.params.id as string), {
+      const profile = await storage.updateMediaProfile(req.params.id, {
         name,
         description,
         isActive,
@@ -9817,8 +8822,8 @@ export async function registerRoutes(
       }
 
       // Delete associated fields first
-      await storage.deleteMediaProfileFieldsByProfileId((req.params.id as string));
-      await storage.deleteMediaProfile((req.params.id as string));
+      await storage.deleteMediaProfileFieldsByProfileId(req.params.id);
+      await storage.deleteMediaProfile(req.params.id);
 
       res.json({ success: true });
     } catch (error) {
@@ -9837,7 +8842,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const fields = await storage.getMediaProfileFields((req.params.id as string));
+      const fields = await storage.getMediaProfileFields(req.params.id);
       res.json(fields);
     } catch (error) {
       console.error("Error fetching profile fields:", error);
@@ -9859,7 +8864,7 @@ export async function registerRoutes(
       }
 
       const field = await storage.createMediaProfileField({
-        profileId: (req.params.id as string),
+        profileId: req.params.id,
         fieldType,
         label,
         placeholder,
@@ -9885,7 +8890,7 @@ export async function registerRoutes(
       }
 
       const { fieldType, label, placeholder, helpText, isRequired, options, sortOrder } = req.body;
-      const field = await storage.updateMediaProfileField((req.params.id as string), {
+      const field = await storage.updateMediaProfileField(req.params.id, {
         fieldType,
         label,
         placeholder,
@@ -9914,7 +8919,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteMediaProfileField((req.params.id as string));
+      await storage.deleteMediaProfileField(req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting profile field:", error);
@@ -9942,7 +8947,7 @@ export async function registerRoutes(
         )
       );
 
-      const fields = await storage.getMediaProfileFields((req.params.id as string));
+      const fields = await storage.getMediaProfileFields(req.params.id);
       res.json(fields);
     } catch (error) {
       console.error("Error reordering fields:", error);
@@ -9955,7 +8960,7 @@ export async function registerRoutes(
   // Get profiles assigned to a company
   app.get("/api/companies/:companyId/media-profiles", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const assignments = await storage.getCompanyMediaProfiles((req.params.companyId as string));
+      const assignments = await storage.getCompanyMediaProfiles(req.params.companyId);
       
       // Enrich with profile details
       const profiles = await Promise.all(
@@ -9992,13 +8997,13 @@ export async function registerRoutes(
       }
 
       // Check if already assigned
-      const existing = await storage.getCompanyMediaProfiles((req.params.companyId as string));
+      const existing = await storage.getCompanyMediaProfiles(req.params.companyId);
       if (existing.some(a => a.profileId === profileId)) {
         return res.status(400).json({ error: "Profile already assigned to this company" });
       }
 
       const assignment = await storage.assignMediaProfileToCompany({
-        companyId: (req.params.companyId as string),
+        companyId: req.params.companyId,
         profileId,
         assignedBy: req.user!.id,
       });
@@ -10018,7 +9023,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.unassignMediaProfileFromCompany((req.params.companyId as string), (req.params.profileId as string));
+      await storage.unassignMediaProfileFromCompany(req.params.companyId, req.params.profileId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error unassigning profile:", error);
@@ -10034,7 +9039,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const assignments = await storage.getMediaProfileCompanies((req.params.profileId as string));
+      const assignments = await storage.getMediaProfileCompanies(req.params.profileId);
       
       // Enrich with company details
       const enriched = await Promise.all(
@@ -10067,7 +9072,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Company ID required" });
       }
 
-      const assignment = await storage.assignMediaProfileToCompany({ companyId, profileId: (req.params.profileId as string), assignedBy: req.user!.id });
+      const assignment = await storage.assignMediaProfileToCompany({ companyId, profileId: req.params.profileId, assignedBy: req.user!.id });
       res.json(assignment);
     } catch (error) {
       console.error("Error assigning profile:", error);
@@ -10083,7 +9088,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.unassignMediaProfileFromCompany((req.params.companyId as string), (req.params.profileId as string));
+      await storage.unassignMediaProfileFromCompany(req.params.companyId, req.params.profileId);
       res.json({ success: true });
     } catch (error) {
       console.error("Error unassigning profile:", error);
@@ -10132,7 +9137,7 @@ export async function registerRoutes(
   // Get submission details
   app.get("/api/media-submissions/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission((req.params.id as string));
+      const submission = await storage.getMediaSubmission(req.params.id);
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -10168,11 +9173,11 @@ export async function registerRoutes(
       const membership = await storage.getCompanyMemberById(req.user!.id);
       const isAdmin = await storage.isAdmin(req.user!.id);
       
-      if (!isAdmin && (!membership || membership.companyId !== (req.params.companyId as string))) {
+      if (!isAdmin && (!membership || membership.companyId !== req.params.companyId)) {
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const submissions = await storage.getMediaSubmissions((req.params.companyId as string));
+      const submissions = await storage.getMediaSubmissions(req.params.companyId);
       
       // Enrich with profile, files, and submitter name
       const enriched = await Promise.all(
@@ -10235,11 +9240,11 @@ export async function registerRoutes(
     let userName = "Unknown User";
     const isAdmin = await storage.isAdmin(submission.submittedBy);
     if (isAdmin) {
-      const admin = await storage.getAdminUser(submission.submittedBy);
-      if (admin) userName = `${admin.firstName || ""} ${admin.lastName || ""}`.trim() || admin.email;
+      const admin = await storage.getAdminUserById(submission.submittedBy);
+      if (admin) userName = `${admin.firstName} ${admin.lastName}`.trim() || admin.email;
     } else {
       const member = await storage.getCompanyMemberById(submission.submittedBy);
-      if (member) userName = `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.email;
+      if (member) userName = `${member.firstName} ${member.lastName}`.trim() || (member as any).email;
     }
 
     let pdfResult: { success: boolean; path?: string; webUrl?: string; error?: string } = { success: false };
@@ -10469,7 +9474,7 @@ export async function registerRoutes(
       const membership = await storage.getCompanyMemberById(req.user!.id);
       const isAdmin = await storage.isAdmin(req.user!.id);
       
-      if (!isAdmin && (!membership || membership.companyId !== (req.params.companyId as string))) {
+      if (!isAdmin && (!membership || membership.companyId !== req.params.companyId)) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -10485,7 +9490,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "At least one file is required" });
       }
 
-      const company = await storage.getCompany((req.params.companyId as string));
+      const company = await storage.getCompany(req.params.companyId);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -10496,7 +9501,7 @@ export async function registerRoutes(
       }
 
       const submission = await storage.createMediaSubmission({
-        companyId: (req.params.companyId as string),
+        companyId: req.params.companyId,
         profileId,
         submittedBy: req.user!.id,
         title,
@@ -10542,7 +9547,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-      const file = await storage.getMediaSubmissionFile((req.params.fileId as string));
+      const file = await storage.getMediaSubmissionFile(req.params.fileId);
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -10583,7 +9588,7 @@ export async function registerRoutes(
       const isAdmin = await storage.isAdmin(req.user!.id);
       if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-      const file = await storage.getMediaSubmissionFile((req.params.fileId as string));
+      const file = await storage.getMediaSubmissionFile(req.params.fileId);
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -10655,7 +9660,7 @@ export async function registerRoutes(
 
   app.post("/api/media-uploads/:uploadId/chunk", isAuthenticated, chunkUpload.single("chunk"), async (req: AuthenticatedRequest, res) => {
     try {
-      const { uploadId } = req.params as Record<string, string>;
+      const { uploadId } = req.params;
       const upload = activeUploads.get(uploadId);
       if (!upload) {
         return res.status(404).json({ error: "Upload not found or expired" });
@@ -10690,7 +9695,7 @@ export async function registerRoutes(
 
   app.post("/api/media-uploads/:uploadId/complete", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const { uploadId } = req.params as Record<string, string>;
+      const { uploadId } = req.params;
       const upload = activeUploads.get(uploadId);
       if (!upload) {
         return res.status(404).json({ error: "Upload not found or expired" });
@@ -10744,12 +9749,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const submission = await storage.getMediaSubmission((req.params.id as string));
+      const submission = await storage.getMediaSubmission(req.params.id);
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
 
-      const files = await storage.getMediaSubmissionFiles((req.params.id as string));
+      const files = await storage.getMediaSubmissionFiles(req.params.id);
       const hasPendingOrFailed = files.some(f => f.status === "pending" || f.status === "failed");
       if (!hasPendingOrFailed) {
         return res.status(400).json({ error: "No files need retrying" });
@@ -10765,12 +9770,12 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateMediaSubmission((req.params.id as string), { status: "processing" });
+      await storage.updateMediaSubmission(req.params.id, { status: "processing" });
 
       res.json({ message: "Retry initiated" });
 
-      processSharePointUpload((req.params.id as string)).catch(err => {
-        console.error(`[media-upload] Retry failed for submission ${(req.params.id as string)}:`, err);
+      processSharePointUpload(req.params.id).catch(err => {
+        console.error(`[media-upload] Retry failed for submission ${req.params.id}:`, err);
       });
 
     } catch (error) {
@@ -10782,7 +9787,7 @@ export async function registerRoutes(
   // Update submission (e.g., after SharePoint upload)
   app.patch("/api/media-submissions/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission((req.params.id as string));
+      const submission = await storage.getMediaSubmission(req.params.id);
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -10793,7 +9798,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      const updated = await storage.updateMediaSubmission((req.params.id as string), req.body);
+      const updated = await storage.updateMediaSubmission(req.params.id, req.body);
       res.json(updated);
     } catch (error) {
       console.error("Error updating media submission:", error);
@@ -10804,7 +9809,7 @@ export async function registerRoutes(
   // Add file to submission
   app.post("/api/media-submissions/:id/files", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const submission = await storage.getMediaSubmission((req.params.id as string));
+      const submission = await storage.getMediaSubmission(req.params.id);
       if (!submission) {
         return res.status(404).json({ error: "Submission not found" });
       }
@@ -10821,7 +9826,7 @@ export async function registerRoutes(
       }
 
       const file = await storage.createMediaSubmissionFile({
-        submissionId: (req.params.id as string),
+        submissionId: req.params.id,
         fileName,
         fileType,
         fileSize,
@@ -10837,7 +9842,7 @@ export async function registerRoutes(
   // Update file (e.g., after SharePoint upload)
   app.patch("/api/media-submission-files/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const file = await storage.updateMediaSubmissionFile((req.params.id as string), req.body);
+      const file = await storage.updateMediaSubmissionFile(req.params.id, req.body);
       if (!file) {
         return res.status(404).json({ error: "File not found" });
       }
@@ -10900,7 +9905,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const updated = await storage.updateCustomRole((req.params.id as string), req.body);
+      const updated = await storage.updateCustomRole(req.params.id, req.body);
       if (!updated) {
         return res.status(404).json({ error: "Custom role not found" });
       }
@@ -10919,7 +9924,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      await storage.deleteCustomRole((req.params.id as string));
+      await storage.deleteCustomRole(req.params.id);
       res.status(204).send();
     } catch (error) {
       console.error("Failed to delete custom role:", error);
@@ -10930,7 +9935,7 @@ export async function registerRoutes(
   // Public custom role lookup (any authenticated user)
   app.get("/api/custom-roles/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
-      const role = await storage.getCustomRole((req.params.id as string));
+      const role = await storage.getCustomRole(req.params.id);
       if (!role) {
         return res.status(404).json({ error: "Custom role not found" });
       }
@@ -10983,7 +9988,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { companyId } = req.params as Record<string, string>;
+      const { companyId } = req.params;
       const { db } = await import("./db");
       const { eq, inArray } = await import("drizzle-orm");
       const {
@@ -11049,7 +10054,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const targetUserId = (req.params.userId as string);
+      const targetUserId = req.params.userId;
       if (currentUserId === targetUserId) {
         return res.status(400).json({ error: "Cannot delete yourself" });
       }
@@ -11132,2531 +10137,5 @@ export async function registerRoutes(
     }
   });
 
-  // ── Admin Dashboard Aggregations ──────────────────────────────────────────
-
-  app.get("/api/admin/workload", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(currentUserId);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [allTasks, adminUsers, companies] = await Promise.all([
-        storage.getAllTasks(),
-        storage.getAllAdminUsers(),
-        storage.getAllCompanies(),
-      ]);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const activeTasks = allTasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status));
-      const companyMap = new Map(companies.map(c => [c.id, c]));
-
-      const workload = adminUsers.map(admin => {
-        const myTasks = activeTasks.filter(t => t.assignedTo === admin.userId);
-        let pending = 0, inProgress = 0, overdue = 0, dueToday = 0, creditValue = 0;
-        for (const t of myTasks) {
-          if (t.status === "pending") pending++;
-          if (t.status === "in_progress") inProgress++;
-          creditValue += parseFloat(String(t.creditCost)) || 0;
-          if (t.dueDate) {
-            const due = new Date(t.dueDate + "T00:00:00");
-            due.setHours(0, 0, 0, 0);
-            if (due < today) overdue++;
-            else if (due.getTime() === today.getTime()) dueToday++;
-          }
-        }
-        return {
-          userId: admin.userId,
-          name: [admin.firstName, admin.lastName].filter(Boolean).join(" ") || admin.email,
-          email: admin.email,
-          stats: { total: myTasks.length, pending, inProgress, overdue, dueToday, creditValue: Math.round(creditValue * 10) / 10 },
-          tasks: myTasks.map(t => ({
-            id: t.id,
-            title: t.title,
-            companyId: t.companyId,
-            companyName: companyMap.get(t.companyId)?.name || "Unknown",
-            status: t.status,
-            priority: t.priority,
-            dueDate: t.dueDate,
-            categoryId: t.categoryId,
-            creditCost: t.creditCost,
-          })),
-        };
-      }).filter(p => p.stats.total > 0);
-
-      res.json(workload);
-    } catch (error) {
-      console.error("Failed to get workload:", error);
-      res.status(500).json({ error: "Failed to get workload" });
-    }
-  });
-
-  // ── Admin Dashboard: Row 1 — Active Retainers & Credit Health ────────────
-  app.get("/api/admin/credit-health", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [companies, allTransactions] = await Promise.all([
-        storage.getAllCompanies(),
-        storage.getAllCreditTransactions(),
-      ]);
-
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const usedByCompany = new Map<string, number>();
-      for (const tx of allTransactions) {
-        const amount = parseFloat(String(tx.amount));
-        if (!(amount < 0)) continue;
-        const created = new Date(tx.createdAt);
-        if (isNaN(created.getTime()) || created < monthStart) continue;
-        usedByCompany.set(tx.companyId, (usedByCompany.get(tx.companyId) || 0) + Math.abs(amount));
-      }
-
-      const round1 = (n: number) => Math.round(n * 10) / 10;
-
-      const rows = companies.map(c => {
-        const totalMonthly = round1((c.monthlyCredits || 0) + (c.bonusCredits || 0));
-        const used = round1(usedByCompany.get(c.id) || 0);
-        const remaining = round1((c.credits || 0) + (c.bonusCredits || 0));
-        let status: "paused" | "over_budget" | "at_risk" | "healthy";
-        if (c.isPaused) status = "paused";
-        else if (remaining <= 0) status = "over_budget";
-        else if (totalMonthly > 0 && remaining < totalMonthly * 0.2) status = "at_risk";
-        else status = "healthy";
-        return {
-          companyId: c.id,
-          companyName: c.name,
-          subscriptionTier: c.subscriptionTier,
-          totalMonthlyCredits: totalMonthly,
-          creditsUsed: used,
-          creditsRemaining: remaining,
-          status,
-        };
-      }).sort((a, b) => a.companyName.localeCompare(b.companyName));
-
-      const totals = {
-        totalAvailable: round1(rows.reduce((s, r) => s + Math.max(r.creditsRemaining, 0), 0)),
-        totalUsedThisMonth: round1(rows.reduce((s, r) => s + r.creditsUsed, 0)),
-        totalMonthlyAllocation: round1(rows.reduce((s, r) => s + r.totalMonthlyCredits, 0)),
-        activeClients: rows.filter(r => r.status !== "paused").length,
-      };
-
-      res.json({ companies: rows, totals });
-    } catch (error) {
-      console.error("Failed to get credit health:", error);
-      res.status(500).json({ error: "Failed to get credit health" });
-    }
-  });
-
-  // ── Admin Dashboard: Row 2 — My Work (logged-in admin's tasks) ───────────
-  app.get("/api/admin/my-work", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(currentUserId);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [allTasks, companies, categories] = await Promise.all([
-        storage.getAllTasks(),
-        storage.getAllCompanies(),
-        storage.getAllTaskCategories(),
-      ]);
-
-      const companyMap = new Map(companies.map(c => [c.id, c.name]));
-      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
-
-      const myTasks = allTasks
-        .filter(t => t.assignedTo === currentUserId && !t.isInternal && !["completed", "rejected", "cancelled"].includes(t.status))
-        .map(t => ({
-          ...t,
-          companyName: companyMap.get(t.companyId) || "Unknown",
-          categoryName: t.categoryId ? categoryMap.get(t.categoryId) || null : null,
-        }))
-        .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
-
-      res.json(myTasks);
-    } catch (error) {
-      console.error("Failed to get my work:", error);
-      res.status(500).json({ error: "Failed to get my work" });
-    }
-  });
-
-  // ── Admin Dashboard: Row 3 — Agency Operations & SOPs (internal tasks) ───
-  app.get("/api/admin/internal-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [allTasks, companies] = await Promise.all([
-        storage.getAllTasks(),
-        storage.getAllCompanies(),
-      ]);
-
-      const internalTasks = allTasks.filter(t => t.isInternal && !["completed", "rejected", "cancelled"].includes(t.status));
-
-      const assigneeIds = Array.from(new Set(internalTasks.map(t => t.assignedTo).filter(Boolean))) as string[];
-      const assignees = assigneeIds.length > 0 ? await storage.getUsersByIds(assigneeIds) : [];
-      const assigneeMap = new Map(assignees.map(u => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email]));
-      const companyMap = new Map(companies.map(c => [c.id, c.name]));
-
-      const resourceIds = Array.from(new Set(internalTasks.map(t => t.resourceLinkId).filter(Boolean))) as string[];
-      const resources = await Promise.all(resourceIds.map(id => storage.getClientResource(id).catch(() => undefined)));
-      const resourceMap = new Map(
-        resources.filter(Boolean).map(r => [r!.id, { id: r!.id, title: r!.title, url: r!.url, resourceType: r!.resourceType }])
-      );
-
-      const rows = internalTasks
-        .map(t => ({
-          ...t,
-          companyName: companyMap.get(t.companyId) || null,
-          assigneeName: t.assignedTo ? assigneeMap.get(t.assignedTo) || null : null,
-          resource: t.resourceLinkId ? resourceMap.get(t.resourceLinkId) || null : null,
-        }))
-        .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
-
-      res.json(rows);
-    } catch (error) {
-      console.error("Failed to get internal tasks:", error);
-      res.status(500).json({ error: "Failed to get internal tasks" });
-    }
-  });
-
-  app.get("/api/admin/tasks-by-category", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(currentUserId);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [allTasks, allCategories, companies, adminUsers] = await Promise.all([
-        storage.getAllTasks(),
-        storage.getAllTaskCategories(),
-        storage.getAllCompanies(),
-        storage.getAllAdminUsers(),
-      ]);
-
-      const activeTasks = allTasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status));
-      const companyMap = new Map(companies.map(c => [c.id, c]));
-      const categoryMap = new Map(allCategories.map(c => [c.id, c]));
-      const adminMap = new Map(adminUsers.map(a => [a.userId, [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email]));
-
-      const byName = new Map<string, { categoryName: string; color: string | null; tasks: any[]; assignees: Set<string> }>();
-
-      for (const task of activeTasks) {
-        const cat = task.categoryId ? categoryMap.get(task.categoryId) : null;
-        const catName = cat?.name || "Uncategorized";
-        const catColor = cat?.color || null;
-        if (!byName.has(catName)) byName.set(catName, { categoryName: catName, color: catColor, tasks: [], assignees: new Set() });
-        const group = byName.get(catName)!;
-        group.tasks.push({
-          id: task.id,
-          title: task.title,
-          companyId: task.companyId,
-          companyName: companyMap.get(task.companyId)?.name || "Unknown",
-          status: task.status,
-          priority: task.priority,
-          dueDate: task.dueDate,
-        });
-        if (task.assignedTo) group.assignees.add(adminMap.get(task.assignedTo) || task.assignedTo);
-      }
-
-      const result = [...byName.values()].map(g => ({
-        categoryName: g.categoryName,
-        color: g.color,
-        taskCount: g.tasks.length,
-        assignees: [...g.assignees],
-        tasks: g.tasks,
-      })).sort((a, b) => b.taskCount - a.taskCount);
-
-      res.json(result);
-    } catch (error) {
-      console.error("Failed to get tasks by category:", error);
-      res.status(500).json({ error: "Failed to get tasks by category" });
-    }
-  });
-
-  app.get("/api/admin/company-health", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      const isUserAdmin = await storage.isAdmin(currentUserId);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [companies, allTasks] = await Promise.all([
-        storage.getAllCompanies(),
-        storage.getAllTasks(),
-      ]);
-
-      const now = new Date();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const thisMonth = now.getMonth();
-      const thisYear = now.getFullYear();
-
-      const tasksByCompany = new Map<string, typeof allTasks>();
-      for (const t of allTasks) {
-        if (!tasksByCompany.has(t.companyId)) tasksByCompany.set(t.companyId, []);
-        tasksByCompany.get(t.companyId)!.push(t);
-      }
-
-      const health = companies.map(company => {
-        const tasks = tasksByCompany.get(company.id) || [];
-        const thisMonthTasks = tasks.filter(t => {
-          const d = new Date(t.createdAt);
-          return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-        });
-        const completed = thisMonthTasks.filter(t => t.status === "completed").length;
-        const overdue = tasks.filter(t => {
-          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
-          const due = new Date(t.dueDate + "T00:00:00");
-          due.setHours(0, 0, 0, 0);
-          return due < today;
-        }).length;
-        const sortedTasks = [...tasks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        const lastActivity = sortedTasks[0]?.createdAt || null;
-
-        return {
-          id: company.id,
-          name: company.name,
-          subscriptionTier: company.subscriptionTier,
-          onboardingComplete: company.onboardingComplete,
-          hubspotConnected: !!company.hubspotCompanyId,
-          tasksThisMonth: thisMonthTasks.length,
-          completed,
-          overdue,
-          lastActivity,
-          credits: company.credits,
-        };
-      });
-
-      res.json(health);
-    } catch (error) {
-      console.error("Failed to get company health:", error);
-      res.status(500).json({ error: "Failed to get company health" });
-    }
-  });
-
-  // ── Report Builder ────────────────────────────────────────────────────────
-
-  // Helper: parse date range from query params
-  function parseReportDateRange(from?: string, to?: string, preset?: string): { start: Date; end: Date } {
-    const now = new Date();
-    const end = new Date(now);
-    end.setHours(23, 59, 59, 999);
-    let start: Date;
-    if (from && to && preset === "custom") {
-      start = new Date(from + "T00:00:00");
-      const customEnd = new Date(to + "T23:59:59");
-      return { start, end: customEnd };
-    }
-    switch (preset) {
-      case "today":
-        start = new Date(now); start.setHours(0, 0, 0, 0); break;
-      case "week":
-        start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0, 0, 0, 0); break;
-      case "month":
-        start = new Date(now.getFullYear(), now.getMonth(), 1); break;
-      case "last_month":
-        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        end.setFullYear(now.getFullYear(), now.getMonth(), 0); end.setHours(23, 59, 59, 999); break;
-      case "quarter":
-        const q = Math.floor(now.getMonth() / 3);
-        start = new Date(now.getFullYear(), q * 3, 1); break;
-      default:
-        start = new Date(now); start.setDate(now.getDate() - 30); start.setHours(0, 0, 0, 0);
-    }
-    return { start, end };
-  }
-
-  app.get("/api/admin/reports/tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-
-      const { from, to, preset = "month", companies: companiesParam, assignedTo: assignedParam, statuses: statusParam, categories: categoriesParam } = req.query as Record<string, string>;
-      const { start, end } = parseReportDateRange(from, to, preset);
-      const startStr = start.toISOString();
-      const endStr = end.toISOString();
-
-      const [allTasks, adminUsers, allCompanies, allCategories] = await Promise.all([
-        storage.getAllTasks(),
-        storage.getAllAdminUsers(),
-        storage.getAllCompanies(),
-        storage.getAllTaskCategories(),
-      ]);
-
-      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
-      const assigneeFilter = assignedParam ? assignedParam.split(",").filter(Boolean) : [];
-      const statusFilter = statusParam ? statusParam.split(",").filter(Boolean) : [];
-      const categoryFilter = categoriesParam ? categoriesParam.split(",").filter(Boolean) : [];
-
-      let tasks = allTasks.filter(t => {
-        if (!t.createdAt || t.createdAt < startStr || t.createdAt > endStr) return false;
-        if (companyFilter.length && !companyFilter.includes(t.companyId)) return false;
-        if (assigneeFilter.length && !assigneeFilter.includes(t.assignedTo || "")) return false;
-        if (statusFilter.length && !statusFilter.includes(t.status)) return false;
-        if (categoryFilter.length && !categoryFilter.includes(t.categoryId || "")) return false;
-        return true;
-      });
-
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
-      const categoryMap = new Map(allCategories.map(c => [c.id, c]));
-      const adminMap = new Map(adminUsers.map(a => [a.userId, [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email]));
-
-      const completed = tasks.filter(t => t.status === "completed");
-      const overdue = tasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today);
-
-      // On-time vs late completion
-      let onTime = 0, late = 0;
-      for (const t of completed) {
-        if (!t.dueDate || !t.completedAt) { onTime++; continue; }
-        const due = new Date(t.dueDate + "T23:59:59");
-        const done = new Date(t.completedAt);
-        if (done <= due) onTime++; else late++;
-      }
-
-      // Avg completion hours
-      const withTimes = completed.filter(t => t.createdAt && t.completedAt);
-      const avgCompletionHours = withTimes.length > 0
-        ? withTimes.reduce((s, t) => s + (new Date(t.completedAt!).getTime() - new Date(t.createdAt).getTime()) / 3600000, 0) / withTimes.length
-        : null;
-
-      // Credit consumption
-      const creditConsumption = completed.reduce((s, t) => s + parseFloat(String(t.creditCost)), 0);
-
-      // By assignee
-      const byAssignee: Record<string, { name: string; assigned: number; completed: number }> = {};
-      for (const t of tasks) {
-        const uid = t.assignedTo || "unassigned";
-        if (!byAssignee[uid]) byAssignee[uid] = { name: uid === "unassigned" ? "Unassigned" : (adminMap.get(uid) || uid), assigned: 0, completed: 0 };
-        byAssignee[uid].assigned++;
-        if (t.status === "completed") byAssignee[uid].completed++;
-      }
-
-      // By company
-      const byCompany: Record<string, { name: string; total: number; completed: number; overdue: number }> = {};
-      for (const t of tasks) {
-        const cid = t.companyId;
-        if (!byCompany[cid]) byCompany[cid] = { name: companyMap.get(cid)?.name || cid, total: 0, completed: 0, overdue: 0 };
-        byCompany[cid].total++;
-        if (t.status === "completed") byCompany[cid].completed++;
-        if (!["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today) byCompany[cid].overdue++;
-      }
-
-      // By category
-      const byCategory: Record<string, { name: string; count: number }> = {};
-      for (const t of tasks) {
-        const catId = t.categoryId || "none";
-        const catName = catId === "none" ? "Uncategorized" : (categoryMap.get(catId)?.name || catId);
-        if (!byCategory[catId]) byCategory[catId] = { name: catName, count: 0 };
-        byCategory[catId].count++;
-      }
-
-      // Weekly time series
-      const weeklyMap: Record<string, number> = {};
-      for (const t of tasks) {
-        const d = new Date(t.createdAt);
-        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay()); weekStart.setHours(0, 0, 0, 0);
-        const key = weekStart.toISOString().split("T")[0];
-        weeklyMap[key] = (weeklyMap[key] || 0) + 1;
-      }
-      const weeklyTimeSeries = Object.entries(weeklyMap).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => ({ week, count }));
-
-      res.json({
-        total: tasks.length,
-        completed: completed.length,
-        overdue: overdue.length,
-        onTime,
-        late,
-        avgCompletionHours,
-        creditConsumption: Math.round(creditConsumption * 10) / 10,
-        overdueRate: tasks.length > 0 ? Math.round((overdue.length / tasks.length) * 100) : 0,
-        byAssignee: Object.values(byAssignee).sort((a, b) => b.assigned - a.assigned),
-        byCompany: Object.values(byCompany).sort((a, b) => b.total - a.total),
-        byCategory: Object.values(byCategory).sort((a, b) => b.count - a.count),
-        weeklyTimeSeries,
-        dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] },
-      });
-    } catch (e) {
-      console.error("Tasks report error:", e);
-      res.status(500).json({ error: "Failed to generate tasks report" });
-    }
-  });
-
-  app.get("/api/admin/reports/companies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-
-      const { from, to, preset = "month" } = req.query as Record<string, string>;
-      const { start, end } = parseReportDateRange(from, to, preset);
-      const startStr = start.toISOString();
-      const endStr = end.toISOString();
-
-      const [allCompanies, allTasks, allTransactions] = await Promise.all([
-        storage.getAllCompanies(),
-        storage.getAllTasks(),
-        storage.getAllCreditTransactions(),
-      ]);
-
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-
-      const scorecard = allCompanies.map(company => {
-        const tasks = allTasks.filter(t => t.companyId === company.id && t.createdAt >= startStr && t.createdAt <= endStr);
-        const completed = tasks.filter(t => t.status === "completed").length;
-        const overdue = tasks.filter(t => !["completed", "rejected", "cancelled"].includes(t.status) && t.dueDate && new Date(t.dueDate + "T00:00:00") < today).length;
-        const txns = allTransactions.filter(t => t.companyId === company.id && t.createdAt >= startStr && t.createdAt <= endStr);
-        const creditsUsed = txns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
-
-        return {
-          id: company.id,
-          name: company.name,
-          subscriptionTier: company.subscriptionTier,
-          onboardingComplete: company.onboardingComplete,
-          hubspotConnected: !!company.hubspotCompanyId,
-          tasksCreated: tasks.length,
-          completed,
-          overdue,
-          creditsUsed: Math.round(creditsUsed * 10) / 10,
-        };
-      }).sort((a, b) => b.tasksCreated - a.tasksCreated);
-
-      res.json({ scorecard, dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] } });
-    } catch (e) {
-      console.error("Companies report error:", e);
-      res.status(500).json({ error: "Failed to generate companies report" });
-    }
-  });
-
-  app.get("/api/admin/reports/credits", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-
-      const { from, to, preset = "month", companies: companiesParam } = req.query as Record<string, string>;
-      const { start, end } = parseReportDateRange(from, to, preset);
-      const startStr = start.toISOString();
-      const endStr = end.toISOString();
-
-      const [allTransactions, allCompanies] = await Promise.all([
-        storage.getAllCreditTransactions(),
-        storage.getAllCompanies(),
-      ]);
-
-      const companyFilter = companiesParam ? companiesParam.split(",").filter(Boolean) : [];
-      const companyMap = new Map(allCompanies.map(c => [c.id, c]));
-
-      const txns = allTransactions.filter(t => {
-        if (t.createdAt < startStr || t.createdAt > endStr) return false;
-        if (companyFilter.length && !companyFilter.includes(t.companyId)) return false;
-        return true;
-      });
-
-      const totalDebited = txns.filter(t => parseFloat(t.amount) < 0).reduce((s, t) => s + Math.abs(parseFloat(t.amount)), 0);
-      const totalCredited = txns.filter(t => parseFloat(t.amount) > 0).reduce((s, t) => s + parseFloat(t.amount), 0);
-
-      const byType: Record<string, number> = {};
-      const byCompany: Record<string, { name: string; debited: number; credited: number; count: number }> = {};
-
-      for (const t of txns) {
-        byType[t.type] = (byType[t.type] || 0) + Math.abs(parseFloat(t.amount));
-        const cid = t.companyId;
-        if (!byCompany[cid]) byCompany[cid] = { name: companyMap.get(cid)?.name || cid, debited: 0, credited: 0, count: 0 };
-        byCompany[cid].count++;
-        if (parseFloat(t.amount) < 0) byCompany[cid].debited += Math.abs(parseFloat(t.amount));
-        else byCompany[cid].credited += parseFloat(t.amount);
-      }
-
-      const weeklyMap: Record<string, { debited: number; credited: number }> = {};
-      for (const t of txns) {
-        const d = new Date(t.createdAt);
-        const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay()); weekStart.setHours(0, 0, 0, 0);
-        const key = weekStart.toISOString().split("T")[0];
-        if (!weeklyMap[key]) weeklyMap[key] = { debited: 0, credited: 0 };
-        if (parseFloat(t.amount) < 0) weeklyMap[key].debited += Math.abs(parseFloat(t.amount));
-        else weeklyMap[key].credited += parseFloat(t.amount);
-      }
-      const weeklyTimeSeries = Object.entries(weeklyMap).sort(([a], [b]) => a.localeCompare(b)).map(([week, v]) => ({ week, ...v }));
-
-      res.json({
-        total: txns.length,
-        totalDebited: Math.round(totalDebited * 10) / 10,
-        totalCredited: Math.round(totalCredited * 10) / 10,
-        net: Math.round((totalCredited - totalDebited) * 10) / 10,
-        byType: Object.entries(byType).map(([type, amount]) => ({ type, amount: Math.round(amount * 10) / 10 })).sort((a, b) => b.amount - a.amount),
-        byCompany: Object.values(byCompany).sort((a, b) => b.debited - a.debited),
-        weeklyTimeSeries,
-        dateRange: { from: start.toISOString().split("T")[0], to: end.toISOString().split("T")[0] },
-      });
-    } catch (e) {
-      console.error("Credits report error:", e);
-      res.status(500).json({ error: "Failed to generate credits report" });
-    }
-  });
-
-  // Report Presets CRUD
-  app.get("/api/admin/report-presets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const presets = await storage.getReportPresets();
-      res.json(presets);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to get report presets" });
-    }
-  });
-
-  app.post("/api/admin/report-presets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const { name, reportType, filters, scheduledFrequency, scheduledEmails } = req.body;
-      if (!name || !reportType || !filters) return res.status(400).json({ error: "name, reportType, and filters are required" });
-      const preset = await storage.createReportPreset({ name, reportType, filters: JSON.stringify(filters), createdBy: currentUserId, scheduledFrequency: scheduledFrequency || null, scheduledEmails: scheduledEmails || null, scheduledNextRun: null });
-      res.json(preset);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to create report preset" });
-    }
-  });
-
-  app.patch("/api/admin/report-presets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const preset = await storage.updateReportPreset(String(req.params.id), req.body);
-      if (!preset) return res.status(404).json({ error: "Preset not found" });
-      res.json(preset);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to update report preset" });
-    }
-  });
-
-  app.delete("/api/admin/report-presets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteReportPreset(String(req.params.id));
-      res.json({ ok: true });
-    } catch (e) {
-      res.status(500).json({ error: "Failed to delete report preset" });
-    }
-  });
-
-  // ── AI Brief Generator ────────────────────────────────────────────────────
-
-  function substituteVars(template: string, vars: Record<string, string>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] || "");
-  }
-
-  const CONTENT_GOAL_LABELS: Record<string, string> = {
-    google_business_post: "Google Business Profile Post",
-    social_image: "Social Media Image",
-    social_video: "Social Media Video",
-    email_banner: "Email Campaign Banner",
-    blog_feature: "Blog Feature Image",
-    ad_creative: "Ad Creative",
-    newsletter_header: "Newsletter Header",
-    podcast_thumbnail: "Podcast Thumbnail",
-    case_study_visual: "Case Study Visual",
-  };
-
-  const PLATFORM_LABELS_BRIEF: Record<string, string> = {
-    google_business: "Google Business Profile",
-    facebook: "Facebook",
-    instagram: "Instagram",
-    linkedin: "LinkedIn",
-    email: "Email",
-    blog: "Blog",
-    other: "Other",
-  };
-
-  function buildFallbackBrief(vars: Record<string, string>, outputs: string[]): Record<string, string | null> {
-    const co = vars.company_name || "the company";
-    const geo = vars.geographic_focus ? ` in ${vars.geographic_focus}` : "";
-    const audience = vars.target_audience || "potential customers";
-    const topic = vars.topic || "our latest work";
-    const campaign = vars.campaign_context || "";
-    const style = vars.visual_style || "photorealistic";
-    const platform = PLATFORM_LABELS_BRIEF[vars.platform] || vars.platform || "social media";
-    const pillar = vars.pillar_name ? `${vars.pillar_name} content pillar` : "brand content";
-    const voice = vars.brand_voice || "professional and engaging";
-    const uvp = vars.uvp || "";
-    const colors = [vars.primary_color, vars.secondary_color].filter(Boolean).join(" and ");
-    const doNotUse = vars.do_not_use ? `Avoid: ${vars.do_not_use}.` : "";
-    const goal = vars.content_goal_label || "marketing content";
-
-    const imagePrompt = outputs.includes("image_prompt")
-      ? `Create a ${style} photograph/image for a ${goal} by ${co}${geo}, a ${vars.industry || "professional services"} company.\n\nContent Focus: ${topic}\n${campaign ? `Campaign Context: ${campaign}\n` : ""}Platform: ${platform}\nContent Pillar: ${pillar}\n\nBrand Details:\n- Primary Colors: ${colors || "brand colors"}\n- Brand Voice: ${voice}\n- Target Audience: ${audience}\n${uvp ? `- Unique Value: ${uvp}\n` : ""}${doNotUse}\n\nStyle Requirements: ${style} quality, professional commercial photography, perfect for ${platform} marketing. Well-lit, sharp, visually striking. No text overlays. Ultra-realistic.`
-      : null;
-
-    const captionPrompt = outputs.includes("caption")
-      ? `Write a compelling social media caption for ${co}${geo} about the following:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Platform: ${platform}\nBrand Voice: ${voice}\nTarget Audience: ${audience}\n${uvp ? `Key Message: ${uvp}\n` : ""}\nContent Pillar: ${pillar}\n\nRequirements:\n- Match the ${voice} brand voice\n- Speak directly to ${audience}\n- Drive engagement appropriate for ${platform}\n- Include a natural call to action\n- Do not use generic filler phrases\n${doNotUse}`
-      : null;
-
-    const hashtagPrompt = outputs.includes("hashtags")
-      ? `Generate 15–20 targeted hashtags for a ${platform} post by ${co}${geo} about:\n\nTopic: ${topic}\nIndustry: ${vars.industry || "professional services"}\nContent Pillar: ${pillar}\n\nMix of:\n- 3–5 high-volume broad hashtags\n- 5–8 industry/niche hashtags\n- 3–5 location-specific hashtags (for ${vars.geographic_focus || "their service area"})\n- 2–3 branded or campaign hashtags\n\nFormat each hashtag on its own line, starting with #`
-      : null;
-
-    const ctaPrompt = outputs.includes("cta")
-      ? `Generate 3 distinct call-to-action options for ${co}${geo} related to:\n\nTopic: ${topic}\nPlatform: ${platform}\nAudience: ${audience}\n\nEach CTA should:\n- Be concise (under 10 words)\n- Drive a specific action (call, visit, book, learn, etc.)\n- Fit the ${voice} brand voice\n\nFormat:\nCTA 1: [text]\nCTA 2: [text]\nCTA 3: [text]`
-      : null;
-
-    const gbpPostPrompt = outputs.includes("gbp_post")
-      ? `Write a complete Google Business Profile post for ${co}${geo} ready to paste:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Brand Voice: ${voice}\n\nRequirements:\n- Maximum 1,500 characters\n- Start with the most important information\n- Include a clear call to action\n- Professional, local business tone\n- Can include emojis sparingly\n- End with contact/visit prompt\n\nFormat the post as ready-to-paste text for Google Business Profile.`
-      : null;
-
-    const emailSubjectPrompt = outputs.includes("email_subject")
-      ? `Write 3 email subject line variants for ${co}${geo} about:\n\nTopic: ${topic}\n${campaign ? `Campaign: ${campaign}\n` : ""}Audience: ${audience}\nBrand Voice: ${voice}\n\nRequirements:\n- Under 50 characters each (for mobile preview)\n- Create curiosity or urgency without being clickbait\n- Vary the approach: one benefit-focused, one curiosity-based, one direct\n\nFormat:\nOption 1: [subject line]\nOption 2: [subject line]\nOption 3: [subject line]`
-      : null;
-
-    const linkedinOutlinePrompt = outputs.includes("linkedin_outline")
-      ? `Create a LinkedIn article outline for ${co}${geo} on:\n\nTopic: ${topic}\n${campaign ? `Context: ${campaign}\n` : ""}Industry: ${vars.industry || "professional services"}\nTarget Audience: ${audience}\nBrand Voice: ${voice}\n\nOutline Format:\n- Article Title (2 options)\n- Hook/Opening paragraph (2–3 sentences)\n- 4–5 main sections with bullet points\n- Key takeaway / conclusion\n- Call to action`
-      : null;
-
-    return { imagePrompt, captionPrompt, hashtagPrompt, ctaPrompt, gbpPostPrompt, emailSubjectPrompt, linkedinOutlinePrompt };
-  }
-
-  app.get("/api/admin/ai-brief/:companyId/data", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const { companyId } = req.params as { companyId: string };
-      const [company, brandProfile, pillars] = await Promise.all([
-        storage.getCompany(companyId),
-        storage.getBrandProfile(companyId),
-        storage.getContentPillars(companyId),
-      ]);
-      if (!company) return res.status(404).json({ error: "Company not found" });
-      res.json({ company, brandProfile: brandProfile || null, pillars: pillars.filter(p => p.isActive) });
-    } catch (e) {
-      console.error("ai-brief data error:", e);
-      res.status(500).json({ error: "Failed to load brief data" });
-    }
-  });
-
-  app.post("/api/admin/ai-brief/:companyId/generate", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const { companyId } = req.params as { companyId: string };
-      const { contentGoal, platform, pillarId, campaignContext, topic, visualStyle, outputs } = req.body;
-
-      if (!contentGoal || !topic) return res.status(400).json({ error: "contentGoal and topic are required" });
-
-      const [company, brandProfile, pillars, template] = await Promise.all([
-        storage.getCompany(companyId),
-        storage.getBrandProfile(companyId),
-        storage.getContentPillars(companyId),
-        storage.getAiPromptTemplateByGoal(contentGoal),
-      ]);
-
-      if (!company) return res.status(404).json({ error: "Company not found" });
-
-      const pillar = pillars.find(p => p.id === pillarId);
-
-      const vars: Record<string, string> = {
-        company_name: company.name || "",
-        industry: company.industry || "",
-        geographic_focus: brandProfile?.geographicFocus || "",
-        brand_voice: brandProfile?.brandVoiceSummary || "professional and engaging",
-        target_audience: brandProfile?.targetAudienceDescription || "potential customers",
-        uvp: brandProfile?.uniqueValueProposition || "",
-        tagline: brandProfile?.tagline || "",
-        primary_color: brandProfile?.primaryColor || "",
-        secondary_color: brandProfile?.secondaryColor || "",
-        do_not_use: brandProfile?.doNotUsePhrases || "",
-        pillar_name: pillar?.name || "",
-        pillar_description: pillar?.description || "",
-        topic: topic || "",
-        campaign_context: campaignContext || "",
-        visual_style: visualStyle || "photorealistic",
-        platform: platform || "",
-        platform_label: PLATFORM_LABELS_BRIEF[platform] || platform || "",
-        content_goal_label: CONTENT_GOAL_LABELS[contentGoal] || contentGoal,
-      };
-
-      let sections: Record<string, string | null>;
-
-      if (template) {
-        sections = {
-          imagePrompt: (outputs || []).includes("image_prompt") && template.imagePromptTemplate
-            ? substituteVars(template.imagePromptTemplate, vars) : null,
-          captionPrompt: (outputs || []).includes("caption") && template.captionTemplate
-            ? substituteVars(template.captionTemplate, vars) : null,
-          hashtagPrompt: (outputs || []).includes("hashtags") && template.hashtagTemplate
-            ? substituteVars(template.hashtagTemplate, vars) : null,
-          ctaPrompt: (outputs || []).includes("cta") && template.ctaTemplate
-            ? substituteVars(template.ctaTemplate, vars) : null,
-          gbpPostPrompt: (outputs || []).includes("gbp_post") && template.gbpPostTemplate
-            ? substituteVars(template.gbpPostTemplate, vars) : null,
-          emailSubjectPrompt: (outputs || []).includes("email_subject") && template.emailSubjectTemplate
-            ? substituteVars(template.emailSubjectTemplate, vars) : null,
-          linkedinOutlinePrompt: (outputs || []).includes("linkedin_outline") && template.linkedinOutlineTemplate
-            ? substituteVars(template.linkedinOutlineTemplate, vars) : null,
-        };
-      } else {
-        sections = buildFallbackBrief(vars, outputs || []);
-      }
-
-      res.json({ sections, templateUsed: template?.name || "Built-in Default", vars });
-    } catch (e) {
-      console.error("ai-brief generate error:", e);
-      res.status(500).json({ error: "Failed to generate brief" });
-    }
-  });
-
-  app.post("/api/admin/ai-brief/:companyId/save", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const currentUserId = req.user!.id;
-      if (!await storage.isAdmin(currentUserId)) return res.status(403).json({ error: "Admin access required" });
-      const { companyId } = req.params as { companyId: string };
-      const { platform, pillarId, title, bodyContent, hashtags, aiPromptUsed, scheduledDate } = req.body;
-      if (!platform || !title) return res.status(400).json({ error: "platform and title are required" });
-
-      const defaultDate = (() => {
-        const d = new Date(); d.setDate(d.getDate() + 7);
-        return d.toISOString().split("T")[0];
-      })();
-
-      res.status(400).json({ error: "Content calendar has been removed" });
-    } catch (e) {
-      console.error("ai-brief save error:", e);
-      res.status(500).json({ error: "Failed to save calendar item" });
-    }
-  });
-
-  // AI Template CRUD
-  app.get("/api/admin/ai-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
-      const templates = await storage.getAiPromptTemplates();
-      res.json(templates);
-    } catch (e) { res.status(500).json({ error: "Failed to get templates" }); }
-  });
-
-  app.post("/api/admin/ai-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
-      const { contentGoal, name, imagePromptTemplate, captionTemplate, hashtagTemplate, ctaTemplate, gbpPostTemplate, emailSubjectTemplate, linkedinOutlineTemplate, isDefault, isActive } = req.body;
-      if (!contentGoal || !name) return res.status(400).json({ error: "contentGoal and name required" });
-      const tmpl = await storage.createAiPromptTemplate({ contentGoal, name, imagePromptTemplate: imagePromptTemplate || null, captionTemplate: captionTemplate || null, hashtagTemplate: hashtagTemplate || null, ctaTemplate: ctaTemplate || null, gbpPostTemplate: gbpPostTemplate || null, emailSubjectTemplate: emailSubjectTemplate || null, linkedinOutlineTemplate: linkedinOutlineTemplate || null, isDefault: !!isDefault, isActive: isActive !== false });
-      res.json(tmpl);
-    } catch (e) { res.status(500).json({ error: "Failed to create template" }); }
-  });
-
-  app.patch("/api/admin/ai-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
-      const tmpl = await storage.updateAiPromptTemplate(String(req.params.id), req.body);
-      if (!tmpl) return res.status(404).json({ error: "Template not found" });
-      res.json(tmpl);
-    } catch (e) { res.status(500).json({ error: "Failed to update template" }); }
-  });
-
-  app.delete("/api/admin/ai-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteAiPromptTemplate(String(req.params.id));
-      res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: "Failed to delete template" }); }
-  });
-
-  // ── Content Calendar ──────────────────────────────────────────────────────
-
-  // Content Pillars
-  app.get("/api/content-pillars", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const companyId = req.query.companyId as string | undefined;
-    const pillars = await storage.getContentPillars(companyId);
-    res.json(pillars);
-  });
-
-  app.post("/api/content-pillars", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const parsed = insertContentPillarSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const pillar = await storage.createContentPillar(parsed.data);
-    res.status(201).json(pillar);
-  });
-
-  app.patch("/api/content-pillars/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const pillar = await storage.updateContentPillar(req.params.id as string, req.body);
-    if (!pillar) return res.status(404).json({ error: "Not found" });
-    res.json(pillar);
-  });
-
-  app.delete("/api/content-pillars/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    await storage.deleteContentPillar(req.params.id as string);
-    res.status(204).end();
-  });
-
-  // Content Assets
-  app.get("/api/content-assets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const companyId = req.query.companyId as string | undefined;
-    const assets = await storage.getContentAssets(companyId);
-    res.json(assets);
-  });
-
-  app.post("/api/content-assets", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const parsed = insertContentAssetSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const asset = await storage.createContentAsset(parsed.data);
-    res.status(201).json(asset);
-  });
-
-  app.delete("/api/content-assets/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    await storage.deleteContentAsset(req.params.id as string);
-    res.status(204).end();
-  });
-
-  // ── HubSpot Onboarding Checklist ──────────────────────────────────────────
-
-  app.get("/api/companies/:id/hubspot-onboarding", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const companyId = req.params.id as string;
-    let items = await storage.getHubspotOnboardingChecklist(companyId);
-    if (items.length === 0) {
-      await storage.seedHubspotOnboardingChecklist(companyId);
-      items = await storage.getHubspotOnboardingChecklist(companyId);
-    }
-    res.json(items);
-  });
-
-  app.patch("/api/companies/:id/hubspot-onboarding/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    const userId = req.session.userId!;
-    const isAdmin = await storage.isAdmin(userId);
-    if (!isAdmin) return res.status(403).json({ error: "Admin only" });
-    const itemId = req.params.itemId as string;
-    const item = await storage.updateHubspotOnboardingItem(itemId, req.body);
-    if (!item) return res.status(404).json({ error: "Item not found" });
-
-    if (req.body.isCompleted === true) {
-      const allItems = await storage.getHubspotOnboardingChecklist(item.companyId);
-      const sectionItems = allItems.filter(i => i.section === item.section);
-      const sectionComplete = sectionItems.every(i => i.isCompleted);
-      if (sectionComplete) {
-        const company = await storage.getCompany(item.companyId);
-        const companyName = company?.name ?? "a company";
-        const admins = await storage.getAllAdminUsers();
-        await Promise.all(admins.map(admin =>
-          storage.createNotification({
-            userId: admin.userId,
-            type: "info",
-            title: `HubSpot Section Complete: ${item.section}`,
-            message: `All items in "${item.section}" have been completed for ${companyName}.`,
-            link: `/admin/companies/${item.companyId}/hubspot-onboarding`,
-            createdBy: userId,
-          })
-        ));
-      }
-    }
-
-    res.json(item);
-  });
-
-  // ── Workflow Library ──────────────────────────────────────────────────────
-
-  app.get("/api/admin/workflow-library", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const { category, hub, complexity, search } = req.query as Record<string, string>;
-      const templates = await storage.getWorkflowTemplates({ category, hub, complexity, search });
-      res.json(templates);
-    } catch (e) { res.status(500).json({ error: "Failed to fetch workflow templates" }); }
-  });
-
-  app.post("/api/admin/workflow-library/assign", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const { templateId, companyIds } = req.body as { templateId: string; companyIds: string[] };
-      if (!templateId || !Array.isArray(companyIds) || companyIds.length === 0)
-        return res.status(400).json({ error: "templateId and companyIds required" });
-      const result = await storage.assignWorkflowsToCompanies(templateId, companyIds, req.user!.id);
-      res.json(result);
-    } catch (e) { res.status(500).json({ error: "Failed to assign workflows" }); }
-  });
-
-  app.get("/api/admin/workflow-library/companies/:companyId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const rows = await storage.getCompanyWorkflows(String(req.params.companyId));
-      res.json(rows);
-    } catch (e) { res.status(500).json({ error: "Failed to fetch company workflows" }); }
-  });
-
-  app.patch("/api/admin/workflow-library/companies/:companyId/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const { status, hubspotWorkflowId, notes } = req.body as { status?: string; hubspotWorkflowId?: string; notes?: string };
-      const row = await storage.updateCompanyWorkflow(String(req.params.id), { status: status as any, hubspotWorkflowId, notes });
-      if (!row) return res.status(404).json({ error: "Not found" });
-      res.json(row);
-    } catch (e) { res.status(500).json({ error: "Failed to update company workflow" }); }
-  });
-
-  app.delete("/api/admin/workflow-library/companies/:companyId/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      await storage.deleteCompanyWorkflow(String(req.params.id));
-      res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: "Failed to remove workflow assignment" }); }
-  });
-
-  // ── Notepads ──────────────────────────────────────────────────────────────
-
-  app.get("/api/companies/:companyId/notepads", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      const notes = await storage.getNotepads(req.params.companyId as string, isAdmin);
-      res.json(notes);
-    } catch { res.status(500).json({ error: "Failed to fetch notepads" }); }
-  });
-
-  app.post("/api/companies/:companyId/notepads", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const data = insertNotepadSchema.parse({ ...req.body, companyId: req.params.companyId as string });
-      const note = await storage.createNotepad(data);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
-      res.json(note);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.patch("/api/companies/:companyId/notepads/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const note = await storage.updateNotepad(req.params.id as string, req.body);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
-      res.json(note);
-    } catch { res.status(500).json({ error: "Failed to update notepad" }); }
-  });
-
-  app.delete("/api/companies/:companyId/notepads/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      await storage.deleteNotepad(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/notepads`]);
-      res.json({ ok: true });
-    } catch { res.status(500).json({ error: "Failed to delete notepad" }); }
-  });
-
-  // ── Message Board ──────────────────────────────────────────────────────────
-
-  app.get("/api/companies/:companyId/message-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      const posts = await storage.getMessageBoardPosts(req.params.companyId as string, isAdmin);
-      res.json(posts);
-    } catch { res.status(500).json({ error: "Failed to fetch posts" }); }
-  });
-
-  app.post("/api/companies/:companyId/message-board", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const data = insertMessageBoardPostSchema.parse({ ...req.body, companyId });
-      const post = await storage.createMessageBoardPost(data);
-      // Notify all company members
-      const members = await storage.getCompanyMembers(companyId);
-      for (const m of members) {
-        if (m.userId !== post.postedBy) {
-          await createAndBroadcastNotification({
-            userId: m.userId, type: "message_board",
-            title: "New Board Post",
-            message: `${post.postedByName} posted: ${post.title}`,
-            link: `/admin/companies/${companyId}?tab=communicate&sub=board&post=${post.id}`,
-          });
-        }
-      }
-      broadcastInvalidation([`/api/companies/${companyId}/message-board`]);
-      res.json(post);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.patch("/api/companies/:companyId/message-board/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const post = await storage.updateMessageBoardPost(req.params.id as string, req.body);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
-      res.json(post);
-    } catch { res.status(500).json({ error: "Failed to update post" }); }
-  });
-
-  app.delete("/api/companies/:companyId/message-board/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      await storage.deleteMessageBoardPost(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
-      res.json({ ok: true });
-    } catch { res.status(500).json({ error: "Failed to delete post" }); }
-  });
-
-  app.get("/api/companies/:companyId/message-board/:postId/replies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const replies = await storage.getMessageBoardReplies(req.params.postId as string);
-      res.json(replies);
-    } catch { res.status(500).json({ error: "Failed to fetch replies" }); }
-  });
-
-  app.post("/api/companies/:companyId/message-board/:postId/replies", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const postId = req.params.postId as string;
-      const data = insertMessageBoardReplySchema.parse({ ...req.body, postId, companyId });
-      const reply = await storage.createMessageBoardReply(data);
-      await storage.incrementReplyCount(postId);
-      // Notify post author + previous repliers
-      const post = await storage.getMessageBoardPost(postId);
-      const prevReplies = await storage.getMessageBoardReplies(postId);
-      const notifySet = new Set<string>();
-      if (post && post.postedBy !== reply.postedBy) notifySet.add(post.postedBy);
-      prevReplies.forEach(r => { if (r.postedBy !== reply.postedBy && r.id !== reply.id) notifySet.add(r.postedBy); });
-      for (const uid of notifySet) {
-        await createAndBroadcastNotification({
-          userId: uid, type: "message_board",
-          title: "New Reply",
-          message: `${reply.postedByName} replied to "${post?.title ?? "a post"}"`,
-          link: `/admin/companies/${companyId}?tab=communicate&sub=board&post=${postId}`,
-        });
-      }
-      broadcastInvalidation([`/api/companies/${companyId}/message-board`, `/api/companies/${companyId}/message-board/${postId}/replies`]);
-      res.json(reply);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.delete("/api/companies/:companyId/message-board/replies/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      await storage.deleteMessageBoardReply(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/message-board`]);
-      res.json({ ok: true });
-    } catch { res.status(500).json({ error: "Failed to delete reply" }); }
-  });
-
-  // ── Check-ins ──────────────────────────────────────────────────────────────
-
-  app.get("/api/check-ins", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      // Seed defaults if table empty
-      const existing = await storage.getCheckinQuestions();
-      if (existing.length === 0) {
-        const adminId = req.user!.id;
-        const now = new Date().toISOString();
-        const defaults = [
-          { question: "What did you complete for clients this week?", frequency: "weekly", scheduledDays: ["Friday"], scheduledTime: "09:00", recipientType: "all_agency" },
-          { question: "Any blockers or things you need help with?", frequency: "weekly", scheduledDays: ["Monday"], scheduledTime: "09:00", recipientType: "all_agency" },
-          { question: "What content is ready to publish this week?", frequency: "weekly", scheduledDays: ["Monday"], scheduledTime: "09:00", recipientType: "all_agency" },
-        ];
-        for (const d of defaults) await storage.createCheckinQuestion({ ...d, isActive: true, createdBy: adminId, createdAt: now } as any);
-      }
-      const questions = await storage.getCheckinQuestions();
-      res.json(questions);
-    } catch { res.status(500).json({ error: "Failed to fetch check-ins" }); }
-  });
-
-  app.post("/api/check-ins", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const data = { ...req.body, createdBy: req.user!.id };
-      const q = await storage.createCheckinQuestion(data);
-      broadcastInvalidation(["/api/check-ins"]);
-      res.json(q);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.patch("/api/check-ins/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      const q = await storage.updateCheckinQuestion(req.params.id as string, req.body);
-      broadcastInvalidation(["/api/check-ins"]);
-      res.json(q);
-    } catch { res.status(500).json({ error: "Failed to update check-in" }); }
-  });
-
-  app.delete("/api/check-ins/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!await storage.isAdmin(req.user!.id)) return res.status(403).json({ error: "Admin only" });
-      await storage.deleteCheckinQuestion(req.params.id as string);
-      broadcastInvalidation(["/api/check-ins"]);
-      res.json({ ok: true });
-    } catch { res.status(500).json({ error: "Failed to delete check-in" }); }
-  });
-
-  app.get("/api/check-ins/:id/responses", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const responses = await storage.getCheckinResponses(req.params.id as string);
-      res.json(responses);
-    } catch { res.status(500).json({ error: "Failed to fetch responses" }); }
-  });
-
-  app.post("/api/check-ins/:id/respond", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const now = new Date().toISOString();
-      const data = {
-        questionId: req.params.id as string,
-        responderId: req.user!.id,
-        responderName: req.body.responderName ?? "Unknown",
-        response: req.body.response,
-        sentAt: req.body.sentAt ?? now,
-        respondedAt: now,
-        createdAt: now,
-      };
-      const resp = await storage.createCheckinResponse(data as any);
-      broadcastInvalidation([`/api/check-ins/${req.params.id}/responses`]);
-      res.json(resp);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  // ── Hill Charts ────────────────────────────────────────────────────────────
-
-  app.get("/api/companies/:companyId/hill-charts", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const charts = await storage.getHillCharts(req.params.companyId as string);
-      res.json(charts);
-    } catch { res.status(500).json({ error: "Failed to fetch hill charts" }); }
-  });
-
-  // ── Client Resources ─────────────────────────────────────────────────────────
-
-  // Admin: list all resources (optionally filtered by company)
-  app.get("/api/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const { companyId, resourceType, status, visibility } = req.query as Record<string, string>;
-      const resources = await storage.getAllClientResources({ companyId, resourceType, status, visibility });
-      res.json(resources);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Company-scoped: list resources for a specific company
-  app.get("/api/companies/:companyId/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const { resourceType, status, visibility } = req.query as Record<string, string>;
-      const adminCheck = await storage.isAdmin(req.user!.id);
-      // Clients can only see client_visible resources
-      const effectiveVisibility = adminCheck ? visibility : "client_visible";
-      const resources = await storage.getClientResources(companyId, { resourceType, status, visibility: effectiveVisibility });
-      res.json(resources);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.get("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const resource = await storage.getClientResource(req.params.id as string);
-      if (!resource) return res.status(404).json({ error: "Not found" });
-      const adminCheck = await storage.isAdmin(req.user!.id);
-      if (!adminCheck && resource.visibility !== "client_visible") return res.status(403).json({ error: "Forbidden" });
-      res.json(resource);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/companies/:companyId/resources", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const adminCheck = await storage.isAdmin(req.user!.id);
-      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
-      const companyId = req.params.companyId as string;
-      const resource = await storage.createClientResource({ ...req.body, companyId, createdBy: req.user!.id });
-      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
-      res.status(201).json(resource);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.patch("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const adminCheck = await storage.isAdmin(req.user!.id);
-      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
-      const companyId = req.params.companyId as string;
-      const resource = await storage.updateClientResource(req.params.id as string, req.body);
-      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
-      res.json(resource);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/companies/:companyId/resources/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const adminCheck = await storage.isAdmin(req.user!.id);
-      if (!adminCheck) return res.status(403).json({ error: "Forbidden" });
-      const companyId = req.params.companyId as string;
-      await storage.deleteClientResource(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${companyId}/resources`, "/api/resources"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/companies/:companyId/hill-charts", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const data = { ...req.body, companyId, createdBy: req.user!.id };
-      const chart = await storage.createHillChart(data);
-      broadcastInvalidation([`/api/companies/${companyId}/hill-charts`]);
-      res.json(chart);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  app.patch("/api/companies/:companyId/hill-charts/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const chart = await storage.updateHillChart(req.params.id as string, req.body);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/hill-charts`]);
-      res.json(chart);
-    } catch { res.status(500).json({ error: "Failed to update hill chart" }); }
-  });
-
-  app.delete("/api/companies/:companyId/hill-charts/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      await storage.deleteHillChart(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${req.params.companyId}/hill-charts`]);
-      res.json({ ok: true });
-    } catch { res.status(500).json({ error: "Failed to delete hill chart" }); }
-  });
-
-  // ─── Agency Overview (aggregated command center endpoint) ───────────────────
-
-  app.get("/api/admin/agency-overview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-
-      const [companies, allTasks, allCampaigns, allSeo, allMeetings] = await Promise.all([
-        storage.getAllCompanies(),
-        storage.getAllTasks(),
-        storage.getAllCampaignRequests(),
-        storage.getAllSeoDirectories(),
-        storage.getAllMeetingRequests(),
-      ]);
-
-      const companyMap: Record<string, string> = {};
-      for (const c of companies) companyMap[c.id] = c.name;
-
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const in14 = new Date(today); in14.setDate(today.getDate() + 14);
-      const in30 = new Date(today); in30.setDate(today.getDate() + 30);
-      const in60 = new Date(today); in60.setDate(today.getDate() + 60);
-      const ago7 = new Date(today); ago7.setDate(today.getDate() - 7);
-
-      // ── Approval queue ──
-      const taskApprovals = allTasks
-        .filter(t => t.approvalStatus === "pending_internal_approval" || t.approvalStatus === "pending_approval")
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-        .slice(0, 20)
-        .map(t => ({ id: t.id, title: t.title, companyId: t.companyId, companyName: companyMap[t.companyId] ?? t.companyId, status: t.status, approvalStatus: t.approvalStatus, dueDate: t.dueDate, createdAt: t.createdAt, priority: t.priority }));
-
-      const campaignApprovals = allCampaigns
-        .filter(c => c.status === "pending")
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-        .slice(0, 10)
-        .map(c => ({ id: c.id, title: c.name || "Campaign Request", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, createdAt: c.createdAt, isRush: c.isRush }));
-
-      // ── Campaign health ──
-      const activeCampaigns = allCampaigns
-        .filter(c => c.status === "approved" || c.status === "in_progress")
-        .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
-        .slice(0, 25)
-        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, isRush: c.isRush, launchDate: c.launchDate, ownerName: c.ownerName }));
-
-      const atRiskCampaigns = allCampaigns
-        .filter(c => ["approved", "in_progress"].includes(c.status) && c.dueDate && new Date(c.dueDate + "T00:00:00") < today)
-        .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
-        .slice(0, 15)
-        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, dueDate: c.dueDate, isRush: c.isRush }));
-
-      const launchingSoon = allCampaigns
-        .filter(c => c.launchDate && !["completed", "cancelled"].includes(c.status) && new Date(c.launchDate + "T00:00:00") >= today && new Date(c.launchDate + "T00:00:00") <= in14)
-        .sort((a, b) => (a.launchDate ?? "").localeCompare(b.launchDate ?? ""))
-        .slice(0, 10)
-        .map(c => ({ id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, status: c.status, launchDate: c.launchDate, dueDate: c.dueDate }));
-
-      // ── SEO queue ──
-      const seoByStatus: Record<string, number> = {};
-      const seoOverdue: Array<{ id: string; name: string; companyId: string; companyName: string; status: string; dueDate: string }> = [];
-      for (const item of allSeo) {
-        seoByStatus[item.status] = (seoByStatus[item.status] || 0) + 1;
-        if (item.dueDate && new Date(item.dueDate + "T00:00:00") < today && item.status !== "live" && item.status !== "archived") {
-          seoOverdue.push({ id: item.id, name: item.name, companyId: item.companyId, companyName: companyMap[item.companyId] ?? item.companyId, status: item.status, dueDate: item.dueDate });
-        }
-      }
-      seoOverdue.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-
-      // ── 30/60-day readiness ──
-      const readiness = companies.map(company => {
-        const campaignsActive = allCampaigns.filter(c => c.companyId === company.id && ["approved", "in_progress"].includes(c.status)).length;
-        const status = campaignsActive === 0 ? "no_schedule" : "well_planned";
-        return { companyId: company.id, companyName: company.name, campaignsActive, status };
-      });
-
-      // ── Recent activity ──
-      const activity: Array<{ type: string; id: string; title: string; companyId: string; companyName: string; ts: string; meta?: string }> = [];
-
-      allTasks.filter(t => t.status === "completed").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 8)
-        .forEach(t => activity.push({ type: "task_completed", id: t.id, title: t.title, companyId: t.companyId, companyName: companyMap[t.companyId] ?? t.companyId, ts: t.createdAt }));
-
-      allCampaigns.filter(c => c.status === "approved").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
-        .forEach(c => activity.push({ type: "campaign_approved", id: c.id, title: c.name || "Campaign", companyId: c.companyId, companyName: companyMap[c.companyId] ?? c.companyId, ts: c.createdAt }));
-
-      allMeetings.filter(m => m.status === "scheduled").sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5)
-        .forEach(m => activity.push({ type: "meeting_scheduled", id: m.id, title: m.title, companyId: m.companyId, companyName: companyMap[m.companyId] ?? m.companyId, ts: m.createdAt }));
-
-      activity.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-
-      res.json({
-        approvalQueue: { tasks: taskApprovals, campaigns: campaignApprovals },
-        campaignHealth: { active: activeCampaigns, atRisk: atRiskCampaigns, launchingSoon },
-        seoQueue: { byStatus: seoByStatus, overdue: seoOverdue.slice(0, 10), total: allSeo.length },
-        readiness,
-        recentActivity: activity.slice(0, 20),
-      });
-    } catch (e: any) {
-      console.error("agency-overview error:", e);
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // ─── Integration Health ───────────────────────────────────────────────────────
-
-  // GET all statuses for a company
-  app.get("/api/companies/:id/integrations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.id as string;
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) {
-        const membership = await storage.getCompanyMembership(companyId, req.user!.id);
-        if (!membership) return res.status(403).json({ error: "Access denied" });
-      }
-      const statuses = await storage.getIntegrationStatuses(companyId);
-      res.json(statuses);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PUT upsert a single integration status for a company (admin only)
-  app.put("/api/companies/:id/integrations/:type", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.id as string;
-      const intType = req.params.type as string;
-      const validTypes = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"];
-      if (!validTypes.includes(intType)) return res.status(400).json({ error: "Invalid integration type" });
-      const { status, externalAccountId, externalObjectId, lastSyncTime, lastError, setupChecklistStatus, notes } = req.body;
-      const record = await storage.upsertIntegrationStatus(companyId, intType, {
-        status, externalAccountId, externalObjectId, lastSyncTime, lastError, setupChecklistStatus, notes,
-        updatedBy: req.user!.id,
-        updatedByName: [req.user!.firstName, req.user!.lastName].filter(Boolean).join(" ") || (req.user!.email as string),
-      });
-      res.json(record);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // DELETE a single integration status (admin only)
-  app.delete("/api/companies/:companyId/integrations/:integrationId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteIntegrationStatus(req.params.integrationId as string);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // GET all integration statuses across all companies — for global dashboard
-  app.get("/api/admin/integrations", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isUserAdmin = await storage.isAdmin(req.user!.id);
-      if (!isUserAdmin) return res.status(403).json({ error: "Admin access required" });
-      const [companies, statuses] = await Promise.all([
-        storage.getAllCompanies(),
-        storage.getAllIntegrationStatuses(),
-      ]);
-      res.json({
-        companies: companies.map(c => ({ id: c.id, name: c.name })),
-        statuses,
-      });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ─── SEO / Directory Tracking ────────────────────────────────────────────────
-
-  // Global admin view (all companies)
-  app.get("/api/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const items = await storage.getAllSeoDirectories();
-      res.json(items);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Company-scoped list
-  app.get("/api/companies/:companyId/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const items = await storage.getSeoDirectories(req.params.companyId as string);
-      res.json(items);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Create
-  app.post("/api/companies/:companyId/seo-directories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const parsed = insertSeoDirectorySchema.partial().parse({ ...req.body, companyId });
-      if (!parsed.name) return res.status(400).json({ error: "Name is required" });
-      const user = await storage.getUser(req.user!.id);
-      const item = await storage.createSeoDirectory({
-        ...parsed,
-        companyId,
-        name: parsed.name,
-        type: parsed.type ?? "directory",
-        status: parsed.status ?? "not_started",
-        createdBy: req.user!.id,
-        createdByName: user ? `${user.firstName} ${user.lastName}`.trim() : parsed.createdByName ?? "",
-      } as any);
-      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
-      res.json(item);
-    } catch (e: any) { res.status(400).json({ error: e.message }); }
-  });
-
-  // Update
-  app.patch("/api/companies/:companyId/seo-directories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const item = await storage.updateSeoDirectory(req.params.id as string, req.body);
-      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
-      res.json(item);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Delete
-  app.delete("/api/companies/:companyId/seo-directories/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      await storage.deleteSeoDirectory(req.params.id as string);
-      broadcastInvalidation([`/api/companies/${companyId}/seo-directories`, "/api/seo-directories"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ─── Email Logs & Workflow Emails ─────────────────────────────────────────────
-
-  const portalBase = () => process.env.REPLIT_DEPLOYMENT_URL || `http://localhost:5000`;
-
-  // GET company email logs
-  app.get("/api/companies/:companyId/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) {
-        const membership = await storage.getCompanyMembership(companyId, req.user!.id);
-        if (!membership) return res.status(403).json({ error: "Access denied" });
-      }
-      const { templateType, status, relatedTaskId, relatedCampaignId, relatedMeetingId } = req.query as Record<string, string>;
-      const logs = await storage.getEmailLogs(companyId, { templateType, status, relatedTaskId, relatedCampaignId, relatedMeetingId });
-      res.json(logs);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // GET single email log
-  app.get("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const log = await storage.getEmailLog(req.params.id as string);
-      if (!log) return res.status(404).json({ error: "Not found" });
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) {
-        const membership = await storage.getCompanyMembership(log.companyId, req.user!.id);
-        if (!membership) return res.status(403).json({ error: "Access denied" });
-      }
-      res.json(log);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // GET all email logs (admin only)
-  app.get("/api/admin/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { templateType, status } = req.query as Record<string, string>;
-      const logs = await storage.getAllEmailLogs({ templateType, status });
-      res.json(logs);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST build preview — returns { subject, html } without saving or sending
-  app.post("/api/email-logs/preview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { templateType, templateData } = req.body;
-      let result: { subject: string; html: string };
-      switch (templateType) {
-        case "approval_request":    result = buildApprovalRequestEmail(templateData); break;
-        case "meeting_recap":       result = buildMeetingRecapEmail(templateData); break;
-        case "task_reminder":       result = buildTaskReminderEmail(templateData); break;
-        case "monthly_report_ready": result = buildMonthlyReportReadyEmail(templateData); break;
-        case "monthly_report_client": result = buildMonthlyReportClientEmail(templateData); break;
-        case "planning_gap_alert":  result = buildPlanningGapAlertEmail(templateData); break;
-        default: return res.status(400).json({ error: "Unknown templateType" });
-      }
-      res.json(result);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST create draft email log (admin only)
-  app.post("/api/email-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { companyId, recipients, templateType, templateData, subject: overrideSubject, relatedTaskId, relatedCampaignId, relatedMeetingId, relatedReportId, idempotencyKey } = req.body;
-
-      // Idempotency check
-      if (idempotencyKey) {
-        const existing = await storage.getEmailLogByIdempotencyKey(idempotencyKey);
-        if (existing) return res.json(existing);
-      }
-
-      // Build HTML from template
-      let built: { subject: string; html: string };
-      switch (templateType) {
-        case "approval_request":    built = buildApprovalRequestEmail(templateData); break;
-        case "meeting_recap":       built = buildMeetingRecapEmail(templateData); break;
-        case "task_reminder":       built = buildTaskReminderEmail(templateData); break;
-        case "monthly_report_ready": built = buildMonthlyReportReadyEmail(templateData); break;
-        case "monthly_report_client": built = buildMonthlyReportClientEmail(templateData); break;
-        case "planning_gap_alert":  built = buildPlanningGapAlertEmail(templateData); break;
-        default: return res.status(400).json({ error: "Unknown templateType" });
-      }
-
-      const log = await storage.createEmailLog({
-        companyId,
-        recipients: Array.isArray(recipients) ? recipients : [recipients],
-        templateType,
-        subject: overrideSubject || built.subject,
-        htmlBody: built.html,
-        status: "draft",
-        triggeredBy: "user",
-        triggeredById: req.user!.id,
-        relatedTaskId: relatedTaskId || null,
-        relatedCampaignId: relatedCampaignId || null,
-        relatedMeetingId: relatedMeetingId || null,
-        relatedReportId: relatedReportId || null,
-        idempotencyKey: idempotencyKey || null,
-      });
-      broadcastInvalidation([`/api/companies/${companyId}/email-logs`, "/api/admin/email-logs"]);
-      res.status(201).json(log);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PATCH update draft (subject/recipients/htmlBody while still draft)
-  app.patch("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const log = await storage.getEmailLog(req.params.id as string);
-      if (!log) return res.status(404).json({ error: "Not found" });
-      if (log.status !== "draft") return res.status(400).json({ error: "Only draft emails can be edited" });
-      const { subject, recipients, htmlBody } = req.body;
-      const updated = await storage.updateEmailLog(log.id, {
-        ...(subject !== undefined ? { subject } : {}),
-        ...(recipients !== undefined ? { recipients } : {}),
-        ...(htmlBody !== undefined ? { htmlBody } : {}),
-      });
-      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST send a draft email log (admin only)
-  app.post("/api/email-logs/:id/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const log = await storage.getEmailLog(req.params.id as string);
-      if (!log) return res.status(404).json({ error: "Not found" });
-      if (log.status === "sent") return res.status(400).json({ error: "Email already sent" });
-      if (log.status === "cancelled") return res.status(400).json({ error: "Email was cancelled" });
-
-      const result = await sendWorkflowEmail({
-        to: log.recipients,
-        subject: log.subject,
-        html: log.htmlBody,
-        idempotencyKey: log.idempotencyKey || undefined,
-      });
-
-      const now = new Date().toISOString();
-      const updated = await storage.updateEmailLog(log.id, {
-        status: result.success ? "sent" : "failed",
-        sentAt: result.success ? now : undefined,
-        resendEmailId: result.resendId || undefined,
-        errorMessage: result.error || undefined,
-      });
-      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
-      if (!result.success) return res.status(502).json({ error: result.error, log: updated });
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST cancel a draft
-  app.post("/api/email-logs/:id/cancel", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const log = await storage.getEmailLog(req.params.id as string);
-      if (!log) return res.status(404).json({ error: "Not found" });
-      if (log.status === "sent") return res.status(400).json({ error: "Cannot cancel an already-sent email" });
-      const updated = await storage.updateEmailLog(log.id, { status: "cancelled" });
-      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`]);
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // DELETE email log
-  app.delete("/api/email-logs/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const log = await storage.getEmailLog(req.params.id as string);
-      if (!log) return res.status(404).json({ error: "Not found" });
-      await storage.deleteEmailLog(log.id);
-      broadcastInvalidation([`/api/companies/${log.companyId}/email-logs`, "/api/admin/email-logs"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Service Tracks ──────────────────────────────────────────────────────────
-
-  app.get("/api/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const tracks = await storage.getServiceTracks();
-      res.json(tracks);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { name, slug, description, status, sortOrder } = req.body;
-      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
-      const track = await storage.createServiceTrack({ name: name.trim(), slug: slug?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"), description: description || null, status: status || "active", sortOrder: sortOrder ?? 0 });
-      broadcastInvalidation(["/api/service-tracks"]);
-      res.json(track);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.patch("/api/service-tracks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const track = await storage.updateServiceTrack(req.params.id as string, req.body);
-      if (!track) return res.status(404).json({ error: "Not found" });
-      broadcastInvalidation(["/api/service-tracks"]);
-      res.json(track);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/service-tracks/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteServiceTrack(req.params.id as string);
-      broadcastInvalidation(["/api/service-tracks"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Retainer Templates ──────────────────────────────────────────────────────
-
-  app.get("/api/retainer-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const templates = await storage.getRetainerTemplates();
-      res.json(templates);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.get("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const template = await storage.getRetainerTemplate(req.params.id as string);
-      if (!template) return res.status(404).json({ error: "Not found" });
-      const tracks = await storage.getRetainerTemplateServiceTracks(template.id);
-      res.json({ ...template, serviceTracks: tracks });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/retainer-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { serviceTracks: trackEntries, ...rest } = req.body;
-      if (!rest.name?.trim()) return res.status(400).json({ error: "Name is required" });
-      if (!rest.slug?.trim()) rest.slug = rest.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      const template = await storage.createRetainerTemplate(rest);
-      if (Array.isArray(trackEntries) && trackEntries.length > 0) {
-        await storage.setRetainerTemplateServiceTracks(template.id, trackEntries);
-      }
-      broadcastInvalidation(["/api/retainer-templates"]);
-      res.json(template);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.patch("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { serviceTracks: trackEntries, ...rest } = req.body;
-      const template = await storage.updateRetainerTemplate(req.params.id as string, rest);
-      if (!template) return res.status(404).json({ error: "Not found" });
-      if (Array.isArray(trackEntries)) {
-        await storage.setRetainerTemplateServiceTracks(template.id, trackEntries);
-      }
-      broadcastInvalidation(["/api/retainer-templates", `/api/retainer-templates/${template.id}`]);
-      res.json(template);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/retainer-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteRetainerTemplate(req.params.id as string);
-      broadcastInvalidation(["/api/retainer-templates"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/retainer-templates/:id/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { entries } = req.body; // [{ serviceTrackId, includedByDefault }]
-      await storage.setRetainerTemplateServiceTracks(req.params.id as string, entries || []);
-      broadcastInvalidation([`/api/retainer-templates/${req.params.id}`]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.get("/api/retainer-templates/:id/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const rows = await storage.getRetainerTemplateTaskTemplates(req.params.id as string);
-      res.json(rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/retainer-templates/:id/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { entries } = req.body;
-      await storage.setRetainerTemplateTaskTemplates(req.params.id as string, entries || []);
-      broadcastInvalidation([`/api/retainer-templates/${req.params.id}/task-templates`]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Task Templates ──────────────────────────────────────────────────────────
-
-  app.get("/api/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const { serviceTrackId, isActive } = req.query;
-      const filters: any = {};
-      if (serviceTrackId) filters.serviceTrackId = serviceTrackId as string;
-      if (isActive !== undefined) filters.isActive = isActive === "true";
-      const templates = await storage.getTaskTemplates(filters);
-      res.json(templates);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.get("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const t = await storage.getTaskTemplate(req.params.id as string);
-      if (!t) return res.status(404).json({ error: "Not found" });
-      const retainerLinks = await storage.getTaskTemplateRetainerLinks(t.id);
-      res.json({ ...t, retainerLinks });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/task-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      if (!req.body.title?.trim()) return res.status(400).json({ error: "Title is required" });
-      const template = await storage.createTaskTemplate(req.body);
-      broadcastInvalidation(["/api/task-templates"]);
-      res.json(template);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.patch("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const template = await storage.updateTaskTemplate(req.params.id as string, req.body);
-      if (!template) return res.status(404).json({ error: "Not found" });
-      broadcastInvalidation(["/api/task-templates", `/api/task-templates/${template.id}`]);
-      res.json(template);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteTaskTemplate(req.params.id as string);
-      broadcastInvalidation(["/api/task-templates"]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/task-templates/seed", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const existing = await storage.getTaskTemplates();
-      if (existing.length > 0) return res.status(400).json({ error: "Task templates already exist. Use individual CRUD to add more." });
-      const tracks = await storage.getServiceTracks();
-      const findTrack = (name: string) => tracks.find(t => t.name.toLowerCase().includes(name.toLowerCase()))?.id ?? null;
-      const seeds = [
-        { title: "Monthly Strategy & Priority Call", description: "Monthly check-in to review priorities, align on goals, and plan the upcoming month.", defaultInstructions: "Prepare agenda with last month's wins, current KPIs, and priorities for next 30 days.", serviceTrackId: findTrack("Account Management"), cadence: "monthly", defaultRoleOwner: "account_manager", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: true, defaultDueOffsetDays: 30, sortOrder: 1 },
-        { title: "Monthly Performance Report", description: "Comprehensive monthly report covering all active service tracks, KPIs, and recommendations.", defaultInstructions: "Include traffic, leads, campaign results, credit usage, and next month recommendations.", serviceTrackId: findTrack("Reporting"), cadence: "monthly", defaultRoleOwner: "strategist", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: true, defaultDueOffsetDays: 5, sortOrder: 2 },
-        { title: "Content Calendar Planning (30–60 days)", description: "Plan and schedule content calendar for the next 30–60 days across all active channels.", defaultInstructions: "Map out content themes, platforms, posting cadence, and assign production tasks.", serviceTrackId: findTrack("Content"), cadence: "monthly", defaultRoleOwner: "content_lead", defaultPriority: "medium", requiresClientApproval: true, createsClientVisibleTask: true, defaultDueOffsetDays: 14, sortOrder: 3 },
-        { title: "GBP Post & Update Review", description: "Review and publish Google Business Profile posts, update business info, and respond to reviews.", defaultInstructions: "Check for unanswered reviews, update hours/photos if needed, publish 4–8 posts for the month.", serviceTrackId: findTrack("Local SEO"), cadence: "monthly", defaultRoleOwner: "strategist", defaultPriority: "medium", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 7, sortOrder: 4 },
-        { title: "Paid Ads Performance Audit", description: "Review ad performance, adjust budgets, refine targeting, and produce a summary report.", defaultInstructions: "Pull spend, CTR, CPA, ROAS. Flag underperforming campaigns and recommend changes.", serviceTrackId: findTrack("Paid Ads"), cadence: "monthly", defaultRoleOwner: "ads_manager", defaultPriority: "high", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 10, sortOrder: 5 },
-        { title: "HubSpot Pipeline & Workflow Audit", description: "Audit active HubSpot workflows, deal pipeline health, and contact list hygiene.", defaultInstructions: "Check workflow error rates, stale deals, unsubscribes, and suggest automations.", serviceTrackId: findTrack("HubSpot"), cadence: "monthly", defaultRoleOwner: "hubspot_specialist", defaultPriority: "medium", requiresClientApproval: false, createsClientVisibleTask: false, defaultDueOffsetDays: 14, sortOrder: 6 },
-      ];
-      const created = [];
-      for (const seed of seeds) {
-        const t = await storage.createTaskTemplate({ ...seed, isActive: true, defaultCreditCost: null, defaultStartOffsetDays: null, deliverableTypeId: null } as any);
-        created.push(t);
-      }
-      broadcastInvalidation(["/api/task-templates"]);
-      res.json(created);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Client Retainer Assignment routes ─────────────────────────────────────
-
-  // GET current assignment for a company
-  app.get("/api/companies/:companyId/retainer-assignment", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const assignment = await storage.getClientRetainerAssignment(req.params.companyId as string);
-      if (!assignment) return res.json(null);
-      const tracks = await storage.getClientRetainerServiceTracks(assignment.id);
-      const template = await storage.getRetainerTemplate(assignment.retainerTemplateId);
-      res.json({ ...assignment, serviceTracks: tracks, template });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PUT upsert assignment
-  app.put("/api/companies/:companyId/retainer-assignment", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const existing = await storage.getClientRetainerAssignment(companyId);
-      const { retainerTemplateId, status, startDate, billingDayOfMonth, monthlyCreditAllocationOverride, monthlyPriceOverride, generationWindowDaysOverride, notes } = req.body;
-      let assignment;
-      if (existing) {
-        assignment = await storage.updateClientRetainerAssignment(existing.id, {
-          retainerTemplateId, status, startDate, billingDayOfMonth,
-          monthlyCreditAllocationOverride: monthlyCreditAllocationOverride ?? null,
-          monthlyPriceOverride: monthlyPriceOverride ?? null,
-          generationWindowDaysOverride: generationWindowDaysOverride ?? null,
-          notes: notes ?? null,
-        });
-      } else {
-        assignment = await storage.createClientRetainerAssignment({
-          companyId, retainerTemplateId,
-          status: status || "draft",
-          startDate, billingDayOfMonth: billingDayOfMonth || 1,
-          monthlyCreditAllocationOverride: monthlyCreditAllocationOverride ?? null,
-          monthlyPriceOverride: monthlyPriceOverride ?? null,
-          generationWindowDaysOverride: generationWindowDaysOverride ?? null,
-          notes: notes ?? null,
-        });
-      }
-      broadcastInvalidation([`/api/companies/${companyId}/retainer-assignment`]);
-      res.json(assignment);
-
-      // Auto-generate tasks 90 days ahead when an assignment becomes active
-      if (assignment && assignment.status === "active" && assignment.autoGenerationEnabled) {
-        import("./retainer-scheduler")
-          .then(({ runRetainerAutoGeneration }) =>
-            runRetainerAutoGeneration({ runType: "manual", triggeredBy: req.user!.id, companyIdFilter: companyId })
-          )
-          .then(() => broadcastInvalidation(["/api/tasks"]))
-          .catch((err) => console.error("[retainer] post-assignment generation failed:", err.message));
-      }
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // PUT service tracks for an assignment
-  app.put("/api/companies/:companyId/retainer-assignment/service-tracks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const assignment = await storage.getClientRetainerAssignment(companyId);
-      if (!assignment) return res.status(404).json({ error: "No retainer assignment found for this company" });
-      const { tracks } = req.body as { tracks: { serviceTrackId: string; isActive: boolean; notes?: string | null }[] };
-      await storage.setClientRetainerServiceTracks(assignment.id, tracks || []);
-      broadcastInvalidation([`/api/companies/${companyId}/retainer-assignment`]);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST preview retainer tasks (dry run — no tasks created)
-  app.post("/api/companies/:companyId/retainer-assignment/preview-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const { retainerTemplateId, serviceTrackIds, periodStart, periodDays, includeMonthly, includeQuarterly, includeAnnual } = req.body as {
-        retainerTemplateId: string;
-        serviceTrackIds?: string[];
-        periodStart: string;
-        periodDays: 30 | 60 | 90;
-        includeMonthly: boolean;
-        includeQuarterly: boolean;
-        includeAnnual: boolean;
-      };
-
-      const start = new Date(periodStart);
-      const end = new Date(start.getTime() + (periodDays || 30) * 24 * 60 * 60 * 1000);
-
-      // Load all task templates linked to this retainer template
-      const linked = await storage.getRetainerTemplateTaskTemplates(retainerTemplateId);
-
-      // Load service track info for names
-      const allTracks = await storage.getServiceTracks();
-      const trackMap: Record<string, string> = {};
-      for (const t of allTracks) trackMap[t.id] = t.name;
-
-      // Load existing tasks for this company in the period (for duplicate detection)
-      const existingTasks = await storage.getTasks(companyId);
-      const periodTaskTitles = existingTasks
-        .filter(t => {
-          if (!t.dueDate) return false;
-          const d = new Date(t.dueDate);
-          return d >= start && d <= end;
-        })
-        .map(t => t.title.toLowerCase().trim());
-
-      const previewTasks: any[] = [];
-
-      for (const link of linked) {
-        const tpl = link.template;
-        if (!tpl.isActive) continue;
-
-        // Service track filter
-        if (serviceTrackIds && serviceTrackIds.length > 0 && tpl.serviceTrackId) {
-          if (!serviceTrackIds.includes(tpl.serviceTrackId)) continue;
-        }
-
-        // Cadence filter — determine how many instances to generate
-        const cadence = tpl.cadence || "once";
-        let instances = 0;
-        let monthlyQty = link.monthlyQuantity ?? 1;
-        let quarterlyQty = link.quarterlyQuantity ?? 1;
-        let annualQty = link.annualQuantity ?? 1;
-
-        if (cadence === "monthly" && includeMonthly) {
-          // Count full months in the period
-          const months = Math.floor(periodDays / 30);
-          instances = Math.max(1, months) * monthlyQty;
-        } else if (cadence === "quarterly" && includeQuarterly) {
-          instances = Math.floor(periodDays / 90) > 0 ? quarterlyQty : (periodDays >= 60 ? quarterlyQty : 0);
-          if (instances === 0) instances = 1; // always show at least 1 if included
-        } else if (cadence === "annual" && includeAnnual) {
-          instances = annualQty;
-        } else if (cadence === "once") {
-          instances = 1;
-        } else if (cadence === "weekly" && includeMonthly) {
-          instances = Math.floor(periodDays / 7) * monthlyQty;
-        }
-
-        if (instances <= 0) continue;
-
-        const creditCost = parseFloat(String(link.creditOverride ?? tpl.defaultCreditCost ?? 1));
-        const dueOffsetDays = tpl.defaultDueOffsetDays ?? Math.floor(periodDays / 2);
-
-        for (let i = 0; i < instances; i++) {
-          const dueDate = new Date(start.getTime() + (dueOffsetDays + i * 30) * 24 * 60 * 60 * 1000);
-          if (dueDate > end) break;
-          const dueDateStr = dueDate.toISOString().split("T")[0];
-          const titleLower = tpl.title.toLowerCase().trim();
-          const isDuplicate = periodTaskTitles.includes(titleLower);
-
-          previewTasks.push({
-            taskTemplateId: tpl.id,
-            title: tpl.title,
-            serviceTrackId: tpl.serviceTrackId,
-            serviceTrackName: tpl.serviceTrackId ? (trackMap[tpl.serviceTrackId] || "—") : "—",
-            cadence,
-            dueDate: dueDateStr,
-            roleOwner: tpl.defaultRoleOwner || "—",
-            creditCost,
-            clientVisible: tpl.createsClientVisibleTask,
-            requiresApproval: tpl.requiresClientApproval,
-            templateName: tpl.title,
-            isDuplicate,
-            instanceIndex: i + 1,
-          });
-        }
-      }
-
-      // Compute totals
-      const totalCredits = previewTasks.reduce((sum, t) => sum + t.creditCost, 0);
-      const company = await storage.getCompany(companyId);
-      const retainerTemplate = await storage.getRetainerTemplate(retainerTemplateId);
-      const assignment = await storage.getClientRetainerAssignment(companyId);
-      const monthlyAllowance = assignment?.monthlyCreditAllocationOverride ?? retainerTemplate?.monthlyCreditAllocation ?? company?.monthlyCredits ?? 0;
-
-      const byServiceTrack: Record<string, number> = {};
-      for (const t of previewTasks) {
-        const key = t.serviceTrackName;
-        byServiceTrack[key] = (byServiceTrack[key] || 0) + t.creditCost;
-      }
-
-      res.json({
-        tasks: previewTasks,
-        totals: {
-          totalCredits,
-          monthlyAllowance,
-          projectedOverage: Math.max(0, totalCredits - monthlyAllowance),
-          remainingCredits: Math.max(0, monthlyAllowance - totalCredits),
-          byServiceTrack,
-        },
-      });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // POST confirm-tasks — actually create the tasks from the preview
-  app.post("/api/companies/:companyId/retainer-assignment/confirm-tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const { tasks, periodStart, periodEnd, retainerTemplateId, clientRetainerAssignmentId } = req.body as {
-        tasks: Array<{
-          title: string;
-          dueDate: string;
-          creditCost: number;
-          roleOwner: string;
-          taskTemplateId: string;
-          serviceTrackId?: string;
-          clientVisible: boolean;
-          requiresApproval: boolean;
-          description?: string;
-          isDuplicate?: boolean;
-        }>;
-        periodStart: string;
-        periodEnd: string;
-        retainerTemplateId: string;
-        clientRetainerAssignmentId?: string;
-      };
-
-      const created = [];
-      const skipped = [];
-
-      for (const t of tasks) {
-        // Skip duplicates — already-generated tasks for the same company+template+period
-        const existing = await storage.getRetainerGeneratedTaskByDedup(companyId, t.taskTemplateId, periodStart).catch(() => null);
-        if (existing) {
-          skipped.push({ taskTemplateId: t.taskTemplateId, reason: "already_generated" });
-          continue;
-        }
-
-        const tpl = await storage.getTaskTemplate(t.taskTemplateId).catch(() => null);
-
-        const task = await storage.createTask({
-          companyId,
-          title: t.title,
-          description: tpl?.defaultInstructions ?? tpl?.description ?? t.description ?? null,
-          status: "pending",
-          priority: tpl?.defaultPriority ?? "medium",
-          creditCost: String(t.creditCost),
-          type: "assigned",
-          dueDate: t.dueDate,
-          billingPeriodStart: periodStart,
-          billingPeriodEnd: periodEnd,
-          taskOwnership: "agency",
-          approvalStatus: t.requiresApproval ? "pending" : "approved",
-          noCredit: false,
-          source: "retainer_template",
-          taskTemplateId: t.taskTemplateId,
-          retainerTemplateId: retainerTemplateId ?? null,
-          clientRetainerAssignmentId: clientRetainerAssignmentId ?? null,
-          serviceTrackId: t.serviceTrackId ?? null,
-          clientVisible: t.clientVisible,
-        } as any);
-
-        // Record the generation history entry for dedup
-        await storage.createRetainerGeneratedTask({
-          companyId,
-          taskTemplateId: t.taskTemplateId,
-          retainerTemplateId: retainerTemplateId ?? "",
-          clientRetainerAssignmentId: clientRetainerAssignmentId ?? "",
-          generatedTaskId: task.id,
-          periodStart,
-          periodEnd,
-        });
-
-        // Create credit reservation if this task has a credit cost
-        const creditCostNum = parseFloat(String(t.creditCost));
-        if (creditCostNum > 0) {
-          await storage.createCreditReservation({
-            companyId,
-            generatedTaskId: task.id,
-            billingPeriodStart: periodStart,
-            billingPeriodEnd: periodEnd,
-            reservedCredits: String(creditCostNum),
-            status: "reserved",
-          });
-        }
-
-        created.push(task);
-      }
-
-      broadcastInvalidation([
-        `/api/tasks?companyId=${companyId}`,
-        `/api/companies/${companyId}`,
-        `/api/companies/${companyId}/credit-projection`,
-      ]);
-      res.status(201).json({ created: created.length, skipped: skipped.length, tasks: created, skippedTasks: skipped });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Retainer Overview ──────────────────────────────────────────────────────
-
-  app.get("/api/companies/:companyId/retainer-overview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const userId = req.user!.id;
-      const isAdminUser = await storage.isAdmin(userId);
-      if (!isAdminUser) {
-        const member = await storage.getCompanyMember(userId, companyId);
-        if (!member) return res.status(403).json({ error: "Forbidden" });
-      }
-
-      const [assignment, credits, tasks, campaigns] = await Promise.all([
-        storage.getClientRetainerAssignment(companyId),
-        storage.getCreditProjection(companyId),
-        storage.getTasks(companyId),
-        storage.getCampaignRequests(companyId),
-      ]);
-
-      let assignmentData = null;
-      if (assignment) {
-        const [template, serviceTracks] = await Promise.all([
-          storage.getRetainerTemplate(assignment.retainerTemplateId),
-          storage.getClientRetainerServiceTracks(assignment.id),
-        ]);
-        assignmentData = { ...assignment, template: template ?? null, serviceTracks };
-      }
-
-      const now = new Date();
-      const tStr = now.toISOString().slice(0, 10);
-      const d30 = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
-      const d60 = new Date(now.getTime() + 60 * 86400000).toISOString().slice(0, 10);
-      const d90 = new Date(now.getTime() + 90 * 86400000).toISOString().slice(0, 10);
-
-      const activeTasks = tasks.filter(t =>
-        t.status !== "completed" && t.status !== "cancelled" && t.approvalStatus !== "rejected"
-      );
-      const taskCounts = {
-        next30: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d30).length,
-        next60: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d60).length,
-        next90: activeTasks.filter(t => t.dueDate && t.dueDate >= tStr && t.dueDate <= d90).length,
-      };
-
-      const trackNameMap: Record<string, string> = {};
-      if (assignmentData?.serviceTracks) {
-        for (const st of assignmentData.serviceTracks as any[]) {
-          if (st.track) trackNameMap[st.serviceTrackId] = st.track.name;
-        }
-      }
-
-      const upcomingRetainerTasks = activeTasks
-        .filter(t => (t.retainerTemplateId || t.clientRetainerAssignmentId) && (!t.dueDate || t.dueDate >= tStr))
-        .sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"))
-        .slice(0, 30)
-        .map(t => ({
-          id: t.id,
-          title: t.title,
-          dueDate: t.dueDate ?? null,
-          status: t.status,
-          approvalStatus: t.approvalStatus ?? null,
-          serviceTrackId: t.serviceTrackId ?? null,
-          serviceTrackName: t.serviceTrackId ? (trackNameMap[t.serviceTrackId] ?? null) : null,
-          assignedTo: t.assignedTo ?? null,
-          creditCost: t.creditCost,
-          campaignRequestId: t.campaignRequestId ?? null,
-        }));
-
-      res.json({
-        assignment: assignmentData,
-        credits,
-        taskCounts,
-        campaigns: { active: campaigns.filter(c => !["rejected", "cancelled"].includes(c.status)).length },
-        upcomingRetainerTasks,
-      });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Retainer Auto-Generation: per-company toggle ───────────────────────────
-
-  app.patch("/api/companies/:companyId/retainer-assignment/auto-gen", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const { autoGenerationEnabled } = req.body as { autoGenerationEnabled: boolean };
-      const assignment = await storage.getClientRetainerAssignment(companyId);
-      if (!assignment) return res.status(404).json({ error: "No retainer assignment found" });
-      const updated = await storage.updateClientRetainerAssignment(assignment.id, { autoGenerationEnabled: !!autoGenerationEnabled });
-      broadcastInvalidation([`/api/companies/${companyId}/retainer-overview`, `/api/companies/${companyId}/retainer-assignment`]);
-      res.json(updated);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Admin: Global retainer settings ────────────────────────────────────────
-
-  app.get("/api/admin/retainer-settings", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const [enabled, dryRun, windowDays] = await Promise.all([
-        storage.getSystemSetting("retainer.autoGenerationEnabled"),
-        storage.getSystemSetting("retainer.dryRun"),
-        storage.getSystemSetting("retainer.generationWindowDays"),
-      ]);
-      res.json({
-        autoGenerationEnabled: enabled !== "false",
-        dryRun: dryRun === "true",
-        generationWindowDays: parseInt(windowDays ?? "30", 10),
-      });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/admin/retainer-settings", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { autoGenerationEnabled, dryRun, generationWindowDays } = req.body as {
-        autoGenerationEnabled?: boolean;
-        dryRun?: boolean;
-        generationWindowDays?: number;
-      };
-      const ops: Promise<void>[] = [];
-      if (autoGenerationEnabled !== undefined) ops.push(storage.setSystemSetting("retainer.autoGenerationEnabled", String(autoGenerationEnabled)));
-      if (dryRun !== undefined) ops.push(storage.setSystemSetting("retainer.dryRun", String(dryRun)));
-      if (generationWindowDays !== undefined) ops.push(storage.setSystemSetting("retainer.generationWindowDays", String(generationWindowDays)));
-      await Promise.all(ops);
-      res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/admin/retainer-auto-generate", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { dryRun, companyId } = req.body as { dryRun?: boolean; companyId?: string };
-      const { runRetainerAutoGeneration } = await import("./retainer-scheduler");
-      const result = await runRetainerAutoGeneration({
-        dryRunOverride: dryRun,
-        triggeredBy: req.user!.id,
-        runType: "manual",
-        companyIdFilter: companyId,
-      });
-      res.json(result);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.get("/api/admin/retainer-generation-logs", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const limit = parseInt(String(req.query.limit ?? "50"), 10);
-      const logs = await storage.getRetainerGenerationLogs(limit);
-      res.json(logs);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Credit Projection ──────────────────────────────────────────────────────
-
-  app.get("/api/companies/:companyId/credit-projection", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const companyId = req.params.companyId as string;
-      const projection = await storage.getCreditProjection(companyId);
-      res.json(projection);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Onboarding Templates ───────────────────────────────────────────────────
-
-  app.get("/api/onboarding-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const templates = await storage.getOnboardingTemplates();
-      const result = await Promise.all(templates.map(async (t) => ({
-        ...t,
-        tasks: await storage.getOnboardingTaskTemplates(t.id),
-      })));
-      res.json(result);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/onboarding-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { name, description, suggestedPrice, status } = req.body;
-      if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
-      const tpl = await storage.createOnboardingTemplate({ name: name.trim(), description: description ?? null, suggestedPrice: suggestedPrice ?? null, status: status ?? "active" });
-      res.status(201).json(tpl);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/onboarding-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const tpl = await storage.updateOnboardingTemplate(String(req.params.id), req.body);
-      if (!tpl) return res.status(404).json({ error: "Not found" });
-      res.json(tpl);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/onboarding-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteOnboardingTemplate(String(req.params.id));
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Onboarding Task Templates
-  app.post("/api/onboarding-templates/:templateId/tasks", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { title, description, defaultInstructions, defaultCreditCost, defaultDueOffsetDays, defaultRoleOwner, requiresClientApproval, createsClientVisibleTask, noCredit, sortOrder } = req.body;
-      if (!title?.trim()) return res.status(400).json({ error: "Title is required" });
-      const task = await storage.createOnboardingTaskTemplate({
-        onboardingTemplateId: String(req.params.templateId),
-        title: title.trim(),
-        description: description ?? null,
-        defaultInstructions: defaultInstructions ?? null,
-        defaultCreditCost: defaultCreditCost ?? "0",
-        defaultDueOffsetDays: defaultDueOffsetDays ?? null,
-        defaultRoleOwner: defaultRoleOwner ?? null,
-        requiresClientApproval: requiresClientApproval ?? false,
-        createsClientVisibleTask: createsClientVisibleTask ?? false,
-        noCredit: noCredit !== false,
-        sortOrder: sortOrder ?? 0,
-      });
-      res.status(201).json(task);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.put("/api/onboarding-task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const task = await storage.updateOnboardingTaskTemplate(String(req.params.id), req.body);
-      if (!task) return res.status(404).json({ error: "Not found" });
-      res.json(task);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.delete("/api/onboarding-task-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      await storage.deleteOnboardingTaskTemplate(String(req.params.id));
-      res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  // Company onboarding setup: preview + confirm
-  app.post("/api/companies/:companyId/onboarding-setup/preview", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const { onboardingTemplateId, startDate } = req.body as { onboardingTemplateId: string; startDate: string };
-      const taskTemplates = await storage.getOnboardingTaskTemplates(onboardingTemplateId);
-      const base = new Date(startDate);
-      const tasks = taskTemplates.map(tpl => {
-        const dueDate = tpl.defaultDueOffsetDays != null
-          ? new Date(base.getTime() + tpl.defaultDueOffsetDays * 86400000).toISOString().split("T")[0]
-          : null;
-        return {
-          title: tpl.title,
-          description: tpl.description,
-          defaultInstructions: tpl.defaultInstructions,
-          dueDate,
-          creditCost: parseFloat(tpl.defaultCreditCost),
-          roleOwner: tpl.defaultRoleOwner,
-          requiresApproval: tpl.requiresClientApproval,
-          clientVisible: tpl.createsClientVisibleTask,
-          noCredit: tpl.noCredit,
-          sortOrder: tpl.sortOrder,
-          onboardingTaskTemplateId: tpl.id,
-        };
-      });
-      const totalCredits = tasks.reduce((s, t) => s + (t.noCredit ? 0 : t.creditCost), 0);
-      res.json({ tasks, totalCredits, taskCount: tasks.length });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/companies/:companyId/onboarding-setup/confirm", isAuthenticated, async (req: AuthenticatedRequest, res) => {
-    try {
-      const isAdmin = await storage.isAdmin(req.user!.id);
-      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-      const companyId = req.params.companyId as string;
-      const { tasks, onboardingTemplateId } = req.body as {
-        tasks: Array<{
-          title: string;
-          description?: string;
-          defaultInstructions?: string;
-          dueDate?: string;
-          creditCost: number;
-          roleOwner?: string;
-          requiresApproval: boolean;
-          clientVisible: boolean;
-          noCredit: boolean;
-          onboardingTaskTemplateId: string;
-        }>;
-        onboardingTemplateId: string;
-      };
-      const created = [];
-      for (const t of tasks) {
-        const task = await storage.createTask({
-          companyId,
-          title: t.title,
-          description: t.defaultInstructions ?? t.description ?? null,
-          status: "pending",
-          priority: "medium",
-          creditCost: String(t.creditCost),
-          type: "assigned",
-          dueDate: t.dueDate ?? null,
-          taskOwnership: "agency",
-          approvalStatus: t.requiresApproval ? "pending" : "approved",
-          noCredit: t.noCredit,
-          source: "onboarding_template",
-          clientVisible: t.clientVisible,
-        } as any);
-        created.push(task);
-      }
-      broadcastInvalidation([`/api/tasks?companyId=${companyId}`, `/api/companies/${companyId}`]);
-      res.status(201).json({ created: created.length, tasks: created });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
-
   return httpServer;
 }
-

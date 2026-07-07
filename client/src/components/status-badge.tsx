@@ -5,7 +5,7 @@ interface StatusBadgeProps {
   status: TaskStatus;
 }
 
-export const statusConfig: Record<TaskStatus, { label: string; className: string }> = {
+const statusConfig: Record<TaskStatus, { label: string; className: string }> = {
   pending: {
     label: "Pending",
     className: "bg-muted text-muted-foreground",

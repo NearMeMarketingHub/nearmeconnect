@@ -50,7 +50,7 @@ const industries = [
 export function OnboardingWizard({ onComplete, isSubmitting }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState(1);
 
-  const form = useForm<OnboardingFormData, any, OnboardingFormData>({
+  const form = useForm<OnboardingFormData>({
     resolver: zodResolver(onboardingSchema),
     defaultValues: {
       companyName: "",
@@ -58,7 +58,7 @@ export function OnboardingWizard({ onComplete, isSubmitting }: OnboardingWizardP
       email: "",
       phone: "",
       industry: "",
-      subscriptionTier: "essentials",
+      subscriptionTier: "starter",
     },
   });
 

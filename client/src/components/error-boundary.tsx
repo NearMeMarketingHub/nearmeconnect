@@ -1,12 +1,11 @@
 import { Component, ErrorInfo, ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, RefreshCw, ArrowLeft } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
-  showNav?: boolean;
 }
 
 interface State {
@@ -32,21 +31,15 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null });
   };
 
-  private handleGoBack = () => {
-    window.history.back();
-  };
-
   public render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      const showNav = this.props.showNav !== false;
-
       return (
-        <div className="flex items-center justify-center min-h-[400px] p-4">
-          <Card className="max-w-md w-full">
+        <div className="flex items-center justify-center min-h-[200px] p-4">
+          <Card className="max-w-md">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="w-5 h-5" />
@@ -55,25 +48,12 @@ export class ErrorBoundary extends Component<Props, State> {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                An error occurred while loading this page. You can try again or go back to the previous page.
+                An error occurred while loading this content. Please try refreshing.
               </p>
-              {this.state.error && (
-                <p className="text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all">
-                  {this.state.error.message}
-                </p>
-              )}
-              <div className="flex gap-2">
-                <Button onClick={this.handleReset} variant="outline" className="gap-2">
-                  <RefreshCw className="w-4 h-4" />
-                  Try Again
-                </Button>
-                {showNav && (
-                  <Button onClick={this.handleGoBack} variant="ghost" className="gap-2">
-                    <ArrowLeft className="w-4 h-4" />
-                    Go Back
-                  </Button>
-                )}
-              </div>
+              <Button onClick={this.handleReset} variant="outline" className="gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Try Again
+              </Button>
             </CardContent>
           </Card>
         </div>

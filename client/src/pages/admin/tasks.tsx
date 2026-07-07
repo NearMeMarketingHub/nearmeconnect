@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { parseLocalDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin-layout";
@@ -23,40 +22,16 @@ import {
   ChevronLeft,
   Tag,
   User,
-  Users,
-  FolderOpen,
-  Loader2,
-  List,
-  LayoutGrid,
-  Kanban,
-  ArrowRight,
-  X,
+  Loader2
 } from "lucide-react";
-
-const QUICK_FILTER_LABELS: Record<string, string> = {
-  overdue:         "Overdue Tasks",
-  due_today:       "Due Today",
-  due_this_week:   "Due This Week",
-  stale:           "Stale Tasks (7d+)",
-  awaiting_client: "Awaiting Client",
-  pending_approval:"Pending Approval",
-  no_category:     "No Category",
-  pending:         "Pending Tasks",
-  in_progress:     "In Progress Tasks",
-  urgent:          "Urgent Tasks",
-};
-import { TaskBoardView } from "@/components/task-board-view";
-import { TaskGroupedView } from "@/components/task-grouped-view";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Company, Task, CampaignRequest } from "@shared/schema";
-import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
-import { BulkTaskDialog } from "@/components/bulk-task-dialog";
-import { Layers } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Target } from "lucide-react";
 
@@ -65,7 +40,6 @@ type StatusFilter = "all" | "pending" | "in_progress" | "review" | "approved" | 
 type AssignmentFilter = "all_tasks" | "assigned_to_me";
 
 export default function AdminTasks() {
-  const [viewMode, setViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage">("list");
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all_tasks");
@@ -74,14 +48,8 @@ export default function AdminTasks() {
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignRequest | null>(null);
-  const [bulkOpen, setBulkOpen] = useState(false);
   const TASKS_PER_PAGE = 10;
   const [, setLocation] = useLocation();
-  const searchString = useSearch();
-  const activeQuickFilter = (() => {
-    const p = new URLSearchParams(searchString).get("filter");
-    return p && p in QUICK_FILTER_LABELS ? p : null;
-  })();
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -92,17 +60,6 @@ export default function AdminTasks() {
   const { data: allTasks, isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
   });
-
-  const { data: mySecondaryTaskIds } = useQuery<string[]>({
-    queryKey: ["/api/tasks/my-secondary-task-ids"],
-    queryFn: async () => {
-      const res = await fetch("/api/tasks/my-secondary-task-ids");
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!user?.id,
-  });
-  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
 
   const { data: campaignRequests } = useQuery<CampaignRequest[]>({
     queryKey: ["/api/admin/campaign-requests"],
@@ -123,49 +80,6 @@ export default function AdminTasks() {
     enabled: !!companies && companies.length > 0,
   });
 
-  const [assigneeTypeFilter, setAssigneeTypeFilter] = useState<"all" | "agency" | "company">("all");
-
-  const { data: adminUsersRaw } = useQuery<any>({
-    queryKey: ["/api/admin/users"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/users");
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : (data.admins || []);
-    },
-  });
-  const adminUsers: { id: string; userId: string; firstName: string; lastName: string; email: string }[] = useMemo(
-    () => Array.isArray(adminUsersRaw) ? adminUsersRaw : (adminUsersRaw?.admins || []),
-    [adminUsersRaw]
-  );
-
-  const { data: companyUsersRaw } = useQuery<any>({
-    queryKey: ["/api/admin/companies", selectedCompany, "users"],
-    queryFn: async () => {
-      if (selectedCompany === "all") return [];
-      const res = await fetch(`/api/admin/companies/${selectedCompany}/users`);
-      if (!res.ok) return [];
-      const d = await res.json();
-      return Array.isArray(d) ? d : [];
-    },
-    enabled: selectedCompany !== "all",
-  });
-  const companyUsers: { id: string; firstName: string; lastName: string; email: string }[] =
-    Array.isArray(companyUsersRaw) ? companyUsersRaw : [];
-
-  const agencyUserIds = useMemo(() => new Set(adminUsers.map(u => u.userId)), [adminUsers]);
-
-  const userMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const u of adminUsers) {
-      map[u.userId] = `${u.firstName} ${u.lastName}`.trim() || u.email;
-    }
-    for (const u of companyUsers) {
-      map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
-    }
-    return map;
-  }, [adminUsers, companyUsers]);
-
   const getCampaignName = (campaignRequestId: string | null) => {
     if (!campaignRequestId || !campaignRequests) return null;
     const campaign = campaignRequests.find(c => c.id === campaignRequestId);
@@ -178,38 +92,32 @@ export default function AdminTasks() {
   };
 
   const updateTaskMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
       const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
       return res.json() as Promise<Task>;
     },
     onMutate: async ({ taskId, updates }) => {
+      if (updates.status === undefined) return;
       await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
-      await queryClient.cancelQueries({ queryKey: ["/api/tasks", taskId] });
       const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
-      const previousTask = queryClient.getQueryData<Task>(["/api/tasks", taskId]);
       if (previousTasks) {
         queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
           t.id === taskId ? { ...t, ...updates } : t
         ));
       }
-      if (previousTask) {
-        queryClient.setQueryData<Task>(["/api/tasks", taskId], { ...previousTask, ...updates });
-      }
-      return { previousTasks, previousTask };
+      return { previousTasks };
     },
     onSuccess: (
       updatedTask: Task,
       { updates }: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
+      context: { previousTasks?: Task[] } | undefined
     ) => {
       queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
         old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
       );
-      queryClient.setQueryData<Task>(["/api/tasks", updatedTask.id], updatedTask);
       const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
-      const prevStatus = context?.previousTask?.status;
-      if (updates.status && creditStatuses.has(updates.status) && updates.status !== prevStatus) {
+      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
         queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId] });
         queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId, "credits"] });
         queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
@@ -219,14 +127,11 @@ export default function AdminTasks() {
     },
     onError: (
       _err: Error,
-      { taskId }: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
+      _vars: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
     ) => {
       if (context?.previousTasks) {
         queryClient.setQueryData(["/api/tasks"], context.previousTasks);
-      }
-      if (context?.previousTask) {
-        queryClient.setQueryData(["/api/tasks", taskId], context.previousTask);
       }
       toast({ title: "Failed to update task", variant: "destructive" });
     },
@@ -253,59 +158,11 @@ export default function AdminTasks() {
 
   const filteredTasks = useMemo(() => {
     if (!allTasks) return [];
-
-    // Quick filter from dashboard KPI cards — bypasses month window, shows all matching tasks
-    if (activeQuickFilter) {
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      let tasks = allTasks.filter(t => {
-        if (t.status === "cadence_parent") return false;
-        if (activeQuickFilter === "overdue") {
-          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
-          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
-          return d < today;
-        }
-        if (activeQuickFilter === "due_today") {
-          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
-          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
-          return d.getTime() === today.getTime();
-        }
-        if (activeQuickFilter === "due_this_week") {
-          // Include all incomplete tasks with a due date so we can bucket them
-          // (this week / prior week / this month / last month / older)
-          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
-          return true;
-        }
-        if (activeQuickFilter === "stale") {
-          if (["completed", "rejected", "cancelled"].includes(t.status)) return false;
-          const lastIso = (t as any).updatedAt || (t as any).createdAt;
-          if (!lastIso) return false;
-          const ageDays = (Date.now() - new Date(lastIso).getTime()) / 86400000;
-          return ageDays >= 7;
-        }
-        if (activeQuickFilter === "awaiting_client") return t.status === "review";
-        if (activeQuickFilter === "pending_approval") return t.approvalStatus === "pending_approval" || t.status === "approved";
-        if (activeQuickFilter === "no_category") return !(t as any).categoryId && !["completed", "rejected", "cancelled"].includes(t.status);
-        if (activeQuickFilter === "pending") return t.status === "pending";
-        if (activeQuickFilter === "in_progress") return t.status === "in_progress";
-        if (activeQuickFilter === "urgent") return (t.priority === "urgent" || t.priority === "high") && t.status !== "completed";
-        return true;
-      });
-      if (assignmentFilter === "assigned_to_me" && user) tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
-      if (selectedCompany !== "all") tasks = tasks.filter(t => t.companyId === selectedCompany);
-      tasks.sort((a, b) => {
-        if (!a.dueDate && !b.dueDate) return 0;
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
-      });
-      return tasks;
-    }
-
-    // Normal filtering (with month window)
+    
     let tasks = allTasks.filter(t => t.status !== "cadence_parent");
     
     if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+      tasks = tasks.filter(t => t.assignedTo === user.id);
     }
     
     if (selectedCompany !== "all") {
@@ -344,43 +201,11 @@ export default function AdminTasks() {
     });
     
     return tasks;
-  }, [allTasks, selectedCompany, statusFilter, taskMonthDate, assignmentFilter, user, activeQuickFilter]);
+  }, [allTasks, selectedCompany, statusFilter, taskMonthDate, assignmentFilter, user]);
 
   // Reset page when filters change
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
   const paginatedTasks = filteredTasks.slice((currentPage - 1) * TASKS_PER_PAGE, currentPage * TASKS_PER_PAGE);
-
-  // Week/month buckets — used when activeQuickFilter === "due_this_week"
-  const weekBuckets = useMemo(() => {
-    if (activeQuickFilter !== "due_this_week") return null;
-    const now = new Date(); now.setHours(0, 0, 0, 0);
-    const dayOfWeek = now.getDay(); // 0=Sun..6=Sat
-    const daysFromMonday = (dayOfWeek + 6) % 7;
-    const startOfThisWeek = new Date(now); startOfThisWeek.setDate(now.getDate() - daysFromMonday);
-    const startOfNextWeek = new Date(startOfThisWeek); startOfNextWeek.setDate(startOfThisWeek.getDate() + 7);
-    const startOfLastWeek = new Date(startOfThisWeek); startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-    const buckets: Array<{ id: string; label: string; tasks: Task[] }> = [
-      { id: "this_week",    label: "This Week",     tasks: [] },
-      { id: "prior_week",   label: "Prior Week",    tasks: [] },
-      { id: "this_month",   label: "Earlier This Month", tasks: [] },
-      { id: "last_month",   label: "Last Month",    tasks: [] },
-      { id: "older",        label: "Older",         tasks: [] },
-    ];
-
-    for (const t of filteredTasks) {
-      if (!t.dueDate) continue;
-      const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
-      if (d >= startOfThisWeek && d < startOfNextWeek) buckets[0].tasks.push(t);
-      else if (d >= startOfLastWeek && d < startOfThisWeek) buckets[1].tasks.push(t);
-      else if (d >= startOfThisMonth && d < startOfLastWeek) buckets[2].tasks.push(t);
-      else if (d >= startOfLastMonth && d < startOfThisMonth) buckets[3].tasks.push(t);
-      else buckets[4].tasks.push(t);
-    }
-    return buckets.filter(b => b.tasks.length > 0);
-  }, [filteredTasks, activeQuickFilter]);
 
   const reviewableOnPage = useMemo(() => {
     return paginatedTasks.filter(t => t.status === "review" || t.approvalStatus === "pending_approval");
@@ -521,7 +346,7 @@ export default function AdminTasks() {
     let tasks = allTasks.filter(t => t.status !== "cadence_parent");
     
     if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+      tasks = tasks.filter(t => t.assignedTo === user.id);
     }
     
     if (selectedCompany !== "all") {
@@ -555,155 +380,14 @@ export default function AdminTasks() {
 
   const isLoading = companiesLoading || tasksLoading;
 
-  const renderTaskRow = (task: Task) => {
-    const isReviewable = task.status === "review" || task.approvalStatus === "pending_approval";
-    return (
-      <div
-        key={task.id}
-        className="flex items-center justify-between p-4 rounded-lg border hover-elevate cursor-pointer"
-        onClick={() => setSelectedTask(task)}
-        data-testid={`task-row-${task.id}`}
-      >
-        <div className="flex items-start gap-3 flex-1 min-w-0">
-          {isReviewable ? (
-            <Checkbox
-              checked={selectedTaskIds.has(task.id)}
-              onCheckedChange={() => toggleTaskSelection(task.id)}
-              onClick={(e) => e.stopPropagation()}
-              className="mt-1 flex-shrink-0"
-              data-testid={`checkbox-task-${task.id}`}
-            />
-          ) : (
-            <button
-              className="mt-0.5 flex-shrink-0 hover:scale-110 transition-transform"
-              data-testid={`button-complete-task-${task.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                const newStatus = task.status === "completed" ? "pending" : "completed";
-                updateTaskMutation.mutate({ taskId: task.id, updates: { status: newStatus } });
-              }}
-              title={task.status === "completed" ? "Mark as pending" : "Mark as completed"}
-            >
-              {getStatusIcon(task.status, task.approvalStatus)}
-            </button>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-medium truncate">{task.title}</p>
-              {task.isRecurring && (
-                <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-              )}
-              {task.deliverableType && (
-                <Badge variant="outline" className="text-xs capitalize">
-                  {task.deliverableType.replace(/_/g, " ")}
-                </Badge>
-              )}
-              {(() => {
-                if (task.parentTaskId) return null;
-                const subs = allTasks?.filter(t => t.parentTaskId === task.id) ?? [];
-                if (subs.length === 0) return null;
-                const done = subs.filter(s => s.status === "completed").length;
-                return (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-muted-foreground" data-testid={`badge-subtasks-${task.id}`}>
-                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h4" /></svg>
-                    {done}/{subs.length}
-                  </Badge>
-                );
-              })()}
-            </div>
-            {task.description && (
-              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
-            )}
-            <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
-              <Link
-                href={`/admin/companies/${task.companyId}`}
-                onClick={(e) => e.stopPropagation()}
-                className="font-bold text-foreground dark:text-white hover:text-primary hover:underline"
-              >
-                {getCompanyName(task.companyId)}
-              </Link>
-              <span className="text-muted-foreground">•</span>
-              <span className={getDueDateColor(task.dueDate, task.status)}>
-                <Calendar className="w-3 h-3 inline mr-1" />
-                {formatDueDate(task.dueDate, task.status)}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <TaskAssigneeAvatars taskId={task.id} />
-          <Badge variant={getPriorityBadgeVariant(task.priority)}>
-            {task.priority}
-          </Badge>
-          <Badge variant={getStatusBadgeVariant(task.status)}>
-            {task.status.replace("_", " ")}
-          </Badge>
-          {task.categoryId && (() => {
-            const cat = (allCategories || []).find((c: any) => c.id === task.categoryId);
-            if (!cat) return null;
-            return (
-              <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
-                {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
-                {cat.name}
-              </Badge>
-            );
-          })()}
-          {task.campaignRequestId && getCampaignName(task.campaignRequestId) && (
-            <Badge
-              variant="outline"
-              className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                const campaign = getCampaignForTask(task.campaignRequestId);
-                if (campaign) setSelectedCampaign(campaign);
-              }}
-              data-testid={`badge-campaign-${task.id}`}
-            >
-              <Target className="w-3 h-3 mr-1" />
-              {getCampaignName(task.campaignRequestId)}
-            </Badge>
-          )}
-          {task.taskOwnership === "client" && (
-            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 text-xs">
-              Client
-            </Badge>
-          )}
-          {task.creditCost && parseFloat(task.creditCost.toString()) > 0 && (
-            <Badge variant="outline" className="font-mono">
-              {task.creditCost} cr
-            </Badge>
-          )}
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-        </div>
-      </div>
-    );
-  };
-
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
-        {/* Quick-filter banner */}
-        {activeQuickFilter && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-lg text-sm" data-testid="filter-banner">
-            <span className="font-medium text-primary">{QUICK_FILTER_LABELS[activeQuickFilter]}</span>
-            <span className="text-muted-foreground">— {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}</span>
-            <Link
-              href="/admin/tasks"
-              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="button-clear-filter"
-            >
-              <X className="h-3 w-3" />
-              Clear filter
-            </Link>
-          </div>
-        )}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">
-              {activeQuickFilter ? QUICK_FILTER_LABELS[activeQuickFilter] : "All Tasks"}
-            </h1>
+            <h1 className="text-2xl font-semibold">All Tasks</h1>
             <p className="text-muted-foreground">
-              {activeQuickFilter ? `${filteredTasks.length} task${filteredTasks.length !== 1 ? "s" : ""} matched` : "Manage and track all tasks across companies"}
+              Manage and track all tasks across companies
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -742,13 +426,8 @@ export default function AdminTasks() {
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={() => setBulkOpen(true)} data-testid="button-open-bulk-task">
-              <Layers className="w-4 h-4 mr-2" />
-              Create for Multiple
-            </Button>
           </div>
         </div>
-        <BulkTaskDialog open={bulkOpen} onOpenChange={setBulkOpen} />
 
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex gap-1">
@@ -839,107 +518,6 @@ export default function AdminTasks() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-1 flex-wrap" data-testid="view-mode-toggle">
-          <Button
-            variant={viewMode === "list" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            data-testid="view-toggle-list"
-          >
-            <List className="w-4 h-4 mr-1" />
-            List
-          </Button>
-          <Button
-            variant={viewMode === "by-assignee" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("by-assignee")}
-            data-testid="view-toggle-by-assignee"
-          >
-            <Users className="w-4 h-4 mr-1" />
-            By Assignee
-          </Button>
-          <Button
-            variant={viewMode === "by-category" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("by-category")}
-            data-testid="view-toggle-by-category"
-          >
-            <FolderOpen className="w-4 h-4 mr-1" />
-            By Category
-          </Button>
-          <Button
-            variant={viewMode === "category" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("category")}
-            data-testid="view-toggle-category"
-          >
-            <LayoutGrid className="w-4 h-4 mr-1" />
-            Category Board
-          </Button>
-          <Button
-            variant={viewMode === "stage" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("stage")}
-            data-testid="view-toggle-stage"
-          >
-            <Kanban className="w-4 h-4 mr-1" />
-            Stage Board
-          </Button>
-        </div>
-
-        {viewMode === "by-assignee" && (
-          <div className="flex items-center gap-2" data-testid="assignee-type-filter">
-            <span className="text-sm text-muted-foreground">Show:</span>
-            <Select value={assigneeTypeFilter} onValueChange={(v) => setAssigneeTypeFilter(v as typeof assigneeTypeFilter)}>
-              <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-assignee-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Assignees</SelectItem>
-                <SelectItem value="agency">Agency Staff</SelectItem>
-                <SelectItem value="company">Company Members</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {(viewMode === "by-assignee" || viewMode === "by-category") && isLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : viewMode === "by-assignee" || viewMode === "by-category" ? (
-          <TaskGroupedView
-            tasks={
-              viewMode === "by-assignee" && assigneeTypeFilter !== "all"
-                ? filteredTasks.filter(t =>
-                    assigneeTypeFilter === "agency"
-                      ? (t.assignedTo ? agencyUserIds.has(t.assignedTo) : false)
-                      : (t.assignedTo ? !agencyUserIds.has(t.assignedTo) : false)
-                  )
-                : filteredTasks
-            }
-            groupBy={viewMode === "by-assignee" ? "assignee" : "category"}
-            categories={allCategories || []}
-            userMap={userMap}
-            onTaskClick={setSelectedTask}
-            getCompanyName={getCompanyName}
-          />
-        ) : viewMode !== "list" ? (
-          <TaskBoardView
-            tasks={filteredTasks}
-            categories={allCategories || []}
-            mode={viewMode === "category" ? "category" : "stage"}
-            onTaskClick={setSelectedTask}
-            onStatusChange={(taskId, newStatus) =>
-              updateTaskMutation.mutate({ taskId, updates: { status: newStatus } })
-            }
-            allowDrag={viewMode === "stage"}
-            getCompanyName={getCompanyName}
-          />
-        ) : (
-
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -982,23 +560,7 @@ export default function AdminTasks() {
               </div>
             ) : filteredTasks.length > 0 ? (
               <div className="space-y-2">
-                {weekBuckets && weekBuckets.length > 0 ? (
-                  weekBuckets.map(bucket => (
-                    <div key={bucket.id} className="space-y-2" data-testid={`bucket-${bucket.id}`}>
-                      <div className="flex items-center gap-2 pt-3 pb-1.5 sticky top-0 bg-card z-10">
-                        <h3 className="text-sm font-semibold text-foreground">{bucket.label}</h3>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
-                          {bucket.tasks.length}
-                        </Badge>
-                        {bucket.id === "prior_week" || bucket.id === "this_month" || bucket.id === "last_month" || bucket.id === "older" ? (
-                          <span className="text-xs text-destructive/80 ml-1">overdue</span>
-                        ) : null}
-                      </div>
-                      {bucket.tasks.map(task => renderTaskRow(task))}
-                    </div>
-                  ))
-                ) : null}
-                {!weekBuckets && reviewableOnPage.length > 0 && (
+                {reviewableOnPage.length > 0 && (
                   <div className="flex items-center gap-3 px-4 py-2 border-b">
                     <Checkbox
                       checked={allPageReviewableSelected}
@@ -1011,8 +573,118 @@ export default function AdminTasks() {
                     </span>
                   </div>
                 )}
-                {!weekBuckets && paginatedTasks.map((task) => renderTaskRow(task))}
-                {!weekBuckets && totalPages > 1 && (
+                {paginatedTasks.map((task) => {
+                  const isReviewable = task.status === "review" || task.approvalStatus === "pending_approval";
+                  return (
+                  <div
+                    key={task.id}
+                    className="flex items-center justify-between p-4 rounded-lg border hover-elevate cursor-pointer"
+                    onClick={() => setSelectedTask(task)}
+                    data-testid={`task-row-${task.id}`}
+                  >
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {isReviewable ? (
+                        <Checkbox
+                          checked={selectedTaskIds.has(task.id)}
+                          onCheckedChange={() => toggleTaskSelection(task.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-1 flex-shrink-0"
+                          data-testid={`checkbox-task-${task.id}`}
+                        />
+                      ) : (
+                      <button
+                        className="mt-0.5 flex-shrink-0 hover:scale-110 transition-transform"
+                        data-testid={`button-complete-task-${task.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newStatus = task.status === "completed" ? "pending" : "completed";
+                          updateTaskMutation.mutate({ taskId: task.id, updates: { status: newStatus } });
+                        }}
+                        title={task.status === "completed" ? "Mark as pending" : "Mark as completed"}
+                      >
+                        {getStatusIcon(task.status, task.approvalStatus)}
+                      </button>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium truncate">{task.title}</p>
+                          {task.isRecurring && (
+                            <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          )}
+                          {task.deliverableType && (
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {task.deliverableType.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </div>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
+                          <Link 
+                            href={`/admin/companies/${task.companyId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-bold text-foreground dark:text-white hover:text-primary hover:underline"
+                          >
+                            {getCompanyName(task.companyId)}
+                          </Link>
+                          <span className="text-muted-foreground">•</span>
+                          <span className={getDueDateColor(task.dueDate, task.status)}>
+                            <Calendar className="w-3 h-3 inline mr-1" />
+                            {formatDueDate(task.dueDate, task.status)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <TaskAssigneeAvatars taskId={task.id} />
+                      <Badge variant={getPriorityBadgeVariant(task.priority)}>
+                        {task.priority}
+                      </Badge>
+                      <Badge variant={getStatusBadgeVariant(task.status)}>
+                        {task.status.replace("_", " ")}
+                      </Badge>
+                      {task.categoryId && (() => {
+                        const cat = (allCategories || []).find((c: any) => c.id === task.categoryId);
+                        if (!cat) return null;
+                        return (
+                          <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
+                            {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                            {cat.name}
+                          </Badge>
+                        );
+                      })()}
+                      {task.campaignRequestId && getCampaignName(task.campaignRequestId) && (
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const campaign = getCampaignForTask(task.campaignRequestId);
+                            if (campaign) setSelectedCampaign(campaign);
+                          }}
+                          data-testid={`badge-campaign-${task.id}`}
+                        >
+                          <Target className="w-3 h-3 mr-1" />
+                          {getCampaignName(task.campaignRequestId)}
+                        </Badge>
+                      )}
+                      {task.taskOwnership === "client" && (
+                        <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 text-xs">
+                          Client
+                        </Badge>
+                      )}
+                      {task.creditCost && parseFloat(task.creditCost.toString()) > 0 && (
+                        <Badge variant="outline" className="font-mono">
+                          {task.creditCost} cr
+                        </Badge>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                  );
+                })}
+                {totalPages > 1 && (
                   <div className="flex items-center justify-between pt-4 border-t">
                     <p className="text-sm text-muted-foreground">
                       Showing {(currentPage - 1) * TASKS_PER_PAGE + 1}-{Math.min(currentPage * TASKS_PER_PAGE, filteredTasks.length)} of {filteredTasks.length} tasks
@@ -1062,42 +734,25 @@ export default function AdminTasks() {
             )}
           </CardContent>
         </Card>
-        )}
       </div>
 
-      <ErrorBoundary
-        key={selectedTask?.id ?? "none"}
-        fallback={
-          <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-background border-l shadow-xl flex flex-col items-center justify-center gap-4 p-6 z-50">
-            <p className="text-sm text-muted-foreground text-center">Something went wrong loading this task.</p>
-            <button
-              className="text-sm underline text-primary"
-              onClick={() => setSelectedTask(null)}
-            >
-              Close
-            </button>
-          </div>
-        }
-      >
-        <TaskDetailPanel
-          task={selectedTask}
-          open={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
-          isAdmin={true}
-          companyId={selectedTask?.companyId || ""}
-          onNavigateToChat={(threadId, companyId) => {
-            setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
-          }}
-          onViewCampaign={(campaignRequestId) => {
-            const campaign = getCampaignForTask(campaignRequestId);
-            if (campaign) {
-              setSelectedTask(null);
-              setSelectedCampaign(campaign);
-            }
-          }}
-          onOpenTask={(t) => setSelectedTask(t)}
-        />
-      </ErrorBoundary>
+      <TaskDetailPanel
+        task={selectedTask}
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        isAdmin={true}
+        companyId={selectedTask?.companyId || ""}
+        onNavigateToChat={(threadId, companyId) => {
+          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
+        }}
+        onViewCampaign={(campaignRequestId) => {
+          const campaign = getCampaignForTask(campaignRequestId);
+          if (campaign) {
+            setSelectedTask(null);
+            setSelectedCampaign(campaign);
+          }
+        }}
+      />
 
       <CampaignDetailPanel
         campaign={selectedCampaign}

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ArrowLeft, Mail } from "lucide-react";
-import logoImage from "@assets/near-me-connect-logo.png";
+import logoImage from "@assets/LogoNewMedium_1768860762303.png";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -44,7 +44,8 @@ export default function ForgotPassword() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 gap-4">
             <div className="flex items-center gap-2">
-              <img src={logoImage} alt="Near Me Connect" className="w-[100px] h-auto dark:brightness-0 dark:invert" />
+              <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto" />
+              <span className="text-lg font-bold tracking-tight">Near Me Connect</span>
             </div>
             <ThemeToggle />
           </div>

@@ -26,11 +26,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useUpload } from "@/hooks/use-upload";
-import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
-import { HubspotPanel } from "@/components/hubspot-panel";
-import { CompanyCommandCenter } from "@/components/company-command-center";
 import {
   ArrowLeft,
   Plus,
@@ -91,13 +89,6 @@ import {
   BarChart3,
   Menu,
   FolderOpen,
-  List,
-  LayoutGrid,
-  Kanban,
-  Megaphone,
-  CalendarRange,
-  Workflow,
-  Sparkles,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -106,20 +97,7 @@ import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
-import { TaskBoardView } from "@/components/task-board-view";
-import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
-import { MarketingHub } from "@/components/marketing-hub";
-import { GovernmentHub } from "@/components/government-hub";
-import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
-import { NotepadPanel } from "@/components/notepad-panel";
-import { MessageBoardPanel } from "@/components/message-board-panel";
-import { SeoPanel } from "@/components/seo-panel";
-import { IntegrationHealthPanel } from "@/components/integration-health-panel";
-import { EmailComposerDialog } from "@/components/email-composer-dialog";
-import { EmailHistory } from "@/components/email-history";
-import { CompanyRetainerTab } from "@/components/company-retainer-tab";
-import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -222,7 +200,6 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const updateMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { name, color: color || null });
     },
@@ -234,7 +211,6 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const deleteMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/task-categories/${id}`);
     },
@@ -246,7 +222,6 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const reorderMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, sortOrder }: { id: string; sortOrder: number }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { sortOrder });
     },
@@ -412,81 +387,19 @@ export default function CompanyDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  // Navigation structure — two-level: category → sub-tab
-  const NAV_GROUPS = [
-    { key: "overview",   label: "Overview",   subTabs: [] as { key: string; label: string }[], defaultSub: "details" },
-    { key: "work",       label: "Work",       subTabs: [
-      { key: "tasks",            label: "Tasks" },
-      { key: "campaigns",        label: "Campaigns" },
-
-      { key: "calendar",         label: "Calendar" },
-      { key: "cadences",         label: "Cadences" },
-      { key: "hill-chart",       label: "Hill Chart" },
-    ], defaultSub: "tasks" },
-    { key: "marketing",  label: "Marketing",  subTabs: [
-      { key: "marketing",    label: "Marketing Hub" },
-      { key: "government",   label: "Government Hub" },
-      { key: "onboarding",   label: "Info Hub" },
-      { key: "hubspot",      label: "HubSpot" },
-      { key: "workflows",    label: "Workflows" },
-      { key: "seo",          label: "SEO / Directories" },
-      { key: "gbp",          label: "GBP" },
-    ], defaultSub: "marketing" },
-    { key: "communicate", label: "Communicate", subTabs: [
-      { key: "chat",     label: "Chat" },
-      { key: "meetings", label: "Meetings" },
-      { key: "board",    label: "Board" },
-    ], defaultSub: "chat" },
-    { key: "admin", label: "Admin", subTabs: [
-      { key: "users",          label: "Users" },
-      { key: "credit-history", label: "Credit History" },
-      { key: "reporting",      label: "Reporting" },
-      { key: "emails",         label: "Emails" },
-      { key: "details",        label: "Details" },
-      { key: "integrations",   label: "Integrations" },
-      { key: "retainer",       label: "Retainer" },
-    ], defaultSub: "users" },
-  ];
-  const TAB_TO_CATEGORY: Record<string, string> = {
-    details: "overview", tasks: "work", campaigns: "work",
-    calendar: "work", cadences: "work", pending_approval: "work",
-    marketing: "marketing", government: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", seo: "marketing", gbp: "marketing",
-    chat: "communicate", meetings: "communicate", board: "communicate",
-    "hill-chart": "work",
-    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin", retainer: "admin",
-  };
-
-  // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
+  // Parse URL query params
   const urlParams = new URLSearchParams(searchString);
-  const urlTabParam = urlParams.get("tab");
-  const urlSubParam  = urlParams.get("sub");
+  const initialTab = urlParams.get("tab") || "details";
   const initialThread = urlParams.get("thread");
-  const initialPost = urlParams.get("post");
-  const _initNav = (() => {
-    const isCategory = urlTabParam ? NAV_GROUPS.some(g => g.key === urlTabParam) : false;
-    if (urlTabParam && isCategory) {
-      const group = NAV_GROUPS.find(g => g.key === urlTabParam)!;
-      const sub = urlSubParam && group.subTabs.some(s => s.key === urlSubParam) ? urlSubParam : group.defaultSub;
-      return { cat: urlTabParam, tab: sub };
-    }
-    if (urlTabParam && TAB_TO_CATEGORY[urlTabParam]) {
-      return { cat: TAB_TO_CATEGORY[urlTabParam], tab: urlTabParam };
-    }
-    return { cat: "marketing", tab: "marketing" };
-  })();
-
+  
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(_initNav.tab);
-  const [activeCategory, setActiveCategory] = useState(_initNav.cat);
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [composeEmailOpen, setComposeEmailOpen] = useState(false);
   const [companyTaskFilter, setCompanyTaskFilter] = useState<"all" | "pending" | "in_progress" | "review" | "approved" | "completed" | "rejected">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
   const [companyTaskPage, setCompanyTaskPage] = useState(1);
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
-  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage" | "board">("board");
-  const [showCompletedOnBoard, setShowCompletedOnBoard] = useState(false);
   const COMPANY_TASKS_PER_PAGE = 10;
   
   // Task form state
@@ -577,7 +490,6 @@ export default function CompanyDashboard() {
   const [editClientType, setEditClientType] = useState("");
   const [editTier, setEditTier] = useState("");
   const [editMonthlyCredits, setEditMonthlyCredits] = useState("");
-  const [editHubspotId, setEditHubspotId] = useState("");
 
   // Company data
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -600,17 +512,6 @@ export default function CompanyDashboard() {
     },
     enabled: !!companyId,
   });
-
-  const { data: mySecondaryTaskIds } = useQuery<string[]>({
-    queryKey: ["/api/tasks/my-secondary-task-ids", { companyId }],
-    queryFn: async () => {
-      const res = await fetch(`/api/tasks/my-secondary-task-ids?companyId=${companyId}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!companyId && !!user?.id,
-  });
-  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
 
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
@@ -637,42 +538,6 @@ export default function CompanyDashboard() {
     },
     enabled: !!companyId,
   });
-
-  // Company users for Users tab
-  interface CompanyUserWithTags {
-    id: string;
-    memberId: string;
-    role: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    createdAt: string;
-    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
-  }
-
-  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
-    queryKey: ["/api/admin/companies", companyId, "users"],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const response = await fetch(`/api/admin/companies/${companyId}/users`);
-      if (!response.ok) throw new Error("Failed to fetch users");
-      return response.json();
-    },
-    enabled: !!companyId,
-  });
-
-  const assigneeUserMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const a of assignees || []) {
-      map[a.id] = a.name;
-    }
-    for (const u of companyUsers) {
-      if (!map[u.id]) {
-        map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
-      }
-    }
-    return map;
-  }, [assignees, companyUsers]);
 
   const { data: transactions = [] } = useQuery<CreditTransaction[]>({
     queryKey: ["/api/credit-transactions", { companyId }],
@@ -774,6 +639,29 @@ export default function CompanyDashboard() {
       const res = await fetch(`/api/companies/${companyId}/chat-users`);
       if (!res.ok) throw new Error("Failed to fetch users");
       return res.json();
+    },
+    enabled: !!companyId,
+  });
+
+  // Company users for Users tab
+  interface CompanyUserWithTags {
+    id: string;
+    memberId: string;
+    role: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    createdAt: string;
+    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
+  }
+
+  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
+    queryKey: ["/api/admin/companies", companyId, "users"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const response = await fetch(`/api/admin/companies/${companyId}/users`);
+      if (!response.ok) throw new Error("Failed to fetch users");
+      return response.json();
     },
     enabled: !!companyId,
   });
@@ -940,7 +828,6 @@ export default function CompanyDashboard() {
   });
 
   const companyEditMeetingMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, proposedDate, proposedTime, creditCost, duration, teamsLink }: { id: string; proposedDate: string; proposedTime: string; creditCost: string; duration: number; teamsLink: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { proposedDate, proposedTime, creditCost, duration, teamsLink });
     },
@@ -956,7 +843,6 @@ export default function CompanyDashboard() {
   });
 
   const companyRejectMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { status: "rejected" });
     },
@@ -970,7 +856,6 @@ export default function CompanyDashboard() {
   });
 
   const saveMeetingNotesMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { notes });
     },
@@ -1100,53 +985,8 @@ export default function CompanyDashboard() {
       resetTaskForm();
       toast({ title: "Task assigned successfully" });
     },
-    onError: (e: any) => {
-      toast({ title: "Failed to assign task", description: e?.message || String(e), variant: "destructive" });
-    },
-  });
-
-  const updateCompanyTaskMutation = useMutation({
-    mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
-      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
-      return res.json() as Promise<Task>;
-    },
-    onMutate: async ({ taskId, updates }) => {
-      if (updates.status === undefined) return;
-      await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
-      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }]);
-      if (previousTasks) {
-        queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], previousTasks.map(t =>
-          t.id === taskId ? { ...t, ...updates } : t
-        ));
-      }
-      return { previousTasks };
-    },
-    onSuccess: (
-      updatedTask: Task,
-      { updates }: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[] } | undefined
-    ) => {
-      queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
-        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
-      );
-      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
-      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
-      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
-        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
-      }
-      toast({ title: "Task updated successfully" });
-    },
-    onError: (
-      _err: Error,
-      _vars: { taskId: string; updates: Partial<Task> },
-      context: { previousTasks?: Task[] } | undefined
-    ) => {
-      if (context?.previousTasks) {
-        queryClient.setQueryData(["/api/tasks", { companyId }], context.previousTasks);
-      }
-      toast({ title: "Failed to update task", variant: "destructive" });
+    onError: () => {
+      toast({ title: "Failed to assign task", variant: "destructive" });
     },
   });
 
@@ -1194,7 +1034,6 @@ export default function CompanyDashboard() {
   });
 
   const renameThreadMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ threadId, name }: { threadId: string; name: string }) => {
       return apiRequest("PATCH", `/api/chat/threads/${threadId}`, { name });
     },
@@ -1209,7 +1048,6 @@ export default function CompanyDashboard() {
   });
 
   const deleteThreadMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (threadId: string) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}`);
     },
@@ -1239,7 +1077,6 @@ export default function CompanyDashboard() {
   });
 
   const removeChatMemberMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ threadId, memberId }: { threadId: string; memberId: string }) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}/members/${memberId}`);
     },
@@ -1328,7 +1165,6 @@ export default function CompanyDashboard() {
   });
 
   const updateCadenceMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       return apiRequest("PATCH", `/api/cadences/${id}`, data);
     },
@@ -1402,7 +1238,6 @@ export default function CompanyDashboard() {
   });
 
   const editCompanyMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest("PATCH", `/api/companies/${companyId}`, data);
       return res.json();
@@ -1444,7 +1279,6 @@ export default function CompanyDashboard() {
   };
 
   const updateLogoMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (logoUrl: string) => {
       return apiRequest("PATCH", `/api/companies/${companyId}`, { logoUrl });
     },
@@ -1464,19 +1298,6 @@ export default function CompanyDashboard() {
     onError: (error) => {
       toast({ title: "Failed to upload logo", description: error.message, variant: "destructive" });
     },
-  });
-
-  useEffect(() => {
-    if (company) setEditHubspotId(company.hubspotCompanyId || "");
-  }, [company?.hubspotCompanyId]);
-
-  const saveHubspotIdMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/companies/${companyId}`, { hubspotCompanyId: editHubspotId.trim() || null }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-      toast({ title: "HubSpot Company ID saved" });
-    },
-    onError: () => toast({ title: "Failed to save HubSpot Company ID", variant: "destructive" }),
   });
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1689,25 +1510,15 @@ export default function CompanyDashboard() {
     });
   };
 
-  // Update state when URL params change (supports new ?tab=category&sub=key and old ?tab=key)
+  // Update state when URL params change
   useEffect(() => {
     const params = new URLSearchParams(searchString);
-    const tabParam    = params.get("tab");
-    const subParam    = params.get("sub");
+    const tabParam = params.get("tab");
     const threadParam = params.get("thread");
-    const isCategory = tabParam ? NAV_GROUPS.some(g => g.key === tabParam) : false;
-    let newCat: string | null = null;
-    let newTab: string | null = null;
-    if (tabParam && isCategory) {
-      const group = NAV_GROUPS.find(g => g.key === tabParam)!;
-      newCat = tabParam;
-      newTab = subParam && group.subTabs.some(s => s.key === subParam) ? subParam : group.defaultSub;
-    } else if (tabParam && TAB_TO_CATEGORY[tabParam]) {
-      newCat = TAB_TO_CATEGORY[tabParam];
-      newTab = tabParam;
+    
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
     }
-    if (newCat && newCat !== activeCategory) setActiveCategory(newCat);
-    if (newTab && newTab !== activeTab) setActiveTab(newTab);
     if (threadParam && threadParam !== selectedThreadId) {
       setSelectedThreadId(threadParam);
     }
@@ -1771,7 +1582,7 @@ export default function CompanyDashboard() {
     if (!tasks) return [];
     let filtered = tasks.filter(t => t.status !== "cadence_parent");
     if (assignedToMeFilter && user?.id) {
-      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+      filtered = filtered.filter(t => t.assignedTo === user.id);
     }
     if (companyTaskFilter === "rejected") {
       filtered = filtered.filter(t => t.approvalStatus === "rejected");
@@ -1817,31 +1628,6 @@ export default function CompanyDashboard() {
     return filtered;
   }, [tasks, companyTaskFilter, taskMonthDate, assignedToMeFilter, user?.id, categoryFilter]);
 
-  const boardFilteredTasks = useMemo(() => {
-    if (!tasks) return [];
-    let filtered = tasks.filter(t => t.status !== "cadence_parent" && t.approvalStatus !== "rejected");
-    if (!showCompletedOnBoard) {
-      filtered = filtered.filter(t => t.status !== "completed");
-    }
-    if (assignedToMeFilter && user?.id) {
-      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
-    }
-    if (categoryFilter !== "all") {
-      if (categoryFilter === "uncategorized") {
-        filtered = filtered.filter(t => !t.categoryId);
-      } else {
-        filtered = filtered.filter(t => t.categoryId === categoryFilter);
-      }
-    }
-    filtered.sort((a, b) => {
-      if (!a.dueDate && !b.dueDate) return 0;
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
-    });
-    return filtered;
-  }, [tasks, showCompletedOnBoard, assignedToMeFilter, user?.id, categoryFilter, mySecondaryTaskIdSet]);
-
   const companyTaskCounts = useMemo(() => {
     if (!tasks) return { all: 0, pending: 0, in_progress: 0, completed: 0, review: 0, rejected: 0 };
     const selectedMonthStart = `${taskMonthDate.getFullYear()}-${String(taskMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
@@ -1861,7 +1647,7 @@ export default function CompanyDashboard() {
       return dateStr >= selectedMonthStart && dateStr < selectedMonthEnd;
     });
     if (assignedToMeFilter && user?.id) {
-      normalTasks = normalTasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+      normalTasks = normalTasks.filter(t => t.assignedTo === user.id);
     }
     const nonRejected = normalTasks.filter(t => t.approvalStatus !== "rejected");
     return {
@@ -2359,86 +2145,8 @@ export default function CompanyDashboard() {
           </div>
         </div>
       </header>
-      {/* Main Content - Two-Level Navigation */}
-
-      {/* ── Level 1: Category Bar ── */}
-      <div className="hidden md:flex border-b bg-card shrink-0">
-        {NAV_GROUPS.map(group => {
-          const unreadChat = threads.reduce((t, th) => t + getUnreadCount(th.id), 0);
-          const hasDot =
-            (group.key === "work" && pendingApprovalTasks.length > 0) ||
-            (group.key === "communicate" && (unreadChat > 0 || companyPendingMeetings > 0));
-          return (
-            <button
-              key={group.key}
-              onClick={() => {
-                const newSub = group.defaultSub;
-                setActiveCategory(group.key);
-                setActiveTab(newSub);
-                setLocation(`/admin/companies/${companyId}?tab=${group.key}&sub=${newSub}`);
-              }}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-                activeCategory === group.key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-              }`}
-              data-testid={`category-tab-${group.key}`}
-            >
-              {group.label}
-              {hasDot && <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Level 2: Sub-tab Bar ── */}
-      {(() => {
-        const currentGroup = NAV_GROUPS.find(g => g.key === activeCategory);
-        if (!currentGroup || currentGroup.subTabs.length === 0) return null;
-        const allSubTabs = [
-          ...currentGroup.subTabs,
-          ...(activeCategory === "work" && pendingApprovalTasks.length > 0
-            ? [{ key: "pending_approval", label: `Pending (${pendingApprovalTasks.length})` }]
-            : []),
-        ];
-        return (
-          <div className="hidden md:flex border-b bg-muted/20 shrink-0">
-            {allSubTabs.map(sub => {
-              const isActive = activeTab === sub.key;
-              const badge =
-                sub.key === "tasks"     ? activeTasks.length :
-                sub.key === "campaigns" ? companyCampaignRequests.length :
-                sub.key === "users"     ? companyUsers.length :
-                sub.key === "chat"      ? threads.reduce((t, th) => t + getUnreadCount(th.id), 0) :
-                sub.key === "meetings"  ? (companyPendingMeetings || 0) :
-                0;
-              return (
-                <button
-                  key={sub.key}
-                  onClick={() => {
-                    setActiveTab(sub.key);
-                    setActiveCategory(activeCategory);
-                    setLocation(`/admin/companies/${companyId}?tab=${activeCategory}&sub=${sub.key}`);
-                  }}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
-                    isActive
-                      ? "border-primary text-foreground font-medium"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
-                  }`}
-                  data-testid={`subtab-${sub.key}`}
-                >
-                  {sub.label}
-                  {badge > 0 && (
-                    <span className="text-[10px] font-mono bg-muted rounded px-1 leading-tight">{badge}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
-
-      <div className="flex-1 overflow-auto p-6">
+      {/* Main Content with Tabs */}
+      <div className="flex-1 p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <MobileTabMenu
             tabs={[
@@ -2454,38 +2162,220 @@ export default function CompanyDashboard() {
               { value: "users", label: "Users", count: companyUsers.length },
               { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
-              { value: "hubspot", label: "HubSpot" },
-              { value: "marketing", label: "Marketing Hub" },
-
-              { value: "workflows", label: "Workflows" },
-              { value: "retainer", label: "Retainer" },
             ]}
             activeTab={activeTab}
-            onTabChange={(tab) => {
-              setActiveTab(tab);
-              setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
-            }}
+            onTabChange={setActiveTab}
             title="Company Dashboard"
           />
+          <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1" data-testid="tabs-company-dashboard">
+            <TabsTrigger value="details" data-testid="tab-details">
+              <Settings className="h-4 w-4 mr-2" />
+              Details
+            </TabsTrigger>
+            {pendingApprovalTasks.length > 0 && (
+              <TabsTrigger value="pending_approval" data-testid="tab-pending-approval" className="bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
+                Pending Approval ({pendingApprovalTasks.length})
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="tasks" data-testid="tab-tasks">
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Tasks ({activeTasks.length})
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" data-testid="tab-campaigns">
+              <Target className="h-4 w-4 mr-2" />
+              Campaigns ({companyCampaignRequests.length})
+            </TabsTrigger>
+            <TabsTrigger value="calendar" data-testid="tab-calendar">
+              <CalendarIcon className="h-4 w-4 mr-2" />
+              Calendar
+            </TabsTrigger>
+            <TabsTrigger value="chat" data-testid="tab-chat">
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Chat
+              {threads.reduce((total, t) => total + getUnreadCount(t.id), 0) > 0 && (
+                <Badge variant="destructive" className="ml-1 text-xs">
+                  {threads.reduce((total, t) => total + getUnreadCount(t.id), 0)}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="meetings" data-testid="tab-meetings">
+              <Video className="h-4 w-4 mr-2" />
+              Meetings
+              {companyPendingMeetings > 0 && (
+                <Badge variant="destructive" className="ml-1 text-xs">{companyPendingMeetings}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="credit-history" data-testid="tab-credit-history">
+              Credit History
+            </TabsTrigger>
+            <TabsTrigger value="onboarding" data-testid="tab-onboarding">
+              <FileEdit className="w-4 h-4 mr-1" />
+              Info Hub
+            </TabsTrigger>
+            <TabsTrigger value="users" data-testid="tab-users">
+              <Users className="h-4 w-4 mr-2" />
+              Users ({companyUsers.length})
+            </TabsTrigger>
+            <TabsTrigger value="cadences" data-testid="tab-cadences">
+              <Repeat className="h-4 w-4 mr-2" />
+              Cadences
+            </TabsTrigger>
+            <TabsTrigger value="reporting" data-testid="tab-reporting">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Reporting
+            </TabsTrigger>
+          </TabsList>
 
           {/* Details Tab */}
-          <TabsContent value="details">
-            <CompanyCommandCenter
-              companyId={companyId!}
-              company={company}
-              tasks={tasks || []}
-              campaigns={companyCampaignRequests}
-              meetings={companyMeetingRequests}
-              transactions={transactions}
-              onboardingData={onboardingData}
-              threads={threads}
-              companyUsers={companyUsers}
-              agencyAdmins={agencyAdmins}
-              onNavigate={(tab) => {
-                setActiveTab(tab);
-                setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
-              }}
-            />
+          <TabsContent value="details" className="space-y-6">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Credits</CardTitle>
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{company.credits}</div>
+                  <p className="text-xs text-muted-foreground">
+                    of {company.monthlyCredits} monthly
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Projected Usage</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold font-mono" data-testid="text-projected-credits">{projectedCredits.toFixed(2)}</div>
+                  <p className="text-xs text-muted-foreground">Tasks & Meetings this period</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Subscription</CardTitle>
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold capitalize">{company.subscriptionTier}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {company.industry || "No industry set"}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Status</CardTitle>
+                  {company.isPaused ? (
+                    <AlertTriangle className="h-4 w-4 text-destructive" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {company.isPaused ? "Paused" : "Active"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {company.isPaused && company.pausedAt
+                      ? `Since ${new Date(company.pausedAt).toLocaleDateString()}`
+                      : company.onboardingComplete ? "Onboarding Complete" : "Onboarding pending"
+                    }
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
+                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{activeTasks.length}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {completedTasks.length} completed
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Pause/Resume Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Account Status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">
+                      {company.isPaused ? "Account is Paused" : "Account is Active"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {company.isPaused
+                        ? "Clients cannot access the portal. Click Resume to restore access with full credits."
+                        : "Clients have full access to the portal. Click Pause to suspend access."
+                      }
+                    </p>
+                  </div>
+                  {company.isPaused ? (
+                    <Button
+                      onClick={() => resumeCompanyMutation.mutate()}
+                      disabled={resumeCompanyMutation.isPending}
+                      data-testid="button-resume-company-details"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      {resumeCompanyMutation.isPending ? "Resuming..." : "Resume Account"}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => pauseCompanyMutation.mutate()}
+                      disabled={pauseCompanyMutation.isPending}
+                      data-testid="button-pause-company-details"
+                    >
+                      <Pause className="h-4 w-4 mr-2" />
+                      {pauseCompanyMutation.isPending ? "Pausing..." : "Pause Account"}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Credit History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Credit Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {transactions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No credit activity yet
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {transactions.slice(0, 10).map((t) => (
+                      <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                        <div className="flex items-center gap-3">
+                          {parseFloat(t.amount) > 0 ? (
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4 text-orange-500" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium">{t.description}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(t.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant={parseFloat(t.amount) > 0 ? "default" : "secondary"}>
+                          {parseFloat(t.amount) > 0 ? "+" : ""}{t.amount}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Tasks Tab */}
@@ -2493,7 +2383,7 @@ export default function CompanyDashboard() {
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Tasks</h2>
               <div className="flex items-center gap-2">
-                <ManageCategoriesDialog companyId={companyId!} categories={taskCategoriesData || []} />
+                <ManageCategoriesDialog companyId={companyId} categories={taskCategoriesData || []} />
                 <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
                   <DialogTrigger asChild>
                     <Button data-testid="button-assign-task">
@@ -2999,124 +2889,29 @@ export default function CompanyDashboard() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              {companyTaskViewMode !== "board" && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
-                    data-testid="button-task-month-prev"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
-                    {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
-                    data-testid="button-task-month-next"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-              {companyTaskViewMode === "board" && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={showCompletedOnBoard ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowCompletedOnBoard(v => !v)}
-                    data-testid="button-show-completed-board"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                    {showCompletedOnBoard ? "Hide Completed" : "Show Completed"}
-                  </Button>
-                </div>
-              )}
-              <div className="flex items-center gap-1 flex-wrap" data-testid="company-view-mode-toggle">
-                <Button
-                  variant={companyTaskViewMode === "board" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("board")}
-                  data-testid="company-view-toggle-board"
-                >
-                  <Kanban className="w-4 h-4 mr-1" />
-                  Board
-                </Button>
-                <Button
-                  variant={companyTaskViewMode === "list" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("list")}
-                  data-testid="company-view-toggle-list"
-                >
-                  <List className="w-4 h-4 mr-1" />
-                  List
-                </Button>
-                <Button
-                  variant={companyTaskViewMode === "by-assignee" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCompanyTaskViewMode("by-assignee")}
-                  data-testid="company-view-toggle-by-assignee"
-                >
-                  <Users className="w-4 h-4 mr-1" />
-                  By Assignee
-                </Button>
-              </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
+                data-testid="button-task-month-prev"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
+                {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
+                data-testid="button-task-month-next"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
 
-            {(companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") && tasksLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : (companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") ? (
-              <TaskGroupedView
-                tasks={filteredCompanyTasks}
-                groupBy={companyTaskViewMode === "by-assignee" ? "assignee" : "category"}
-                categories={taskCategoriesData || []}
-                userMap={assigneeUserMap}
-                onTaskClick={setSelectedTask}
-              />
-            ) : companyTaskViewMode === "board" && tasksLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-24 w-full" />
-                ))}
-              </div>
-            ) : companyTaskViewMode === "board" ? (
-              <TaskBoardView
-                tasks={boardFilteredTasks}
-                categories={taskCategoriesData || []}
-                mode="swimlane"
-                onTaskClick={setSelectedTask}
-                onStatusChange={(taskId, newStatus) =>
-                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
-                }
-                allowDrag={true}
-                showCompleted={showCompletedOnBoard}
-              />
-            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") && tasksLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") ? (
-              <TaskBoardView
-                tasks={filteredCompanyTasks}
-                categories={taskCategoriesData || []}
-                mode={companyTaskViewMode === "category" ? "category" : "stage"}
-                onTaskClick={setSelectedTask}
-                onStatusChange={(taskId, newStatus) =>
-                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
-                }
-                allowDrag={companyTaskViewMode === "stage"}
-              />
-            ) : tasksLoading ? (
+            {tasksLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => (
                   <Skeleton key={i} className="h-16 w-full" />
@@ -3406,19 +3201,6 @@ export default function CompanyDashboard() {
                 <span>Recurring task</span>
               </div>
             </div>
-          </TabsContent>
-
-          {/* Board Tab */}
-          <TabsContent value="board" className="space-y-4">
-            {companyId && user && (
-              <MessageBoardPanel
-                companyId={companyId}
-                currentUserId={user.id}
-                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
-                isAdmin={true}
-                initialPostId={initialPost}
-              />
-            )}
           </TabsContent>
 
           {/* Chat Tab */}
@@ -4592,43 +4374,6 @@ export default function CompanyDashboard() {
             {companyId && <CompanyInfoHub companyId={companyId} />}
           </TabsContent>
 
-          <TabsContent value="marketing" className="space-y-4">
-            {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => {
-              setActiveTab(tab);
-              setActiveCategory(TAB_TO_CATEGORY[tab] || "marketing");
-            }} />}
-          </TabsContent>
-
-
-          {/* Workflows Tab */}
-          <TabsContent value="workflows" className="min-h-0">
-            {companyId && <CompanyWorkflowsPanel companyId={companyId} />}
-          </TabsContent>
-
-          {/* Government Hub Tab */}
-          <TabsContent value="government" className="min-h-0">
-            {companyId && <GovernmentHub companyId={companyId} isAdmin={true} />}
-          </TabsContent>
-
-          {/* SEO / Directories Tab */}
-          <TabsContent value="seo" className="space-y-4">
-            {companyId && user && (
-              <SeoPanel
-                companyId={companyId}
-                currentUserId={user.id}
-                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
-                isAdmin={true}
-              />
-            )}
-          </TabsContent>
-
-          {/* GBP Tab */}
-          <TabsContent value="gbp" className="space-y-4">
-            {companyId && company && (
-              <GbpConnectionPanel companyId={companyId} company={company} />
-            )}
-          </TabsContent>
-
           {/* Cadences Tab */}
           <TabsContent value="cadences" className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4697,16 +4442,6 @@ export default function CompanyDashboard() {
                   </Card>
                 ))}
               </div>
-            )}
-          </TabsContent>
-
-          {/* Hill Chart Tab */}
-          <TabsContent value="hill-chart" className="min-h-0">
-            {companyId && user && (
-              <HillChartPanel
-                companyId={companyId}
-                currentUserId={user.id}
-              />
             )}
           </TabsContent>
 
@@ -4920,92 +4655,7 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="reporting" className="space-y-6">
-            <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
-          </TabsContent>
-
-          <TabsContent value="emails" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold">Workflow Emails</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Approval requests, meeting recaps, reports, and alerts. All client emails require preview before sending.</p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setComposeEmailOpen(true)}
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/20"
-                data-testid="btn-compose-email"
-              >
-                <Mail className="h-3.5 w-3.5 mr-1.5" />
-                Compose Email
-              </Button>
-            </div>
-            {companyId && (
-              <EmailHistory companyId={companyId} isAdmin={true} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="integrations" className="space-y-4">
-            {companyId && (
-              <IntegrationHealthPanel companyId={companyId} isAdmin={true} />
-            )}
-          </TabsContent>
-
-          {/* Retainer Tab */}
-          <TabsContent value="retainer" className="space-y-4">
-            {companyId && (
-              <CompanyRetainerTab companyId={companyId} companyName={company?.name} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="hubspot" className="space-y-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Link2 className="h-4 w-4 text-muted-foreground" />
-                  HubSpot Configuration
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">HubSpot Company ID</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={editHubspotId}
-                      onChange={e => setEditHubspotId(e.target.value)}
-                      placeholder="e.g. 12345678"
-                      className="font-mono text-sm"
-                      data-testid="input-hubspot-company-id"
-                      onKeyDown={e => { if (e.key === "Enter") saveHubspotIdMutation.mutate(); }}
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => saveHubspotIdMutation.mutate()}
-                      disabled={saveHubspotIdMutation.isPending || editHubspotId === (company?.hubspotCompanyId || "")}
-                      data-testid="button-save-hubspot-id"
-                    >
-                      {saveHubspotIdMutation.isPending ? "Saving…" : "Save"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">The HubSpot Company record ID — found in the HubSpot URL when viewing the company record.</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Link href={`/admin/companies/${companyId}/hubspot-onboarding`}>
-              <div className="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/40 px-4 py-3 hover:bg-orange-100 dark:hover:bg-orange-950/30 transition-colors cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
-                    <BarChart3 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">HubSpot Onboarding Tracker</p>
-                    <p className="text-xs text-orange-600/70 dark:text-orange-400/70">73-item structured checklist across 6 sections</p>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-orange-500" />
-              </div>
-            </Link>
-            <HubspotPanel companyId={companyId!} />
+            <CompanyReportingTab companyId={companyId} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
         </Tabs>
       </div>
@@ -5018,11 +4668,9 @@ export default function CompanyDashboard() {
         companyId={companyId || ""}
         onNavigateToChat={(threadId) => {
           setActiveTab("chat");
-          setActiveCategory("communicate");
           setSelectedThreadId(threadId);
-          setLocation(`/admin/companies/${companyId}?tab=communicate&sub=chat&thread=${threadId}`);
+          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
         }}
-        onOpenTask={(t) => setSelectedTask(t)}
       />
       {/* Campaign Detail Panel */}
       <CampaignDetailPanel
@@ -5464,13 +5112,9 @@ export default function CompanyDashboard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="biweekly">Bi-Weekly</SelectItem>
+                  <SelectItem value="biweekly">Biweekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="quarterly">Quarterly</SelectItem>
-                  <SelectItem value="semi-annually">Semi-Annually</SelectItem>
-                  <SelectItem value="annually">Annually</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -5650,13 +5294,9 @@ export default function CompanyDashboard() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Bi-Weekly</SelectItem>
+                      <SelectItem value="biweekly">Biweekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="semi-annually">Semi-Annually</SelectItem>
-                      <SelectItem value="annually">Annually</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -5849,21 +5489,6 @@ export default function CompanyDashboard() {
           )}
         </SheetContent>
       </Sheet>
-
-      {/* Email Composer Dialog */}
-      {companyId && (
-        <EmailComposerDialog
-          open={composeEmailOpen}
-          onOpenChange={setComposeEmailOpen}
-          companyId={companyId}
-          companyName={company?.name}
-          onSuccess={() => {
-            setComposeEmailOpen(false);
-            setActiveTab("emails");
-            setActiveCategory("admin");
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -5906,7 +5531,6 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const removeTagMutation = useMutation({
-    ...retryTransient,
     mutationFn: async (tagId: string) => {
       return apiRequest("DELETE", `/api/admin/users/${user.id}/tags/${tagId}`);
     },
@@ -5920,7 +5544,6 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const changeRoleMutation = useMutation({
-    ...retryTransient,
     mutationFn: async ({ role, customRoleId }: { role: string; customRoleId?: string }) => {
       return apiRequest("PATCH", `/api/admin/members/${user.memberId}/role`, { role, customRoleId });
     },
@@ -6089,7 +5712,6 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   }, [reportNote, noteLoading]);
 
   const saveNotesMutation = useMutation({
-    ...retryTransient,
     mutationFn: async () => {
       await apiRequest("PUT", `/api/admin/companies/${companyId}/report-notes`, { month, year, notes: notesText });
     },
@@ -6628,175 +6250,6 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
         <Avatar className="h-6 w-6 border-2 border-background">
           <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
         </Avatar>
-      )}
-    </div>
-  );
-}
-
-// ── GBP Connection Panel ──────────────────────────────────────────────────────
-
-interface GbpConnectionPanelProps {
-  companyId: string;
-  company: Company;
-}
-
-function GbpConnectionPanel({ companyId, company }: GbpConnectionPanelProps) {
-  const { toast } = useToast();
-  const [accountId, setAccountId] = useState(company.gbpAccountId ?? "");
-  const [locationId, setLocationId] = useState(company.gbpLocationId ?? "");
-  const [locationName, setLocationName] = useState(company.gbpLocationName ?? "");
-  const [connectedStatus, setConnectedStatus] = useState(company.gbpConnectedStatus ?? "disconnected");
-  const [permissionStatus, setPermissionStatus] = useState(company.gbpPermissionStatus ?? "");
-  const [notes, setNotes] = useState(company.gbpConnectionNotes ?? "");
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/companies/${companyId}`, {
-        gbpAccountId: accountId || null,
-        gbpLocationId: locationId || null,
-        gbpLocationName: locationName || null,
-        gbpConnectedStatus: connectedStatus || null,
-        gbpPermissionStatus: permissionStatus || null,
-        gbpConnectionNotes: notes || null,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-      toast({ title: "GBP connection saved" });
-    },
-    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
-  });
-
-  const statusConfig: Record<string, { label: string; className: string }> = {
-    connected:    { label: "Connected",    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
-    disconnected: { label: "Disconnected", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
-    pending:      { label: "Pending",      className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
-    needs_reauth: { label: "Needs Reauth", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
-  };
-  const currentStatus = statusConfig[connectedStatus] ?? statusConfig.disconnected;
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              Google Business Profile Connection
-            </span>
-            <Badge className={`text-xs font-medium ${currentStatus.className}`}>
-              {currentStatus.label}
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">GBP Account ID</Label>
-              <Input
-                value={accountId}
-                onChange={e => setAccountId(e.target.value)}
-                placeholder="e.g. accounts/123456789"
-                className="font-mono text-sm"
-                data-testid="input-gbp-account-id"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Location ID</Label>
-              <Input
-                value={locationId}
-                onChange={e => setLocationId(e.target.value)}
-                placeholder="e.g. locations/987654321"
-                className="font-mono text-sm"
-                data-testid="input-gbp-location-id"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Location Name</Label>
-              <Input
-                value={locationName}
-                onChange={e => setLocationName(e.target.value)}
-                placeholder="Business name as shown on GBP"
-                data-testid="input-gbp-location-name"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Connection Status</Label>
-              <Select value={connectedStatus} onValueChange={setConnectedStatus}>
-                <SelectTrigger data-testid="select-gbp-connected-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="disconnected">Disconnected</SelectItem>
-                  <SelectItem value="connected">Connected</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="needs_reauth">Needs Reauth</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Permission Level</Label>
-              <Select value={permissionStatus || "_none"} onValueChange={v => setPermissionStatus(v === "_none" ? "" : v)}>
-                <SelectTrigger data-testid="select-gbp-permission-status">
-                  <SelectValue placeholder="Not set" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">Not set</SelectItem>
-                  <SelectItem value="owner">Owner</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="site_manager">Site Manager</SelectItem>
-                  <SelectItem value="none">None</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Connection Notes</Label>
-            <Textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Any notes about this GBP connection, access issues, or credentials location…"
-              rows={3}
-              data-testid="textarea-gbp-notes"
-            />
-          </div>
-
-          <Button
-            size="sm"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-            data-testid="btn-save-gbp-connection"
-          >
-            {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-            Save Connection
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Read-only sync / publish status */}
-      {(company.gbpLastSyncTime || company.gbpLastPublishStatus) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Last Activity</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4 text-sm">
-            {company.gbpLastSyncTime && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Last Sync</p>
-                <p className="font-medium">{new Date(company.gbpLastSyncTime).toLocaleString()}</p>
-              </div>
-            )}
-            {company.gbpLastPublishStatus && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Last Publish Status</p>
-                <p className="font-medium capitalize">{company.gbpLastPublishStatus}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       )}
     </div>
   );

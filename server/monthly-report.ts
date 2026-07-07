@@ -7,7 +7,7 @@ import {
 } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { eq, and, ne, or, isNull } from "drizzle-orm";
-import { getUncachableResendClient, sendOnboardingReminderEmail, sendAdminOnboardingAlertEmail } from "./email";
+import { getUncachableResendClient, sendOnboardingReminderEmail } from "./email";
 import { formatDateShortET } from "./timezone";
 import { log } from "./index";
 
@@ -454,7 +454,7 @@ export async function generateAndSendMonthlyReports(targetYear?: number, targetM
 
   log(`Starting monthly report generation for ${monthName} ${actualYear}${isDevelopment ? ' [DEV MODE - emails suppressed]' : ''}`, 'monthly-report');
 
-  const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
+  const allCompanies = await db.select().from(companies);
   const errors: string[] = [];
   let companiesSent = 0;
   let totalEmails = 0;
@@ -539,12 +539,7 @@ function getDatesForCadence(
   const lastDay = new Date(year, month + 1, 0).getDate();
   const dates: Date[] = [];
 
-  if (cadence.frequency === "daily") {
-    for (let day = 1; day <= lastDay; day++) {
-      const d = new Date(year, month, day);
-      if (!afterDate || d > afterDate) dates.push(d);
-    }
-  } else if (cadence.frequency === "monthly") {
+  if (cadence.frequency === "monthly") {
     const days = cadence.monthDays?.length ? cadence.monthDays : [15];
     for (const monthDay of days) {
       const day = Math.min(monthDay, lastDay);
@@ -552,24 +547,6 @@ function getDatesForCadence(
       if (!afterDate || d > afterDate) {
         dates.push(d);
       }
-    }
-  } else if (cadence.frequency === "quarterly") {
-    // Generate one task in Jan (0), Apr (3), Jul (6), Oct (9)
-    if (month % 3 === 0) {
-      const d = new Date(year, month, 1);
-      if (!afterDate || d > afterDate) dates.push(d);
-    }
-  } else if (cadence.frequency === "semi-annually") {
-    // Generate one task in Jan (0) and Jul (6)
-    if (month === 0 || month === 6) {
-      const d = new Date(year, month, 1);
-      if (!afterDate || d > afterDate) dates.push(d);
-    }
-  } else if (cadence.frequency === "annually") {
-    // Generate one task in Jan (0)
-    if (month === 0) {
-      const d = new Date(year, month, 1);
-      if (!afterDate || d > afterDate) dates.push(d);
     }
   } else {
     const targetDayNums = (cadence.scheduledDays || [])
@@ -651,15 +628,11 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
   let created = 0;
 
   let resolvedCreditCost = cadence.creditCost;
-  let deliverableTypeRecord: any = null;
-  if (cadence.deliverableTypeId) {
+  if (!cadence.noCredit && cadence.deliverableTypeId) {
     try {
-      const rows = await db.select().from(deliverableTypes).where(eq(deliverableTypes.id, cadence.deliverableTypeId));
-      if (rows.length > 0) {
-        deliverableTypeRecord = rows[0];
-        if (!cadence.noCredit && deliverableTypeRecord.credits) {
-          resolvedCreditCost = String(deliverableTypeRecord.credits);
-        }
+      const deliverableType = await db.select().from(deliverableTypes).where(eq(deliverableTypes.id, cadence.deliverableTypeId));
+      if (deliverableType.length > 0 && deliverableType[0].credits) {
+        resolvedCreditCost = String(deliverableType[0].credits);
       }
     } catch (err) {
       log(`Failed to look up deliverable type ${cadence.deliverableTypeId} for cadence ${cadence.id}, using cadence creditCost`, 'cadence-generator');
@@ -667,8 +640,7 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
   }
 
   for (const dueDate of dates) {
-    const dateStr = formatDateStr(dueDate);
-    const task = await storage.createTask({
+    await storage.createTask({
       companyId: cadence.companyId,
       title: cadence.title,
       description: null,
@@ -678,7 +650,7 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
       creditCost: cadence.noCredit ? "0" : resolvedCreditCost,
       type: "assigned",
       deliverableType: cadence.deliverableTypeId || null,
-      dueDate: dateStr,
+      dueDate: formatDateStr(dueDate),
       startDate: billingPeriodStart,
       assignedBy: cadence.createdBy,
       assignedTo: cadence.assignedTo || null,
@@ -691,14 +663,6 @@ async function createTasksForCadenceDates(cadence: any, dates: Date[], billingPe
       approvalStatus: "approved",
     });
     created++;
-
-    if (false) {
-      try {
-        // content calendar removed
-      } catch (err: any) {
-        log(`Skipped: ${err.message}`, 'cadence-generator');
-      }
-    }
   }
   return created;
 }
@@ -823,23 +787,13 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
   }
 
   try {
-    const allCompanies = await db.select().from(companies).where(
-      and(eq(companies.onboardingComplete, false), ne(companies.id, "sandbox-company-001"))
-    );
+    const allCompanies = await db.select().from(companies).where(eq(companies.onboardingComplete, false));
 
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     for (const company of allCompanies) {
       try {
-        // Skip companies created less than 7 days ago — give them time before the first reminder
-        const createdDate = new Date(company.createdAt);
-        const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysSinceCreation < 7) {
-          skipped++;
-          continue;
-        }
-
         if (company.lastOnboardingReminderSent) {
           const lastSent = new Date(company.lastOnboardingReminderSent);
           if (lastSent > sevenDaysAgo) {
@@ -855,6 +809,9 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
           skipped++;
           continue;
         }
+
+        const createdDate = new Date(company.createdAt);
+        const daysSinceCreation = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
 
         const portalUrl = `${process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://nearmemarketinghub.com'}/onboarding`;
         let companySentCount = 0;
@@ -888,7 +845,6 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
           }
         }
 
-        const baseUrl = process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://portal.nearmemarketinghub.com';
         const allAdmins = await db.select().from(adminUsers);
         for (const admin of allAdmins) {
           const [adminUser] = await db.select().from(users).where(eq(users.id, admin.userId));
@@ -896,17 +852,17 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
 
           const adminName = [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || adminUser.email;
           try {
-            await sendAdminOnboardingAlertEmail({
+            await sendOnboardingReminderEmail({
               recipientEmail: adminUser.email,
               recipientName: adminName,
               companyName: company.name,
-              companyDashboardUrl: `${baseUrl}/admin/companies/${company.id}`,
+              portalUrl: `${process.env.REPLIT_DEV_DOMAIN ? 'https://' + process.env.REPLIT_DEV_DOMAIN : 'https://nearmemarketinghub.com'}/admin/companies/${company.id}`,
               daysSinceCreation,
             });
             await db.insert(notifications).values({
               userId: adminUser.id,
               type: 'system',
-              title: 'Onboarding Incomplete',
+              title: 'Onboarding Reminder',
               message: `${company.name} has not completed onboarding yet (${daysSinceCreation} days since creation).`,
               isRead: false,
               createdAt: now.toISOString(),
@@ -914,7 +870,7 @@ export async function sendOnboardingReminders(): Promise<{ sent: number; skipped
             sent++;
             companySentCount++;
           } catch (e: any) {
-            log(`Failed to send onboarding alert to admin ${adminUser.email}: ${e.message}`, 'onboarding-reminder');
+            log(`Failed to send onboarding reminder to admin ${adminUser.email}: ${e.message}`, 'onboarding-reminder');
             errors++;
           }
         }
@@ -1036,7 +992,7 @@ async function runCreditReset(): Promise<{ resetCount: number }> {
     const currentMonthYear = getMonthYearET();
     const now = new Date();
     
-    const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
+    const allCompanies = await db.select().from(companies);
     let resetCount = 0;
 
     for (const company of allCompanies) {
@@ -1245,7 +1201,7 @@ export async function setupMonthlyReportScheduler() {
 
         if (daysUntilEnd === 7 || daysUntilEnd === 2) {
           log(`Running report notes reminder (${daysUntilEnd} days until month end)`, 'report-reminder');
-          const allCompanies = await db.select().from(companies).where(ne(companies.id, "sandbox-company-001"));
+          const allCompanies = await db.select().from(companies);
           const admins = await db.select().from(adminUsers);
           const reportMonth = now.getMonth() + 1;
           const reportYear = now.getFullYear();

@@ -571,15 +571,10 @@ export default function AddCompany() {
                         type="button"
                         className="w-full p-3 text-left rounded-lg border hover-elevate flex items-center justify-between"
                         onClick={() => {
-                          if (!createdCompanyId || sentInviteEmails.includes(contact.email)) return;
-                          sendInviteEmailMutation.mutate({
-                            companyId: createdCompanyId,
-                            email: contact.email,
-                            role: inviteRole,
-                          });
+                          setInviteEmail(contact.email);
+                          toast({ title: `Email set to ${contact.email}` });
                         }}
-                        disabled={!createdCompanyId || sentInviteEmails.includes(contact.email) || sendInviteEmailMutation.isPending}
-                        title={!createdCompanyId ? "Create the company first before sending invites" : undefined}
+                        disabled={sentInviteEmails.includes(contact.email)}
                         data-testid={`hubspot-contact-${contact.id}`}
                       >
                         <div className="flex items-center gap-3">

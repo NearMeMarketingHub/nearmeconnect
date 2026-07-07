@@ -307,6 +307,7 @@ export default function ClientCampaigns({ companyId, embedded = false }: ClientC
   const pendingRequests = monthFilteredRequests.filter(r => r.status === "pending");
   const approvedRequests = monthFilteredRequests.filter(r => r.status === "approved" || r.status === "in_progress");
   const completedRequests = monthFilteredRequests.filter(r => r.status === "completed");
+  const rejectedRequests = monthFilteredRequests.filter(r => r.status === "rejected" || r.status === "cancelled");
 
   if (typesLoading || requestsLoading) {
     const loadingContent = (
@@ -452,6 +453,7 @@ export default function ClientCampaigns({ companyId, embedded = false }: ClientC
             { value: "requests", label: "Requests", count: pendingRequests.length },
             { value: "approved", label: "Approved", count: approvedRequests.length },
             { value: "completed", label: "Completed", count: completedRequests.length },
+            { value: "rejected", label: "Rejected", count: rejectedRequests.length, hidden: rejectedRequests.length === 0 },
           ]}
           activeTab={campaignTab}
           onTabChange={setCampaignTab}
@@ -467,6 +469,11 @@ export default function ClientCampaigns({ companyId, embedded = false }: ClientC
           <TabsTrigger value="completed" data-testid="tab-completed">
             Completed ({completedRequests.length})
           </TabsTrigger>
+          {rejectedRequests.length > 0 && (
+            <TabsTrigger value="rejected" data-testid="tab-rejected">
+              Rejected ({rejectedRequests.length})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="requests" className="mt-4">
@@ -493,6 +500,13 @@ export default function ClientCampaigns({ companyId, embedded = false }: ClientC
           ) : renderEmptyState("No completed campaigns yet.")}
         </TabsContent>
 
+        {rejectedRequests.length > 0 && (
+          <TabsContent value="rejected" className="mt-4">
+            <div className="space-y-4">
+              {rejectedRequests.map(renderRequestCard)}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
 
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>

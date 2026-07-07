@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Shield, UserPlus, Trash2, Building2, Users, Mail, Clock, KeyRound, Pencil } from "lucide-react";
+import { Shield, UserPlus, Trash2, Building2, Users, Mail, Clock, KeyRound } from "lucide-react";
 
 interface AdminUserWithDetails {
   id: string;
@@ -102,12 +102,6 @@ export default function UserManagement() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [deleteUserTarget, setDeleteUserTarget] = useState<{ userId: string; name: string } | null>(null);
-  const [editNameTarget, setEditNameTarget] = useState<AdminUserWithDetails | null>(null);
-  const [editFirstName, setEditFirstName] = useState("");
-  const [editLastName, setEditLastName] = useState("");
-  const [editMemberNameTarget, setEditMemberNameTarget] = useState<MemberWithDetails | null>(null);
-  const [editMemberFirstName, setEditMemberFirstName] = useState("");
-  const [editMemberLastName, setEditMemberLastName] = useState("");
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<UsersData>({
@@ -206,22 +200,6 @@ export default function UserManagement() {
     },
   });
 
-  const editNameMutation = useMutation({
-    mutationFn: async ({ userId, firstName, lastName }: { userId: string; firstName: string; lastName: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/name`, { firstName, lastName });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Name updated" });
-      setEditNameTarget(null);
-      setEditMemberNameTarget(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to update name", description: err.message, variant: "destructive" });
-    },
-  });
-
   const getInitials = (firstName: string | null, lastName: string | null, email: string) => {
     if (firstName && lastName) return `${firstName[0]}${lastName[0]}`.toUpperCase();
     if (firstName) return firstName[0].toUpperCase();
@@ -231,18 +209,6 @@ export default function UserManagement() {
   const getDisplayName = (firstName: string | null, lastName: string | null, email: string) => {
     if (firstName || lastName) return `${firstName || ""} ${lastName || ""}`.trim();
     return email;
-  };
-
-  const openEditName = (admin: AdminUserWithDetails) => {
-    setEditNameTarget(admin);
-    setEditFirstName(admin.firstName || "");
-    setEditLastName(admin.lastName || "");
-  };
-
-  const openEditMemberName = (member: MemberWithDetails) => {
-    setEditMemberNameTarget(member);
-    setEditMemberFirstName(member.firstName || "");
-    setEditMemberLastName(member.lastName || "");
   };
 
   const filteredCompanies = companyFilter === "all"
@@ -349,15 +315,6 @@ export default function UserManagement() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">Admin</Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Edit name"
-                      onClick={() => openEditName(admin)}
-                      data-testid={`button-edit-name-${admin.userId}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -565,15 +522,6 @@ export default function UserManagement() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              title="Edit name"
-                              onClick={() => openEditMemberName(member)}
-                              data-testid={`button-edit-name-member-${member.userId}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
                               title="Send password reset email"
                               onClick={() => member.email && passwordResetMutation.mutate(member.email)}
                               disabled={passwordResetMutation.isPending || !member.email}
@@ -603,108 +551,6 @@ export default function UserManagement() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Edit Admin Name Dialog */}
-      <Dialog open={!!editNameTarget} onOpenChange={(open) => !open && setEditNameTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Admin Name</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-first-name">First Name</Label>
-              <Input
-                id="edit-first-name"
-                value={editFirstName}
-                onChange={(e) => setEditFirstName(e.target.value)}
-                placeholder="First name"
-                data-testid="input-edit-first-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-last-name">Last Name</Label>
-              <Input
-                id="edit-last-name"
-                value={editLastName}
-                onChange={(e) => setEditLastName(e.target.value)}
-                placeholder="Last name"
-                data-testid="input-edit-last-name"
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditNameTarget(null)} data-testid="button-cancel-edit-name">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (editNameTarget) {
-                    editNameMutation.mutate({
-                      userId: editNameTarget.userId,
-                      firstName: editFirstName.trim(),
-                      lastName: editLastName.trim(),
-                    });
-                  }
-                }}
-                disabled={!editFirstName.trim() || !editLastName.trim() || editNameMutation.isPending}
-                data-testid="button-save-edit-name"
-              >
-                {editNameMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Member Name Dialog */}
-      <Dialog open={!!editMemberNameTarget} onOpenChange={(open) => !open && setEditMemberNameTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Member Name</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-member-first-name">First Name</Label>
-              <Input
-                id="edit-member-first-name"
-                value={editMemberFirstName}
-                onChange={(e) => setEditMemberFirstName(e.target.value)}
-                placeholder="First name"
-                data-testid="input-edit-member-first-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-member-last-name">Last Name</Label>
-              <Input
-                id="edit-member-last-name"
-                value={editMemberLastName}
-                onChange={(e) => setEditMemberLastName(e.target.value)}
-                placeholder="Last name"
-                data-testid="input-edit-member-last-name"
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditMemberNameTarget(null)} data-testid="button-cancel-edit-member-name">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (editMemberNameTarget) {
-                    editNameMutation.mutate({
-                      userId: editMemberNameTarget.userId,
-                      firstName: editMemberFirstName.trim(),
-                      lastName: editMemberLastName.trim(),
-                    });
-                  }
-                }}
-                disabled={!editMemberFirstName.trim() || !editMemberLastName.trim() || editNameMutation.isPending}
-                data-testid="button-save-edit-member-name"
-              >
-                {editNameMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog open={!!deleteUserTarget} onOpenChange={(open) => !open && setDeleteUserTarget(null)}>
         <AlertDialogContent>
