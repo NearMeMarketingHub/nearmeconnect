@@ -586,6 +586,13 @@ function BoardCard({ task, companyId, onTaskClick, isDragging, categories, dragg
             <QuickActionMenu task={task} companyId={companyId} onOpen={() => onTaskClick(task)} />
           </div>
 
+          {/* Description snippet (2-line preview) */}
+          {task.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2 leading-snug pl-6">
+              {task.description}
+            </p>
+          )}
+
           {/* Status chip (only non-pending) */}
           {task.status !== "pending" && task.status !== "completed" && !isRejected && (
             <div className="flex items-center gap-1">
@@ -1392,19 +1399,6 @@ export function ProjectBoard({
       }),
       isCompleted: true,
     };
-
-    if (isAllCompanies && companies && companies.length > 0) {
-      return [
-        ...companies.map((company) => ({
-          id: company.id,
-          label: company.name,
-          color: null as string | null,
-          tasks: sortByDue(activeTasks.filter((t) => t.companyId === company.id)),
-          isCompleted: false,
-        })),
-        completedCol,
-      ];
-    }
 
     const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     return [

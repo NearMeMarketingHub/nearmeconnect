@@ -672,6 +672,13 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:taskId/labels", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
+      const task = await storage.getTask(req.params.taskId);
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) {
+        const membership = await storage.getCompanyMembership(task.companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ message: "Access denied" });
+      }
       const labels = await storage.getTaskLabelsByTask(req.params.taskId);
       res.json(labels);
     } catch (error: any) {
