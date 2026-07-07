@@ -98,6 +98,7 @@ import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
 import { CompanyInfoHub } from "@/components/company-info-hub";
+import { ProjectBoard } from "@/components/project-board";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -2808,218 +2809,17 @@ export default function CompanyDashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button variant={!assignedToMeFilter ? "default" : "outline"} size="sm"
-                onClick={() => { setAssignedToMeFilter(false); setCompanyTaskPage(1); }}
-                data-testid="company-filter-all-tasks">
-                <ListTodo className="w-3 h-3 mr-1" />
-                All Tasks
-              </Button>
-              <Button variant={assignedToMeFilter ? "default" : "outline"} size="sm"
-                onClick={() => { setAssignedToMeFilter(true); setCompanyTaskPage(1); }}
-                data-testid="company-filter-assigned-to-me">
-                <User className="w-3 h-3 mr-1" />
-                Assigned to Me
-              </Button>
-              <div className="w-px h-6 bg-border" />
-              {(taskCategoriesData || []).length > 0 && (
-                <Select value={categoryFilter} onValueChange={(val) => { setCategoryFilter(val); setCompanyTaskPage(1); }}>
-                  <SelectTrigger className="h-8 w-[160px]" data-testid="select-category-filter">
-                    <FolderOpen className="w-3 h-3 mr-1" />
-                    <SelectValue placeholder="All categories" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All categories</SelectItem>
-                    <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                    {(taskCategoriesData || []).map((cat: any) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        <span className="flex items-center gap-1.5">
-                          {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
-                          {cat.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="flex gap-2 flex-wrap">
-              <Button variant={companyTaskFilter === "all" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("all"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-all">
-                All ({companyTaskCounts.all})
-              </Button>
-              <Button variant={companyTaskFilter === "pending" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("pending"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-pending">
-                <Circle className="w-3 h-3 mr-1" />
-                Pending ({companyTaskCounts.pending})
-              </Button>
-              <Button variant={companyTaskFilter === "in_progress" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("in_progress"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-in-progress">
-                <Clock className="w-3 h-3 mr-1" />
-                In Progress ({companyTaskCounts.in_progress})
-              </Button>
-              <Button variant={companyTaskFilter === "review" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("review"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-review">
-                <AlertTriangle className="w-3 h-3 mr-1" />
-                Review ({companyTaskCounts.review})
-              </Button>
-              <Button variant={companyTaskFilter === "approved" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("approved"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-approved">
-                <CheckCircle2 className="w-3 h-3 mr-1" />
-                Approved ({companyTaskCounts.approved})
-              </Button>
-              <Button variant={companyTaskFilter === "completed" ? "default" : "outline"} size="sm"
-                onClick={() => { setCompanyTaskFilter("completed"); setCompanyTaskPage(1); }}
-                data-testid="company-filter-completed">
-                <CheckCircle2 className="w-3 h-3 mr-1" />
-                Completed ({companyTaskCounts.completed})
-              </Button>
-              {companyTaskCounts.rejected > 0 && (
-                <Button variant={companyTaskFilter === "rejected" ? "default" : "outline"} size="sm"
-                  onClick={() => { setCompanyTaskFilter("rejected"); setCompanyTaskPage(1); }}
-                  data-testid="company-filter-rejected">
-                  Rejected ({companyTaskCounts.rejected})
-                </Button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
-                data-testid="button-task-month-prev"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
-                {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
-                data-testid="button-task-month-next"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {tasksLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : filteredCompanyTasks.length > 0 ? (
-              <div className="space-y-2">
-                {paginatedCompanyTasks.map((task) => (
-                  <Card
-                    key={task.id}
-                    className="cursor-pointer hover-elevate"
-                    onClick={() => setSelectedTask(task)}
-                    data-testid={`card-task-${task.id}`}
-                  >
-                    <CardContent className="py-3 flex items-center gap-4">
-                      <button
-                        onClick={(e) => handleToggleComplete(e, task)}
-                        className="shrink-0"
-                        data-testid={`button-toggle-task-${task.id}`}
-                      >
-                        {getStatusIcon(task.status, task.approvalStatus)}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={task.status === "completed" ? "line-through text-muted-foreground" : "font-medium"}>
-                            {task.title}
-                          </span>
-                          {task.isRecurring && (
-                            <Badge variant="outline" className="gap-1">
-                              <Repeat className="h-3 w-3" />
-                              {task.recurrencePattern === "biweekly" && task.recurrenceWeekday !== null && task.recurrenceWeekday !== undefined
-                                ? `Every other ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][task.recurrenceWeekday]}`
-                                : "Monthly"}
-                            </Badge>
-                          )}
-                          {task.categoryId && (() => {
-                            const cat = (taskCategoriesData || []).find((c: any) => c.id === task.categoryId);
-                            if (!cat) return null;
-                            return (
-                              <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
-                                {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
-                                {cat.name}
-                              </Badge>
-                            );
-                          })()}
-                          {task.campaignRequestId && (() => {
-                            const campaign = companyCampaignRequests.find(c => c.id === task.campaignRequestId);
-                            if (!campaign) return null;
-                            return (
-                              <Badge
-                                variant="outline"
-                                className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedCampaign(campaign);
-                                }}
-                                data-testid={`badge-campaign-${task.id}`}
-                              >
-                                <Target className="w-3 h-3 mr-1" />
-                                {campaign.name || "Campaign"}
-                              </Badge>
-                            );
-                          })()}
-                        </div>
-                        {task.description && (
-                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
-                        )}
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          {task.dueDate && (
-                            <span className={`text-sm flex items-center gap-1 ${getDueDateColor(task.dueDate, task.status)}`}>
-                              <Clock className="h-3 w-3" />
-                              {formatDueDate(task.dueDate, task.status)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <TaskAssigneeAvatars taskId={task.id} />
-                        {getPriorityBadge(task.priority)}
-                        <Badge variant="secondary">{task.creditCost} credits</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-                {companyTotalPages > 1 && (
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <p className="text-sm text-muted-foreground">
-                      Showing {(companyTaskPage - 1) * COMPANY_TASKS_PER_PAGE + 1}-{Math.min(companyTaskPage * COMPANY_TASKS_PER_PAGE, filteredCompanyTasks.length)} of {filteredCompanyTasks.length} tasks
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setCompanyTaskPage(p => Math.max(1, p - 1))} disabled={companyTaskPage === 1} data-testid="button-company-prev-page">
-                        <ChevronLeft className="w-4 h-4" /> Previous
-                      </Button>
-                      <span className="text-sm text-muted-foreground">Page {companyTaskPage} of {companyTotalPages}</span>
-                      <Button variant="outline" size="sm" onClick={() => setCompanyTaskPage(p => Math.min(companyTotalPages, p + 1))} disabled={companyTaskPage === companyTotalPages} data-testid="button-company-next-page">
-                        Next <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  No tasks found. Assign a task to get started.
-                </CardContent>
-              </Card>
-            )}
+            <ProjectBoard
+              companyId={companyId}
+              tasks={tasks || []}
+              categories={taskCategoriesData || []}
+              tasksLoading={tasksLoading}
+              onTaskClick={(task) => setSelectedTask(task)}
+              onAddTask={(categoryId) => {
+                if (categoryId) setTaskCategoryId(categoryId);
+                setTaskOpen(true);
+              }}
+            />
           </TabsContent>
 
           {/* Calendar Tab */}
