@@ -753,7 +753,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
         type: "assigned",
         creditCost: "1",
         priority: "medium",
-        categoryId: id !== "uncategorized" && id !== "completed" && !companies?.find((c) => c.id === id) ? id : null,
+        categoryId: id !== "uncategorized" && id !== "completed" && id !== "pending" && id !== "in_progress" && id !== "review" && id !== "approved" ? id : null,
         dueDate: dueDate || null,
       });
       return response.json();
@@ -806,7 +806,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
           )}
         </div>
 
-        {!isCompleted && (
+        {!isCompleted && companyId !== "all" && (
           <div className="border-t bg-muted/20">
             <InlineAddTask
               onAdd={(title, dueDate) => createInlineMutation.mutate({ title, dueDate })}
@@ -1400,6 +1400,17 @@ export function ProjectBoard({
       isCompleted: true,
     };
 
+    // All-companies view: group by status (categories are per-company, meaningless cross-company)
+    if (isAllCompanies) {
+      return [
+        { id: "pending", label: "Not Started", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "pending")), isCompleted: false },
+        { id: "in_progress", label: "In Progress", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "in_progress")), isCompleted: false },
+        { id: "review", label: "In Review", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "review")), isCompleted: false },
+        { id: "approved", label: "Approved", color: null as string | null, tasks: sortByDue(activeTasks.filter((t) => t.status === "approved")), isCompleted: false },
+        completedCol,
+      ];
+    }
+
     const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     return [
       ...sorted.map((cat) => ({
@@ -1418,7 +1429,7 @@ export function ProjectBoard({
       },
       completedCol,
     ];
-  }, [categories, boardFilteredTasks, labelFiltered, isAllCompanies, companies]);
+  }, [categories, boardFilteredTasks, labelFiltered, isAllCompanies]);
 
   // By-month grouping
   const byMonthColumns = useMemo(() => {
@@ -1641,7 +1652,7 @@ export function ProjectBoard({
                 label={col.label}
                 color={col.color}
                 tasks={col.tasks}
-                companyId={col.isCompleted ? companyId : (isAllCompanies && !col.isCompleted ? col.id : companyId)}
+                companyId={companyId}
                 categories={categories}
                 onTaskClick={onTaskClick}
                 onAddTask={!col.isCompleted && !isAllCompanies && onAddTask
