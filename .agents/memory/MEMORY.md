@@ -1,0 +1,3 @@
+- [DB migration approach](db-migration.md) — never use `npm run db:push` interactively; use `executeSql` directly for new tables to avoid interactive rename prompts.
+- [Admin email typo](admin-credentials.md) — test runner always misreads admin email; use browser-based login in test plans, never API login step.
+- [Label system](label-system.md) — task_labels + task_label_assignments tables, full CRUD API, labels fetched inside ProjectBoard component (disabled when companyId === "all").

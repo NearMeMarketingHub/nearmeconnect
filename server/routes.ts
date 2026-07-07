@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated, AuthenticatedRequest } from "./auth";
-import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema } from "@shared/schema";
+import { insertCompanySchema, insertTaskSchema, insertTaskCategorySchema, insertTaskLabelSchema, insertDeliverableTypeSchema, insertTaskChecklistItemSchema, insertCompanyInvitationSchema, insertChatThreadSchema, insertChatMessageSchema, insertCampaignTypeSchema, insertCampaignRequestSchema, insertTrainingModuleSchema, insertTrainingAssignmentSchema, insertTrainingCompletionSchema } from "@shared/schema";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -595,6 +595,118 @@ export async function registerRoutes(
       await storage.deleteTaskCategory(req.params.id);
       broadcastInvalidation(`companies/${category.companyId}/task-categories`);
       broadcastInvalidation("tasks");
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Task Labels ─────────────────────────────────────────────────────────────
+
+  app.get("/api/companies/:companyId/task-labels", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) {
+        const membership = await storage.getCompanyMembership(req.params.companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ message: "Access denied" });
+      }
+      const labels = await storage.getTaskLabels(req.params.companyId);
+      res.json(labels);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/companies/:companyId/task-labels", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const parsed = insertTaskLabelSchema.safeParse({ ...req.body, companyId: req.params.companyId });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid label data" });
+      const label = await storage.createTaskLabel(parsed.data);
+      broadcastInvalidation(`companies/${req.params.companyId}/task-labels`);
+      res.json(label);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/task-labels/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const label = await storage.updateTaskLabel(req.params.id, req.body);
+      if (!label) return res.status(404).json({ message: "Label not found" });
+      broadcastInvalidation(`companies/${label.companyId}/task-labels`);
+      res.json(label);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/task-labels/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      await storage.deleteTaskLabel(req.params.id);
+      broadcastInvalidation("task-labels");
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/companies/:companyId/task-label-assignments", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) {
+        const membership = await storage.getCompanyMembership(req.params.companyId, req.user!.id);
+        if (!membership) return res.status(403).json({ message: "Access denied" });
+      }
+      const assignments = await storage.getTaskLabelAssignments(req.params.companyId);
+      res.json(assignments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/tasks/:taskId/labels", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const labels = await storage.getTaskLabelsByTask(req.params.taskId);
+      res.json(labels);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/tasks/:taskId/labels", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const { labelId } = req.body;
+      if (!labelId) return res.status(400).json({ message: "labelId required" });
+      await storage.addTaskLabelAssignment(req.params.taskId, labelId);
+      const task = await storage.getTask(req.params.taskId);
+      if (task) {
+        broadcastInvalidation(`companies/${task.companyId}/task-label-assignments`);
+        broadcastInvalidation(`tasks/${task.id}/labels`);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/tasks/:taskId/labels/:labelId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      await storage.removeTaskLabelAssignment(req.params.taskId, req.params.labelId);
+      const task = await storage.getTask(req.params.taskId);
+      if (task) {
+        broadcastInvalidation(`companies/${task.companyId}/task-label-assignments`);
+        broadcastInvalidation(`tasks/${task.id}/labels`);
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

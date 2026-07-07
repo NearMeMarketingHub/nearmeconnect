@@ -133,6 +133,48 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     enabled: !!companyId && open,
   });
 
+  const { data: companyLabels = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", companyId, "task-labels"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const r = await fetch(`/api/companies/${companyId}/task-labels`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!companyId && open,
+    staleTime: 30000,
+  });
+
+  const { data: taskLabels = [] } = useQuery<any[]>({
+    queryKey: ["/api/tasks", task?.id, "labels"],
+    queryFn: async () => {
+      if (!task) return [];
+      const r = await fetch(`/api/tasks/${task.id}/labels`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: !!task && open,
+    staleTime: 10000,
+  });
+
+  const addLabelMutation = useMutation({
+    mutationFn: (labelId: string) => apiRequest("POST", `/api/tasks/${task?.id}/labels`, { labelId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id, "labels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-label-assignments"] });
+    },
+    onError: () => toast({ title: "Failed to add label", variant: "destructive" }),
+  });
+
+  const removeLabelMutation = useMutation({
+    mutationFn: (labelId: string) => apiRequest("DELETE", `/api/tasks/${task?.id}/labels/${labelId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", task?.id, "labels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-label-assignments"] });
+    },
+    onError: () => toast({ title: "Failed to remove label", variant: "destructive" }),
+  });
+
   const { data: adminUsersData } = useQuery<any>({
     queryKey: ["/api/admin/users"],
     enabled: isAdmin && open,
@@ -1029,6 +1071,58 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                   })()}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Labels Section */}
+          {companyLabels.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground text-xs flex items-center gap-1">
+                <Tag className="w-3 h-3" /> Labels
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {taskLabels.map((label: any) => (
+                  <button
+                    key={label.id}
+                    onClick={() => isAdmin && removeLabelMutation.mutate(label.id)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-white transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: label.color }}
+                    title={isAdmin ? `Remove "${label.name}"` : label.name}
+                    data-testid={`task-label-${label.id}`}
+                  >
+                    {label.name}
+                    {isAdmin && <X className="h-2.5 w-2.5" />}
+                  </button>
+                ))}
+                {isAdmin && companyLabels.filter((l: any) => !taskLabels.some((tl: any) => tl.id === l.id)).length > 0 && (
+                  <div className="relative group">
+                    <button
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                      data-testid="button-add-label"
+                    >
+                      <Plus className="h-2.5 w-2.5" /> Add label
+                    </button>
+                    <div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:flex group-focus-within:flex flex-col bg-popover border rounded-md shadow-lg p-1 min-w-[140px]">
+                      {companyLabels
+                        .filter((l: any) => !taskLabels.some((tl: any) => tl.id === l.id))
+                        .map((label: any) => (
+                          <button
+                            key={label.id}
+                            className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted text-left text-sm w-full"
+                            onClick={() => addLabelMutation.mutate(label.id)}
+                            data-testid={`add-label-option-${label.id}`}
+                          >
+                            <span className="w-3 h-3 rounded shrink-0" style={{ backgroundColor: label.color }} />
+                            {label.name}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+                {taskLabels.length === 0 && !isAdmin && (
+                  <span className="text-xs text-muted-foreground">No labels</span>
+                )}
+              </div>
             </div>
           )}
 

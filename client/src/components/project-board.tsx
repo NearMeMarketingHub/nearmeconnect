@@ -48,6 +48,7 @@ import {
   MoreHorizontal,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   GripVertical,
   Calendar,
   LayoutGrid,
@@ -61,12 +62,16 @@ import {
   X,
   Building2,
   User,
+  TableProperties,
+  CalendarRange,
+  Tag,
+  ArrowUpDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import type { Task, TaskCategory, TaskChecklistItem } from "@shared/schema";
+import type { Task, TaskCategory, TaskChecklistItem, TaskLabel, TaskLabelAssignment } from "@shared/schema";
 
-type BoardViewMode = "board" | "by-month" | "by-due-date" | "list";
+type BoardViewMode = "board" | "by-month" | "by-due-date" | "list" | "grid" | "calendar";
 type OutstandingFilter = null | "overdue" | "this-week" | "in-progress" | "in-review";
 type AssigneeFilter = "all" | "me";
 
@@ -112,6 +117,10 @@ function getDueDateClass(task: Task): string {
   return "text-muted-foreground";
 }
 
+function formatShortDate(dateStr: string): string {
+  return parseLocalDate(dateStr).toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
+}
+
 function getStatusChip(status: string, approvalStatus?: string | null) {
   if (approvalStatus === "rejected")
     return <span className="flex items-center gap-1 text-xs text-destructive"><XCircle className="h-3 w-3" /> Rejected</span>;
@@ -124,6 +133,28 @@ function getStatusChip(status: string, approvalStatus?: string | null) {
   if (status === "approved")
     return <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3 w-3" /> Approved</span>;
   return <span className="flex items-center gap-1 text-xs text-muted-foreground"><Circle className="h-3 w-3" /> Pending</span>;
+}
+
+function getStatusLabel(status: string): string {
+  if (status === "completed") return "Completed";
+  if (status === "in_progress") return "In Progress";
+  if (status === "review") return "In Review";
+  if (status === "approved") return "Approved";
+  return "Not Started";
+}
+
+function getPriorityLabel(priority: string | null): string {
+  if (priority === "urgent") return "Urgent";
+  if (priority === "high") return "Important";
+  if (priority === "low") return "Low";
+  return "Medium";
+}
+
+function getPriorityColor(priority: string | null): string {
+  if (priority === "urgent") return "text-destructive";
+  if (priority === "high") return "text-orange-600 dark:text-orange-400";
+  if (priority === "low") return "text-muted-foreground";
+  return "text-foreground";
 }
 
 function getDueDateBucket(task: Task): "overdue" | "today" | "this-week" | "this-month" | "later" | "none" {
@@ -150,27 +181,49 @@ function getMonthLabel(monthKey: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-// Group tasks by category within a set of tasks
 function groupByCategory(
   tasks: Task[],
   categories: TaskCategory[]
 ): { id: string; name: string; color: string | null; tasks: Task[] }[] {
   const catMap = new Map(categories.map((c) => [c.id, c]));
   const groups = new Map<string, { id: string; name: string; color: string | null; tasks: Task[] }>();
-
-  // Ensure each category appears (sorted by sortOrder)
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
   for (const cat of sorted) {
     groups.set(cat.id, { id: cat.id, name: cat.name, color: cat.color, tasks: [] });
   }
   groups.set("uncategorized", { id: "uncategorized", name: "Uncategorized", color: null, tasks: [] });
-
   for (const task of tasks) {
     const catId = task.categoryId && catMap.has(task.categoryId) ? task.categoryId : "uncategorized";
     groups.get(catId)!.tasks.push(task);
   }
-
   return [...groups.values()].filter((g) => g.tasks.length > 0);
+}
+
+// ─── Label Pills ──────────────────────────────────────────────────────────────
+
+function LabelPills({ labels, max = 4 }: { labels: TaskLabel[]; max?: number }) {
+  if (!labels.length) return null;
+  const visible = labels.slice(0, max);
+  const overflow = labels.length - max;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {visible.map((l) => (
+        <span
+          key={l.id}
+          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold text-white leading-none"
+          style={{ backgroundColor: l.color }}
+          title={l.name}
+        >
+          {l.name}
+        </span>
+      ))}
+      {overflow > 0 && (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">
+          +{overflow}
+        </span>
+      )}
+    </div>
+  );
 }
 
 // ─── Inline Checklist ─────────────────────────────────────────────────────────
@@ -272,6 +325,28 @@ function InlineChecklist({ taskId }: { taskId: string }) {
   );
 }
 
+// ─── Checklist Count Badge (for cards) ────────────────────────────────────────
+
+function ChecklistCount({ taskId }: { taskId: string }) {
+  const { data: items = [] } = useQuery<TaskChecklistItem[]>({
+    queryKey: ["/api/tasks", taskId, "checklist"],
+    queryFn: async () => {
+      const r = await fetch(`/api/tasks/${taskId}/checklist`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    staleTime: 60000,
+  });
+  if (!items.length) return null;
+  const done = items.filter((i) => i.isCompleted).length;
+  return (
+    <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+      <CheckCircle2 className="h-3 w-3" />
+      {done}/{items.length}
+    </span>
+  );
+}
+
 // ─── Task Assignee Avatars ─────────────────────────────────────────────────────
 
 function BoardTaskAvatars({ taskId }: { taskId: string }) {
@@ -344,7 +419,7 @@ function QuickActionMenu({ task, companyId, onOpen }: { task: Task; companyId: s
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
             onClick={(e) => e.stopPropagation()}
             data-testid={`button-task-actions-${task.id}`}
           >
@@ -405,7 +480,7 @@ function QuickActionMenu({ task, companyId, onOpen }: { task: Task; companyId: s
   );
 }
 
-// ─── Board Card ───────────────────────────────────────────────────────────────
+// ─── Board Card (Planner Style) ───────────────────────────────────────────────
 
 interface BoardCardProps {
   task: Task;
@@ -415,10 +490,12 @@ interface BoardCardProps {
   categories: TaskCategory[];
   draggable?: boolean;
   companyName?: string;
+  taskLabels?: TaskLabel[];
 }
 
-function BoardCard({ task, companyId, onTaskClick, isDragging, categories, draggable = true, companyName }: BoardCardProps) {
+function BoardCard({ task, companyId, onTaskClick, isDragging, categories, draggable = true, companyName, taskLabels = [] }: BoardCardProps) {
   const [showChecklist, setShowChecklist] = useState(false);
+  const { toast } = useToast();
   const { attributes, listeners, setNodeRef, transform, isDragging: selfDragging } = useDraggable({
     id: task.id,
     data: { task },
@@ -430,66 +507,128 @@ function BoardCard({ task, companyId, onTaskClick, isDragging, categories, dragg
     : undefined;
 
   const cat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
+  const isCompleted = task.status === "completed";
+  const isRejected = task.approvalStatus === "rejected";
+
+  const toggleCompleteMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/tasks/${task.id}`, {
+        status: isCompleted ? "pending" : "completed",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", { companyId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: () => toast({ title: "Failed to update task", variant: "destructive" }),
+  });
 
   return (
     <div ref={setNodeRef} style={style} data-testid={`board-card-${task.id}`}>
       <Card
-        className={`group cursor-pointer hover:shadow-md transition-shadow border ${isDragging ? "shadow-lg ring-2 ring-primary" : ""}`}
+        className={`group cursor-pointer hover:shadow-md transition-all border-0 shadow-sm ring-1 ring-border ${isDragging ? "shadow-xl ring-primary" : ""} ${isCompleted ? "opacity-75" : ""}`}
         onClick={() => onTaskClick(task)}
       >
+        {/* Colored label strips at top — Planner style */}
+        {taskLabels.length > 0 && (
+          <div className="flex gap-0 overflow-hidden rounded-t-lg">
+            {taskLabels.map((l) => (
+              <div
+                key={l.id}
+                className="h-2 flex-1"
+                style={{ backgroundColor: l.color }}
+                title={l.name}
+              />
+            ))}
+          </div>
+        )}
+
         <CardContent className="p-3 space-y-2">
-          <div className="flex items-start gap-1">
+          {/* Label pills */}
+          {taskLabels.length > 0 && (
+            <LabelPills labels={taskLabels} />
+          )}
+
+          {/* Title row */}
+          <div className="flex items-start gap-2">
+            {/* Completion circle */}
+            <button
+              className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCompleteMutation.mutate();
+              }}
+              data-testid={`button-complete-${task.id}`}
+            >
+              {isCompleted
+                ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+                : isRejected
+                  ? <XCircle className="h-4 w-4 text-destructive" />
+                  : <Circle className="h-4 w-4" />
+              }
+            </button>
+
+            <span className={`text-sm font-medium leading-snug flex-1 min-w-0 line-clamp-2 ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
+              {task.title}
+            </span>
+
             {draggable && (
               <button
                 {...attributes}
                 {...listeners}
-                className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
+                className="mt-0.5 shrink-0 text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => e.stopPropagation()}
                 data-testid={`drag-handle-${task.id}`}
               >
                 <GripVertical className="h-3.5 w-3.5" />
               </button>
             )}
-            <div className="flex-1 min-w-0">
-              <span className={`text-sm font-medium leading-snug line-clamp-2 ${task.status === "completed" ? "line-through text-muted-foreground" : ""}`}>
-                {task.title}
-              </span>
-            </div>
+
             <QuickActionMenu task={task} companyId={companyId} onOpen={() => onTaskClick(task)} />
           </div>
 
-          {task.description && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+          {/* Status chip (only non-pending) */}
+          {task.status !== "pending" && task.status !== "completed" && !isRejected && (
+            <div className="flex items-center gap-1">
+              {getStatusChip(task.status, task.approvalStatus)}
+            </div>
           )}
 
+          {/* Company label for all-companies view */}
+          {companyName && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Building2 className="h-3 w-3" />
+              {companyName}
+            </span>
+          )}
+
+          {/* Category + credits row */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {getStatusChip(task.status, task.approvalStatus)}
-            {task.dueDate && (
-              <span className={`text-xs flex items-center gap-0.5 ${getDueDateClass(task)}`}>
-                <Clock className="h-3 w-3" />
-                {getDueDateLabel(task)}
+            {cat && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#888" }} />
+                {cat.name}
               </span>
+            )}
+            {task.creditCost && Number(task.creditCost) > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{task.creditCost}cr</Badge>
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <BoardTaskAvatars taskId={task.id} />
-              {companyName && (
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Building2 className="h-3 w-3" />
-                  {companyName}
+          {/* Footer: due date + checklist count + avatar */}
+          <div className="flex items-center justify-between gap-1 pt-0.5">
+            <div className="flex items-center gap-2">
+              {task.dueDate && (
+                <span className={`text-[10px] flex items-center gap-0.5 font-medium ${getDueDateClass(task)}`}>
+                  <Calendar className="h-3 w-3" />
+                  {formatShortDate(task.dueDate)}
                 </span>
               )}
+              <ChecklistCount taskId={task.id} />
             </div>
-            <div className="flex items-center gap-1.5">
-              {cat && (
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#888" }} title={cat.name} />
-              )}
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{task.creditCost}cr</Badge>
-            </div>
+            <BoardTaskAvatars taskId={task.id} />
           </div>
 
+          {/* Checklist toggle */}
           <button
             className="w-full flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors pt-1 border-t"
             onClick={(e) => { e.stopPropagation(); setShowChecklist((v) => !v); }}
@@ -592,9 +731,10 @@ interface BoardColumnProps {
   isCompleted?: boolean;
   draggable?: boolean;
   companies?: { id: string; name: string }[];
+  taskLabelsMap?: Map<string, TaskLabel[]>;
 }
 
-function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskClick, onAddTask, isCompleted, draggable, companies }: BoardColumnProps) {
+function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskClick, onAddTask, isCompleted, draggable, companies, taskLabelsMap }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   const createInlineMutation = useMutation({
@@ -620,13 +760,13 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
   const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
 
   return (
-    <div className="flex flex-col min-w-[260px] max-w-[300px]" data-testid={`board-column-${id}`}>
-      <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg border border-b-0 ${isOver ? "bg-primary/10 border-primary" : "bg-muted/40"}`}>
+    <div className="flex flex-col min-w-[280px] max-w-[320px]" data-testid={`board-column-${id}`}>
+      <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-lg border border-b-0 ${isOver ? "bg-primary/10 border-primary" : "bg-muted/30"}`}>
         <div className="flex items-center gap-2">
-          {color && <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />}
-          {isCompleted && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
+          {color && <span className="w-3 h-3 rounded-full shrink-0 ring-1 ring-white/20" style={{ backgroundColor: color }} />}
+          {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-500" />}
           <span className="text-sm font-semibold truncate">{label}</span>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{tasks.length}</Badge>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">{tasks.length}</Badge>
         </div>
         {onAddTask && !isCompleted && (
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onAddTask()} data-testid={`button-add-task-header-${id}`}>
@@ -637,9 +777,9 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
 
       <div
         ref={setNodeRef}
-        className={`flex flex-col min-h-[120px] rounded-b-lg border overflow-hidden ${isOver ? "bg-primary/5 border-primary" : "bg-muted/20"}`}
+        className={`flex flex-col min-h-[120px] rounded-b-lg border overflow-hidden ${isOver ? "bg-primary/5 border-primary" : "bg-card"}`}
       >
-        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[60vh]">
+        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[65vh]">
           {tasks.map((task) => (
             <BoardCard
               key={task.id}
@@ -649,6 +789,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
               categories={categories}
               draggable={draggable && !isCompleted}
               companyName={companies ? getCompanyName(task.companyId) : undefined}
+              taskLabels={taskLabelsMap?.get(task.id) || []}
             />
           ))}
           {tasks.length === 0 && (
@@ -659,7 +800,7 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
         </div>
 
         {!isCompleted && (
-          <div className="border-t bg-background/50">
+          <div className="border-t bg-muted/20">
             <InlineAddTask
               onAdd={(title, dueDate) => createInlineMutation.mutate({ title, dueDate })}
               isPending={createInlineMutation.isPending}
@@ -715,21 +856,21 @@ function OutstandingBar({ tasks, activeFilter, onFilter }: {
 
 // ─── Task List Row ────────────────────────────────────────────────────────────
 
-function TaskListRow({ task, companyId, categories, onTaskClick, companyName }: {
-  task: Task; companyId: string; categories: TaskCategory[]; onTaskClick: (task: Task) => void; companyName?: string;
+function TaskListRow({ task, companyId, categories, onTaskClick, companyName, taskLabels = [] }: {
+  task: Task; companyId: string; categories: TaskCategory[]; onTaskClick: (task: Task) => void; companyName?: string; taskLabels?: TaskLabel[];
 }) {
   const cat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
   return (
     <Card className="cursor-pointer hover:shadow-sm transition-shadow" onClick={() => onTaskClick(task)} data-testid={`list-task-${task.id}`}>
-      <CardContent className="py-3 px-4 flex items-center gap-3">
-        {getStatusChip(task.status, task.approvalStatus)}
+      <CardContent className="py-2.5 px-4 flex items-center gap-3">
+        {task.status === "completed"
+          ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+          : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
+        }
         <div className="flex-1 min-w-0">
           <span className={`text-sm font-medium ${task.status === "completed" ? "line-through text-muted-foreground" : ""}`}>
             {task.title}
           </span>
-          {task.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>
-          )}
           {companyName && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
               <Building2 className="h-3 w-3" />{companyName}
@@ -737,6 +878,7 @@ function TaskListRow({ task, companyId, categories, onTaskClick, companyName }: 
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {taskLabels.length > 0 && <LabelPills labels={taskLabels} max={2} />}
           {task.dueDate && (
             <span className={`text-xs ${getDueDateClass(task)}`}>{getDueDateLabel(task)}</span>
           )}
@@ -752,6 +894,350 @@ function TaskListRow({ task, companyId, categories, onTaskClick, companyName }: 
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Grid View (Spreadsheet) ──────────────────────────────────────────────────
+
+function GridRow({ task, categories, taskLabels, companyId, onTaskClick, companyName }: {
+  task: Task; categories: TaskCategory[]; taskLabels: TaskLabel[]; companyId: string; onTaskClick: (task: Task) => void; companyName?: string;
+}) {
+  const { toast } = useToast();
+  const cat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
+  const isCompleted = task.status === "completed";
+
+  const toggleMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/tasks/${task.id}`, { status: isCompleted ? "pending" : "completed" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks", { companyId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: () => toast({ title: "Failed to update task", variant: "destructive" }),
+  });
+
+  return (
+    <tr
+      className="group border-b hover:bg-muted/30 transition-colors cursor-pointer"
+      onClick={() => onTaskClick(task)}
+      data-testid={`grid-task-${task.id}`}
+    >
+      {/* Status circle */}
+      <td className="p-2 w-8">
+        <button
+          className="text-muted-foreground hover:text-primary transition-colors"
+          onClick={(e) => { e.stopPropagation(); toggleMutation.mutate(); }}
+          data-testid={`button-grid-complete-${task.id}`}
+        >
+          {isCompleted
+            ? <CheckCircle2 className="h-4 w-4 text-green-500" />
+            : <Circle className="h-4 w-4" />
+          }
+        </button>
+      </td>
+
+      {/* Name + assignees */}
+      <td className="p-2 min-w-[250px]">
+        <div className="flex items-start gap-2">
+          <span className={`text-sm font-medium line-clamp-1 flex-1 ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
+            {task.title}
+          </span>
+          <BoardTaskAvatars taskId={task.id} />
+        </div>
+        {companyName && (
+          <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 mt-0.5">
+            <Building2 className="h-3 w-3" />{companyName}
+          </p>
+        )}
+      </td>
+
+      {/* Due date */}
+      <td className="p-2 w-28">
+        {task.dueDate ? (
+          <span className={`text-xs font-medium ${getDueDateClass(task)}`}>
+            {formatShortDate(task.dueDate)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </td>
+
+      {/* Bucket / Category */}
+      <td className="p-2 w-36">
+        {cat ? (
+          <span className="flex items-center gap-1 text-xs">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#888" }} />
+            {cat.name}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">None</span>
+        )}
+      </td>
+
+      {/* Status */}
+      <td className="p-2 w-28">
+        {getStatusChip(task.status, task.approvalStatus)}
+      </td>
+
+      {/* Priority */}
+      <td className="p-2 w-24">
+        <span className={`text-xs font-medium ${getPriorityColor(task.priority)}`}>
+          {getPriorityLabel(task.priority)}
+        </span>
+      </td>
+
+      {/* Labels */}
+      <td className="p-2 min-w-[120px]">
+        <LabelPills labels={taskLabels} max={3} />
+      </td>
+
+      {/* Checklist */}
+      <td className="p-2 w-20">
+        <ChecklistCount taskId={task.id} />
+      </td>
+
+      {/* Credits */}
+      <td className="p-2 w-16">
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{task.creditCost}cr</Badge>
+      </td>
+
+      {/* Actions */}
+      <td className="p-2 w-8">
+        <QuickActionMenu task={task} companyId={companyId} onOpen={() => onTaskClick(task)} />
+      </td>
+    </tr>
+  );
+}
+
+function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, companies }: {
+  tasks: Task[];
+  categories: TaskCategory[];
+  taskLabelsMap: Map<string, TaskLabel[]>;
+  companyId: string;
+  onTaskClick: (task: Task) => void;
+  companies?: { id: string; name: string }[];
+}) {
+  const [sortKey, setSortKey] = useState<string>("dueDate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const sorted = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      let av: any, bv: any;
+      if (sortKey === "dueDate") {
+        av = a.dueDate ? getDaysDiff(a.dueDate) : 99999;
+        bv = b.dueDate ? getDaysDiff(b.dueDate) : 99999;
+      } else if (sortKey === "title") {
+        av = a.title.toLowerCase();
+        bv = b.title.toLowerCase();
+      } else if (sortKey === "status") {
+        av = a.status;
+        bv = b.status;
+      } else if (sortKey === "priority") {
+        const order: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+        av = order[a.priority || "medium"] ?? 2;
+        bv = order[b.priority || "medium"] ?? 2;
+      } else {
+        av = 0; bv = 0;
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [tasks, sortKey, sortDir]);
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+
+  const SortHeader = ({ label, sKey }: { label: string; sKey: string }) => (
+    <th
+      className="text-left p-2 cursor-pointer hover:bg-muted/60 transition-colors select-none whitespace-nowrap"
+      onClick={() => toggleSort(sKey)}
+    >
+      <span className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown className={`h-3 w-3 ${sortKey === sKey ? "text-primary" : "text-muted-foreground/50"}`} />
+      </span>
+    </th>
+  );
+
+  const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
+
+  return (
+    <div className="border rounded-lg overflow-auto" data-testid="grid-view">
+      <table className="w-full text-sm min-w-[900px]">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+            <th className="p-2 w-8"></th>
+            <SortHeader label="Name" sKey="title" />
+            <SortHeader label="Due Date" sKey="dueDate" />
+            <th className="text-left p-2 w-36 whitespace-nowrap">Bucket</th>
+            <SortHeader label="Status" sKey="status" />
+            <SortHeader label="Priority" sKey="priority" />
+            <th className="text-left p-2 min-w-[120px]">Labels</th>
+            <th className="text-left p-2 w-20 whitespace-nowrap">Checklist</th>
+            <th className="text-left p-2 w-16">Credits</th>
+            <th className="p-2 w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.length === 0 ? (
+            <tr>
+              <td colSpan={10} className="text-center py-10 text-muted-foreground text-sm">No tasks found.</td>
+            </tr>
+          ) : (
+            sorted.map((task) => (
+              <GridRow
+                key={task.id}
+                task={task}
+                categories={categories}
+                taskLabels={taskLabelsMap.get(task.id) || []}
+                companyId={task.companyId || companyId}
+                onTaskClick={onTaskClick}
+                companyName={companies ? getCompanyName(task.companyId) : undefined}
+              />
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Calendar View ────────────────────────────────────────────────────────────
+
+function CalendarView({ tasks, onTaskClick, taskLabelsMap, categories }: {
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+  taskLabelsMap: Map<string, TaskLabel[]>;
+  categories: TaskCategory[];
+}) {
+  const now = new Date();
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+
+  const prevMonth = () => {
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear((y) => y - 1); }
+    else setCurrentMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear((y) => y + 1); }
+    else setCurrentMonth((m) => m + 1);
+  };
+  const goToday = () => { setCurrentMonth(now.getMonth()); setCurrentYear(now.getFullYear()); };
+
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDow = firstDay.getDay();
+    const days: { date: Date; inMonth: boolean }[] = [];
+    for (let i = startDow - 1; i >= 0; i--) {
+      days.push({ date: new Date(currentYear, currentMonth, -i), inMonth: false });
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push({ date: new Date(currentYear, currentMonth, d), inMonth: true });
+    }
+    while (days.length < 42) {
+      days.push({ date: new Date(currentYear, currentMonth + 1, days.length - lastDay.getDate() - startDow + 1), inMonth: false });
+    }
+    return days;
+  }, [currentYear, currentMonth]);
+
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    tasks.filter((t) => t.dueDate).forEach((t) => {
+      const key = t.dueDate!.slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
+    });
+    return map;
+  }, [tasks]);
+
+  const todayKey = now.toISOString().slice(0, 10);
+  const monthLabel = new Date(currentYear, currentMonth, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  return (
+    <div data-testid="calendar-view">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">{monthLabel}</h3>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={prevMonth} data-testid="calendar-prev">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={goToday} data-testid="calendar-today">
+            Today
+          </Button>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={nextMonth} data-testid="calendar-next">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Calendar grid */}
+      <div className="border rounded-lg overflow-hidden">
+        {/* Day headers */}
+        <div className="grid grid-cols-7 border-b">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+            <div key={d} className="text-center text-xs font-semibold py-2 bg-muted/40 text-muted-foreground">
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Day cells */}
+        <div className="grid grid-cols-7">
+          {calendarDays.map((day, i) => {
+            const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, "0")}-${String(day.date.getDate()).padStart(2, "0")}`;
+            const dayTasks = tasksByDate.get(key) || [];
+            const isToday = key === todayKey;
+            const isWeekend = i % 7 === 0 || i % 7 === 6;
+
+            return (
+              <div
+                key={i}
+                className={`min-h-[110px] p-1.5 border-b border-r text-xs
+                  ${i % 7 === 6 ? "border-r-0" : ""}
+                  ${i >= 35 ? "border-b-0" : ""}
+                  ${!day.inMonth ? "bg-muted/20" : isWeekend ? "bg-muted/5" : "bg-background"}
+                `}
+              >
+                <div className={`w-6 h-6 flex items-center justify-center rounded-full mb-1 text-xs font-medium
+                  ${isToday ? "bg-primary text-primary-foreground" : !day.inMonth ? "text-muted-foreground/50" : ""}
+                `}>
+                  {day.date.getDate()}
+                </div>
+
+                <div className="space-y-0.5">
+                  {dayTasks.slice(0, 3).map((task) => {
+                    const taskCat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
+                    const taskLabels = taskLabelsMap.get(task.id) || [];
+                    const bgColor = taskLabels[0]?.color || taskCat?.color || "hsl(var(--primary))";
+                    return (
+                      <button
+                        key={task.id}
+                        className={`w-full text-left px-1.5 py-0.5 rounded text-[10px] font-medium truncate hover:opacity-80 transition-opacity text-white`}
+                        style={{ backgroundColor: task.status === "completed" ? "#94a3b8" : bgColor }}
+                        onClick={(e) => { e.stopPropagation(); onTaskClick(task); }}
+                        data-testid={`calendar-task-${task.id}`}
+                        title={task.title}
+                      >
+                        {task.status === "completed" ? "✓ " : ""}{task.title}
+                      </button>
+                    );
+                  })}
+                  {dayTasks.length > 3 && (
+                    <div className="text-[10px] text-muted-foreground px-1 font-medium">
+                      +{dayTasks.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -776,10 +1262,47 @@ export function ProjectBoard({
   const [boardStatusFilter, setBoardStatusFilter] = useState<string>("active");
   const [listStatusFilter, setListStatusFilter] = useState<string>("active");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [activeLabelId, setActiveLabelId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
+
+  // Label data (per company)
+  const { data: labels = [] } = useQuery<TaskLabel[]>({
+    queryKey: ["/api/companies", companyId, "task-labels"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/task-labels`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: companyId !== "all",
+    staleTime: 30000,
+  });
+
+  const { data: labelAssignments = [] } = useQuery<TaskLabelAssignment[]>({
+    queryKey: ["/api/companies", companyId, "task-label-assignments"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/task-label-assignments`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: companyId !== "all",
+    staleTime: 30000,
+  });
+
+  // Build taskId → TaskLabel[] map
+  const taskLabelsMap = useMemo(() => {
+    const map = new Map<string, TaskLabel[]>();
+    for (const a of labelAssignments) {
+      const label = labels.find((l) => l.id === a.labelId);
+      if (label) {
+        if (!map.has(a.taskId)) map.set(a.taskId, []);
+        map.get(a.taskId)!.push(label);
+      }
+    }
+    return map;
+  }, [labels, labelAssignments]);
 
   const updateCategoryMutation = useMutation({
     mutationFn: ({ taskId, categoryId }: { taskId: string; categoryId: string | null }) =>
@@ -791,9 +1314,7 @@ export function ProjectBoard({
     onError: () => toast({ title: "Failed to move task", variant: "destructive" }),
   });
 
-  // 90-day window:
-  // - Non-completed tasks: ALWAYS included (no dueDate cutoff)
-  // - Completed tasks: shown if completedAt within last 90 days
+  // 90-day window
   const windowedTasks = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -811,7 +1332,7 @@ export function ProjectBoard({
     });
   }, [tasks]);
 
-  // Apply outstanding filter
+  // Outstanding filter
   const outstandingFiltered = useMemo(() => {
     if (!outstandingFilter) return windowedTasks;
     return windowedTasks.filter((t) => {
@@ -823,7 +1344,7 @@ export function ProjectBoard({
     });
   }, [windowedTasks, outstandingFilter]);
 
-  // Apply assignee filter
+  // Assignee filter
   const assigneeFiltered = useMemo(() => {
     if (assigneeFilter === "me" && user?.id) {
       return outstandingFiltered.filter((t) => t.assignedTo === user.id || t.assignedBy === user.id);
@@ -831,12 +1352,21 @@ export function ProjectBoard({
     return outstandingFiltered;
   }, [outstandingFiltered, assigneeFilter, user?.id]);
 
-  // Apply board status filter
+  // Label filter
+  const labelFiltered = useMemo(() => {
+    if (!activeLabelId) return assigneeFiltered;
+    return assigneeFiltered.filter((t) => {
+      const tLabels = taskLabelsMap.get(t.id) || [];
+      return tLabels.some((l) => l.id === activeLabelId);
+    });
+  }, [assigneeFiltered, activeLabelId, taskLabelsMap]);
+
+  // Board status filter (for board/grid views)
   const boardFilteredTasks = useMemo(() => {
-    if (boardStatusFilter === "active") return assigneeFiltered.filter((t) => t.status !== "completed");
-    if (boardStatusFilter === "all") return assigneeFiltered;
-    return assigneeFiltered.filter((t) => t.status === boardStatusFilter);
-  }, [assigneeFiltered, boardStatusFilter]);
+    if (boardStatusFilter === "active") return labelFiltered.filter((t) => t.status !== "completed");
+    if (boardStatusFilter === "all") return labelFiltered;
+    return labelFiltered.filter((t) => t.status === boardStatusFilter);
+  }, [labelFiltered, boardStatusFilter]);
 
   const sortByDue = (arr: Task[]) =>
     arr.slice().sort((a, b) => {
@@ -845,16 +1375,12 @@ export function ProjectBoard({
       return da - db;
     });
 
-  // Build kanban columns
-  // - Single company: category swimlanes + Uncategorized + Completed
-  // - All companies: company swimlanes + Completed
   const isAllCompanies = companyId === "all" || disableDnD;
 
+  // Kanban columns
   const columns = useMemo(() => {
     const activeTasks = boardFilteredTasks.filter((t) => t.status !== "completed");
-    // Completed column always uses the 90-day windowed + assignee-filtered set,
-    // independent of boardStatusFilter, so completed tasks are always visible.
-    const completedTasks = assigneeFiltered.filter((t) => t.status === "completed");
+    const completedTasks = labelFiltered.filter((t) => t.status === "completed");
 
     const completedCol = {
       id: "completed",
@@ -868,7 +1394,6 @@ export function ProjectBoard({
     };
 
     if (isAllCompanies && companies && companies.length > 0) {
-      // Company swimlanes
       return [
         ...companies.map((company) => ({
           id: company.id,
@@ -876,12 +1401,11 @@ export function ProjectBoard({
           color: null as string | null,
           tasks: sortByDue(activeTasks.filter((t) => t.companyId === company.id)),
           isCompleted: false,
-        })).filter((col) => col.tasks.length > 0 || true), // show all companies
+        })),
         completedCol,
       ];
     }
 
-    // Category swimlanes
     const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
     return [
       ...sorted.map((cat) => ({
@@ -900,11 +1424,11 @@ export function ProjectBoard({
       },
       completedCol,
     ];
-  }, [categories, boardFilteredTasks, isAllCompanies, companies]);
+  }, [categories, boardFilteredTasks, labelFiltered, isAllCompanies, companies]);
 
-  // By-month column grouping with category sub-groups
+  // By-month grouping
   const byMonthColumns = useMemo(() => {
-    const activeTasks = assigneeFiltered.filter((t) => t.status !== "completed");
+    const activeTasks = labelFiltered.filter((t) => t.status !== "completed");
     const groups = new Map<string, Task[]>();
     activeTasks.forEach((t) => {
       const isOverdue = t.dueDate != null && getDaysDiff(t.dueDate) < 0;
@@ -918,12 +1442,11 @@ export function ProjectBoard({
         key,
         label: getMonthLabel(key),
         total: monthTasks.length,
-        // Sub-group by category within each month
         categoryGroups: isAllCompanies
           ? [{ id: "all", name: "", color: null, tasks: sortByDue(monthTasks) }]
           : groupByCategory(monthTasks, categories),
       }));
-  }, [assigneeFiltered, categories, isAllCompanies]);
+  }, [labelFiltered, categories, isAllCompanies]);
 
   // By-due-date grouping
   const byDueDateGroups = useMemo(() => {
@@ -935,15 +1458,15 @@ export function ProjectBoard({
       later: { label: "Later", tasks: [], order: 4 },
       none: { label: "No Due Date", tasks: [], order: 5 },
     };
-    assigneeFiltered.filter((t) => t.status !== "completed").forEach((t) => {
+    labelFiltered.filter((t) => t.status !== "completed").forEach((t) => {
       buckets[getDueDateBucket(t)].tasks.push(t);
     });
     return Object.values(buckets).filter((b) => b.tasks.length > 0).sort((a, b) => a.order - b.order);
-  }, [assigneeFiltered]);
+  }, [labelFiltered]);
 
   // List view tasks
   const listTasks = useMemo(() => {
-    let t = assigneeFiltered.filter((task) => task.status !== "cadence_parent");
+    let t = labelFiltered.filter((task) => task.status !== "cadence_parent");
     if (listStatusFilter === "active") t = t.filter((task) => task.status !== "completed");
     else if (listStatusFilter !== "all") t = t.filter((task) => task.status === listStatusFilter);
     return t.sort((a, b) => {
@@ -952,7 +1475,12 @@ export function ProjectBoard({
       if (!b.dueDate) return -1;
       return getDaysDiff(a.dueDate) - getDaysDiff(b.dueDate);
     });
-  }, [assigneeFiltered, listStatusFilter]);
+  }, [labelFiltered, listStatusFilter]);
+
+  // Grid view tasks (uses board status filter)
+  const gridTasks = useMemo(() => {
+    return boardFilteredTasks;
+  }, [boardFilteredTasks]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveTaskId(event.active.id as string);
@@ -967,7 +1495,6 @@ export function ProjectBoard({
     if (newColumnId === "completed") return;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    // Don't allow dropping onto company columns (no-op for category)
     if (isAllCompanies) return;
     const newCategoryId = newColumnId === "uncategorized" ? null : newColumnId;
     if (task.categoryId === newCategoryId) return;
@@ -991,15 +1518,18 @@ export function ProjectBoard({
       {/* Outstanding Bar */}
       <OutstandingBar tasks={windowedTasks} activeFilter={outstandingFilter} onFilter={setOutstandingFilter} />
 
-      {/* View Toggle + Assignee Filter */}
+      {/* View Toggle + Filters */}
       <div className="flex items-center gap-2 flex-wrap justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View mode buttons */}
           <div className="flex items-center border rounded-lg overflow-hidden">
             {([
               { mode: "board" as const, icon: LayoutGrid, label: "Board" },
               { mode: "by-month" as const, icon: Calendar, label: "By Month" },
               { mode: "by-due-date" as const, icon: CalendarDays, label: "By Due Date" },
               { mode: "list" as const, icon: List, label: "List" },
+              { mode: "grid" as const, icon: TableProperties, label: "Grid" },
+              { mode: "calendar" as const, icon: CalendarRange, label: "Calendar" },
             ]).map(({ mode, icon: Icon, label }) => (
               <Button
                 key={mode}
@@ -1010,12 +1540,12 @@ export function ProjectBoard({
                 data-testid={`view-toggle-${mode}`}
               >
                 <Icon className="h-3.5 w-3.5 mr-1.5" />
-                {label}
+                <span className="hidden md:inline">{label}</span>
               </Button>
             ))}
           </div>
 
-          {/* Assignee filter — always visible */}
+          {/* Assignee filter */}
           <div className="flex items-center border rounded-lg overflow-hidden">
             <Button
               variant={assigneeFilter === "all" ? "default" : "ghost"}
@@ -1037,12 +1567,31 @@ export function ProjectBoard({
               Mine
             </Button>
           </div>
+
+          {/* Label filter pills */}
+          {labels.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {labels.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => setActiveLabelId(activeLabelId === l.id ? null : l.id)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold text-white transition-all ${activeLabelId === l.id ? "ring-2 ring-offset-1 ring-offset-background" : "opacity-75 hover:opacity-100"}`}
+                  style={{ backgroundColor: l.color, ringColor: l.color }}
+                  data-testid={`label-filter-${l.id}`}
+                  title={l.name}
+                >
+                  {l.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1">
-          {/* Board status filter */}
-          {viewMode === "board" && (
-            <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
+          {/* Board/Grid status filter */}
+          {(viewMode === "board" || viewMode === "grid") && (
+            <div className="flex items-center gap-1 flex-wrap">
               {(["active", "pending", "in_progress", "review", "approved"] as const).map((s) => (
                 <Button
                   key={s}
@@ -1057,9 +1606,10 @@ export function ProjectBoard({
               ))}
             </div>
           )}
+
           {/* List status filter */}
           {viewMode === "list" && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
               {(["active", "all", "pending", "in_progress", "review", "completed"] as const).map((s) => (
                 <Button
                   key={s}
@@ -1074,10 +1624,11 @@ export function ProjectBoard({
               ))}
             </div>
           )}
-          {(outstandingFilter || assigneeFilter === "me") && (
+
+          {(outstandingFilter || assigneeFilter === "me" || activeLabelId) && (
             <Button
               variant="ghost" size="sm" className="h-7 text-xs"
-              onClick={() => { setOutstandingFilter(null); setAssigneeFilter("all"); }}
+              onClick={() => { setOutstandingFilter(null); setAssigneeFilter("all"); setActiveLabelId(null); }}
             >
               <X className="h-3.5 w-3.5 mr-1" /> Clear
             </Button>
@@ -1085,7 +1636,7 @@ export function ProjectBoard({
         </div>
       </div>
 
-      {/* ── Board View ─────────────────────────────────────────────────── */}
+      {/* ── Board View ──────────────────────────────────────────────── */}
       {viewMode === "board" && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
@@ -1105,6 +1656,7 @@ export function ProjectBoard({
                 isCompleted={col.isCompleted}
                 draggable={canDnD}
                 companies={showCompanyLabel ? companies : undefined}
+                taskLabelsMap={taskLabelsMap}
               />
             ))}
           </div>
@@ -1119,6 +1671,7 @@ export function ProjectBoard({
                   isDragging
                   categories={categories}
                   draggable
+                  taskLabels={taskLabelsMap.get(activeTask.id) || []}
                 />
               </div>
             )}
@@ -1126,7 +1679,7 @@ export function ProjectBoard({
         </DndContext>
       )}
 
-      {/* ── By Month View (horizontal month columns, with category sub-groups) ─ */}
+      {/* ── By Month View ─────────────────────────────────────────── */}
       {viewMode === "by-month" && (
         <div className="flex gap-4 overflow-x-auto pb-4" data-testid="by-month-columns">
           {byMonthColumns.length === 0 ? (
@@ -1134,14 +1687,13 @@ export function ProjectBoard({
           ) : (
             byMonthColumns.map((group) => (
               <div key={group.key} className="flex flex-col min-w-[280px] max-w-[320px]" data-testid={`month-col-${group.key}`}>
-                <div className="flex items-center justify-between px-3 py-2 rounded-t-lg border border-b-0 bg-muted/40">
+                <div className="flex items-center justify-between px-3 py-2 rounded-t-lg border border-b-0 bg-muted/30">
                   <span className="text-sm font-semibold truncate">{group.label}</span>
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{group.total}</Badge>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">{group.total}</Badge>
                 </div>
-                <div className="rounded-b-lg border bg-muted/20 overflow-y-auto max-h-[60vh]">
+                <div className="rounded-b-lg border bg-card overflow-y-auto max-h-[65vh]">
                   {group.categoryGroups.map((catGroup) => (
                     <div key={catGroup.id} className="p-2">
-                      {/* Category sub-header (omit when only one group or no label) */}
                       {catGroup.name && group.categoryGroups.length > 1 && (
                         <div className="flex items-center gap-1.5 mb-1.5 px-1">
                           {catGroup.color && (
@@ -1163,6 +1715,7 @@ export function ProjectBoard({
                             categories={categories}
                             draggable={false}
                             companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
+                            taskLabels={taskLabelsMap.get(task.id) || []}
                           />
                         ))}
                       </div>
@@ -1178,7 +1731,7 @@ export function ProjectBoard({
         </div>
       )}
 
-      {/* ── By Due Date View ──────────────────────────────────────────── */}
+      {/* ── By Due Date View ──────────────────────────────────────── */}
       {viewMode === "by-due-date" && (
         <div className="space-y-6">
           {byDueDateGroups.length === 0 ? (
@@ -1200,6 +1753,7 @@ export function ProjectBoard({
                       categories={categories}
                       onTaskClick={onTaskClick}
                       companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
+                      taskLabels={taskLabelsMap.get(task.id) || []}
                     />
                   ))}
                 </div>
@@ -1209,7 +1763,7 @@ export function ProjectBoard({
         </div>
       )}
 
-      {/* ── List View ─────────────────────────────────────────────────── */}
+      {/* ── List View ────────────────────────────────────────────── */}
       {viewMode === "list" && (
         <div className="space-y-2">
           {listTasks.length === 0 ? (
@@ -1223,10 +1777,33 @@ export function ProjectBoard({
                 categories={categories}
                 onTaskClick={onTaskClick}
                 companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
+                taskLabels={taskLabelsMap.get(task.id) || []}
               />
             ))
           )}
         </div>
+      )}
+
+      {/* ── Grid View ────────────────────────────────────────────── */}
+      {viewMode === "grid" && (
+        <GridView
+          tasks={gridTasks}
+          categories={categories}
+          taskLabelsMap={taskLabelsMap}
+          companyId={companyId}
+          onTaskClick={onTaskClick}
+          companies={showCompanyLabel ? companies : undefined}
+        />
+      )}
+
+      {/* ── Calendar View ─────────────────────────────────────────── */}
+      {viewMode === "calendar" && (
+        <CalendarView
+          tasks={labelFiltered}
+          onTaskClick={onTaskClick}
+          taskLabelsMap={taskLabelsMap}
+          categories={categories}
+        />
       )}
     </div>
   );

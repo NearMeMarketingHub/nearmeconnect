@@ -1382,3 +1382,28 @@ export const insertCompanyKnowledgeItemSchema = createInsertSchema(companyKnowle
 });
 export type InsertCompanyKnowledgeItem = z.infer<typeof insertCompanyKnowledgeItemSchema>;
 export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;
+
+// ─── Task Labels (color tags, admin-managed per company) ──────────────────────
+export const taskLabels = pgTable("task_labels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#818cf8"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertTaskLabelSchema = createInsertSchema(taskLabels).omit({ id: true, createdAt: true });
+export type InsertTaskLabel = z.infer<typeof insertTaskLabelSchema>;
+export type TaskLabel = typeof taskLabels.$inferSelect;
+
+// ─── Task Label Assignments (many-to-many: tasks ↔ labels) ────────────────────
+export const taskLabelAssignments = pgTable("task_label_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: varchar("task_id").notNull(),
+  labelId: varchar("label_id").notNull(),
+});
+
+export const insertTaskLabelAssignmentSchema = createInsertSchema(taskLabelAssignments).omit({ id: true });
+export type InsertTaskLabelAssignment = z.infer<typeof insertTaskLabelAssignmentSchema>;
+export type TaskLabelAssignment = typeof taskLabelAssignments.$inferSelect;

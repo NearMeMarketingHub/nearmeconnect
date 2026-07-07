@@ -380,6 +380,185 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   );
 }
 
+// ─── Manage Labels Dialog ────────────────────────────────────────────────────
+
+function ManageLabelsDialog({ companyId }: { companyId: string }) {
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("#818cf8");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("#818cf8");
+  const { toast } = useToast();
+
+  const { data: labels = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies", companyId, "task-labels"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/task-labels`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: open,
+    staleTime: 10000,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/companies/${companyId}/task-labels`, {
+        name: newName.trim(),
+        color: newColor,
+        sortOrder: labels.length,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
+      setNewName("");
+      setNewColor("#818cf8");
+      toast({ title: "Label created" });
+    },
+    onError: () => toast({ title: "Failed to create label", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
+      await apiRequest("PATCH", `/api/task-labels/${id}`, { name, color });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
+      setEditingId(null);
+      toast({ title: "Label updated" });
+    },
+    onError: () => toast({ title: "Failed to update label", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/task-labels/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-label-assignments"] });
+      toast({ title: "Label deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete label", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" data-testid="button-manage-labels">
+          <Tag className="h-4 w-4 mr-2" />
+          Labels
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Manage Task Labels</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div className="space-y-2">
+            {labels.map((label: any) => (
+              <div key={label.id} className="flex items-center gap-2 p-2 rounded-md border" data-testid={`label-item-${label.id}`}>
+                {editingId === label.id ? (
+                  <>
+                    <input
+                      type="color"
+                      value={editColor}
+                      onChange={(e) => setEditColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer border p-0.5"
+                      title="Label color"
+                    />
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="flex-1 h-8"
+                      data-testid="input-edit-label-name"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") updateMutation.mutate({ id: label.id, name: editName, color: editColor });
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                    <Button
+                      size="sm" className="h-7 text-xs"
+                      onClick={() => updateMutation.mutate({ id: label.id, name: editName, color: editColor })}
+                      disabled={updateMutation.isPending}
+                      data-testid="button-save-label"
+                    >
+                      Save
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingId(null)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-5 h-5 rounded shrink-0" style={{ backgroundColor: label.color }} />
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold text-white flex-1"
+                      style={{ backgroundColor: label.color }}
+                    >
+                      {label.name}
+                    </span>
+                    <Button
+                      size="sm" variant="ghost" className="h-7 text-xs"
+                      onClick={() => { setEditingId(label.id); setEditName(label.name); setEditColor(label.color); }}
+                      data-testid={`button-edit-label-${label.id}`}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteMutation.mutate(label.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-label-${label.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+            {labels.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">No labels yet. Create one below.</p>
+            )}
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Add New Label</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={newColor}
+                onChange={(e) => setNewColor(e.target.value)}
+                className="w-8 h-8 rounded cursor-pointer border p-0.5 shrink-0"
+                title="Label color"
+              />
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Label name..."
+                className="flex-1 h-8"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newName.trim()) createMutation.mutate();
+                }}
+                data-testid="input-new-label-name"
+              />
+              <Button
+                size="sm" className="h-8 px-3"
+                onClick={() => createMutation.mutate()}
+                disabled={!newName.trim() || createMutation.isPending}
+                data-testid="button-create-label"
+              >
+                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function CompanyDashboard() {
   const [, params] = useRoute("/admin/companies/:id");
   const companyId = params?.id;
@@ -2385,6 +2564,7 @@ export default function CompanyDashboard() {
               <h2 className="text-xl font-semibold">Tasks</h2>
               <div className="flex items-center gap-2">
                 <ManageCategoriesDialog companyId={companyId} categories={taskCategoriesData || []} />
+                <ManageLabelsDialog companyId={companyId} />
                 <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
                   <DialogTrigger asChild>
                     <Button data-testid="button-assign-task">

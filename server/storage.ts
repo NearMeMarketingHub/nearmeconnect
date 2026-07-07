@@ -159,9 +159,14 @@ import {
   monthlyReportNotes,
   companyCredentials,
   companyKnowledgeItems,
+  taskLabels,
+  taskLabelAssignments,
+  type TaskLabel,
+  type InsertTaskLabel,
+  type TaskLabelAssignment,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql } from "drizzle-orm";
+import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
 
 export interface IStorage {
@@ -199,6 +204,15 @@ export interface IStorage {
   createTaskCategory(category: InsertTaskCategory): Promise<TaskCategory>;
   updateTaskCategory(id: string, data: Partial<TaskCategory>): Promise<TaskCategory | undefined>;
   deleteTaskCategory(id: string): Promise<void>;
+
+  getTaskLabels(companyId: string): Promise<TaskLabel[]>;
+  createTaskLabel(label: InsertTaskLabel): Promise<TaskLabel>;
+  updateTaskLabel(id: string, data: Partial<InsertTaskLabel>): Promise<TaskLabel | undefined>;
+  deleteTaskLabel(id: string): Promise<void>;
+  getTaskLabelAssignments(companyId: string): Promise<TaskLabelAssignment[]>;
+  getTaskLabelsByTask(taskId: string): Promise<TaskLabel[]>;
+  addTaskLabelAssignment(taskId: string, labelId: string): Promise<void>;
+  removeTaskLabelAssignment(taskId: string, labelId: string): Promise<void>;
 
   getTasks(companyId: string): Promise<Task[]>;
   getAllTasks(): Promise<Task[]>;
@@ -652,6 +666,52 @@ export class DatabaseStorage implements IStorage {
   async deleteTaskCategory(id: string): Promise<void> {
     await db.update(tasks).set({ categoryId: null }).where(eq(tasks.categoryId, id));
     await db.delete(taskCategories).where(eq(taskCategories.id, id));
+  }
+
+  async getTaskLabels(companyId: string): Promise<TaskLabel[]> {
+    return await db.select().from(taskLabels).where(eq(taskLabels.companyId, companyId)).orderBy(taskLabels.sortOrder);
+  }
+
+  async createTaskLabel(label: InsertTaskLabel): Promise<TaskLabel> {
+    const [created] = await db.insert(taskLabels).values({ ...label, createdAt: formatDateShortET(new Date()) }).returning();
+    return created;
+  }
+
+  async updateTaskLabel(id: string, data: Partial<InsertTaskLabel>): Promise<TaskLabel | undefined> {
+    const [updated] = await db.update(taskLabels).set(data).where(eq(taskLabels.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTaskLabel(id: string): Promise<void> {
+    await db.delete(taskLabelAssignments).where(eq(taskLabelAssignments.labelId, id));
+    await db.delete(taskLabels).where(eq(taskLabels.id, id));
+  }
+
+  async getTaskLabelAssignments(companyId: string): Promise<TaskLabelAssignment[]> {
+    const companyTaskIds = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.companyId, companyId));
+    const ids = companyTaskIds.map((t) => t.id);
+    if (ids.length === 0) return [];
+    return await db.select().from(taskLabelAssignments).where(inArray(taskLabelAssignments.taskId, ids));
+  }
+
+  async getTaskLabelsByTask(taskId: string): Promise<TaskLabel[]> {
+    const assignments = await db.select().from(taskLabelAssignments).where(eq(taskLabelAssignments.taskId, taskId));
+    if (assignments.length === 0) return [];
+    const labelIds = assignments.map((a) => a.labelId);
+    return await db.select().from(taskLabels).where(inArray(taskLabels.id, labelIds));
+  }
+
+  async addTaskLabelAssignment(taskId: string, labelId: string): Promise<void> {
+    const existing = await db.select().from(taskLabelAssignments)
+      .where(and(eq(taskLabelAssignments.taskId, taskId), eq(taskLabelAssignments.labelId, labelId)));
+    if (existing.length === 0) {
+      await db.insert(taskLabelAssignments).values({ taskId, labelId });
+    }
+  }
+
+  async removeTaskLabelAssignment(taskId: string, labelId: string): Promise<void> {
+    await db.delete(taskLabelAssignments)
+      .where(and(eq(taskLabelAssignments.taskId, taskId), eq(taskLabelAssignments.labelId, labelId)));
   }
 
   async getTasks(companyId: string): Promise<Task[]> {
