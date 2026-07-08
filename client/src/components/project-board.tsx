@@ -66,7 +66,11 @@ import {
   CalendarRange,
   Tag,
   ArrowUpDown,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronsUpDown,
 } from "lucide-react";
+import { useSidebar } from "@/components/ui/sidebar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import type { Task, TaskCategory, TaskChecklistItem, TaskLabel, TaskLabelAssignment } from "@shared/schema";
@@ -741,8 +745,12 @@ interface BoardColumnProps {
   taskLabelsMap?: Map<string, TaskLabel[]>;
 }
 
+const COMPACT_TASK_LIMIT = 4;
+
 function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskClick, onAddTask, isCompleted, draggable, companies, taskLabelsMap }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const [isBodyCollapsed, setIsBodyCollapsed] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const createInlineMutation = useMutation({
     mutationFn: async ({ title, dueDate }: { title: string; dueDate?: string }) => {
@@ -766,55 +774,78 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
 
   const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
 
+  const displayedTasks = showAll ? tasks : tasks.slice(0, COMPACT_TASK_LIMIT);
+  const hiddenCount = tasks.length - COMPACT_TASK_LIMIT;
+
   return (
-    <div className="flex flex-col min-w-[280px] max-w-[320px]" data-testid={`board-column-${id}`}>
-      <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-lg border border-b-0 ${isOver ? "bg-primary/10 border-primary" : "bg-muted/30"}`}>
-        <div className="flex items-center gap-2">
-          {color && <span className="w-3 h-3 rounded-full shrink-0 ring-1 ring-white/20" style={{ backgroundColor: color }} />}
-          {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+    <div className="flex flex-col w-[280px] shrink-0" data-testid={`board-column-${id}`}>
+      {/* Header */}
+      <div className={`flex items-center justify-between px-2.5 py-2.5 border ${isBodyCollapsed ? "rounded-lg" : "rounded-t-lg border-b-0"} ${isOver && !isBodyCollapsed ? "bg-primary/10 border-primary" : "bg-muted/30"}`}>
+        <button
+          className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+          onClick={() => setIsBodyCollapsed(v => !v)}
+          data-testid={`button-collapse-column-${id}`}
+        >
+          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform ${isBodyCollapsed ? "" : "rotate-90"}`} />
+          {color && <span className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/20" style={{ backgroundColor: color }} />}
+          {isCompleted && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
           <span className="text-sm font-semibold truncate">{label}</span>
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full">{tasks.length}</Badge>
-        </div>
-        {onAddTask && !isCompleted && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onAddTask()} data-testid={`button-add-task-header-${id}`}>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 rounded-full shrink-0">{tasks.length}</Badge>
+        </button>
+        {onAddTask && !isCompleted && !isBodyCollapsed && (
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => onAddTask()} data-testid={`button-add-task-header-${id}`}>
             <Plus className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
 
-      <div
-        ref={setNodeRef}
-        className={`flex flex-col min-h-[120px] rounded-b-lg border overflow-hidden ${isOver ? "bg-primary/5 border-primary" : "bg-card"}`}
-      >
-        <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[65vh]">
-          {tasks.map((task) => (
-            <BoardCard
-              key={task.id}
-              task={task}
-              companyId={task.companyId || companyId}
-              onTaskClick={onTaskClick}
-              categories={categories}
-              draggable={draggable && !isCompleted}
-              companyName={companies ? getCompanyName(task.companyId) : undefined}
-              taskLabels={taskLabelsMap?.get(task.id) || []}
-            />
-          ))}
-          {tasks.length === 0 && (
-            <div className="flex items-center justify-center h-16 text-xs text-muted-foreground">
-              {isOver ? "Drop here" : "No tasks"}
+      {/* Body */}
+      {!isBodyCollapsed && (
+        <div
+          ref={setNodeRef}
+          className={`flex flex-col rounded-b-lg border overflow-hidden ${isOver ? "bg-primary/5 border-primary" : "bg-card"}`}
+        >
+          <div className="p-2 space-y-2">
+            {displayedTasks.map((task) => (
+              <BoardCard
+                key={task.id}
+                task={task}
+                companyId={task.companyId || companyId}
+                onTaskClick={onTaskClick}
+                categories={categories}
+                draggable={draggable && !isCompleted}
+                companyName={companies ? getCompanyName(task.companyId) : undefined}
+                taskLabels={taskLabelsMap?.get(task.id) || []}
+              />
+            ))}
+            {tasks.length === 0 && (
+              <div className="flex items-center justify-center h-14 text-xs text-muted-foreground">
+                {isOver ? "Drop here" : "No tasks"}
+              </div>
+            )}
+          </div>
+
+          {/* Expand / collapse task list */}
+          {tasks.length > COMPACT_TASK_LIMIT && (
+            <button
+              onClick={() => setShowAll(v => !v)}
+              className="px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 border-t transition-colors text-center"
+              data-testid={`button-show-all-${id}`}
+            >
+              {showAll ? "Show less" : `Show ${hiddenCount} more task${hiddenCount !== 1 ? "s" : ""}`}
+            </button>
+          )}
+
+          {!isCompleted && companyId !== "all" && (
+            <div className="border-t bg-muted/20">
+              <InlineAddTask
+                onAdd={(title, dueDate) => createInlineMutation.mutate({ title, dueDate })}
+                isPending={createInlineMutation.isPending}
+              />
             </div>
           )}
         </div>
-
-        {!isCompleted && companyId !== "all" && (
-          <div className="border-t bg-muted/20">
-            <InlineAddTask
-              onAdd={(title, dueDate) => createInlineMutation.mutate({ title, dueDate })}
-              isPending={createInlineMutation.isPending}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -1263,6 +1294,7 @@ export function ProjectBoard({
 }: ProjectBoardProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { toggleSidebar, state: sidebarState } = useSidebar();
   const [viewMode, setViewMode] = useState<BoardViewMode>("board");
   const [outstandingFilter, setOutstandingFilter] = useState<OutstandingFilter>(null);
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -1566,6 +1598,23 @@ export function ProjectBoard({
             ))}
           </div>
 
+          {/* Focus mode / sidebar collapse */}
+          {viewMode === "board" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={toggleSidebar}
+              title={sidebarState === "expanded" ? "Collapse sidebar for more space" : "Expand sidebar"}
+              data-testid="button-focus-mode"
+            >
+              {sidebarState === "expanded"
+                ? <PanelLeftClose className="h-3.5 w-3.5" />
+                : <PanelLeftOpen className="h-3.5 w-3.5" />}
+              <span className="hidden md:inline">{sidebarState === "expanded" ? "Focus" : "Expand"}</span>
+            </Button>
+          )}
+
           {/* Assignee filter */}
           <div className="flex items-center border rounded-lg overflow-hidden">
             <Button
@@ -1660,7 +1709,7 @@ export function ProjectBoard({
       {/* ── Board View ──────────────────────────────────────────────── */}
       {viewMode === "board" && (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div className="flex flex-wrap gap-3 pb-4">
             {columns.map((col) => (
               <BoardColumn
                 key={col.id}
