@@ -959,7 +959,7 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
       onClick={() => onTaskClick(task)}
       data-testid={`grid-task-${task.id}`}
     >
-      {/* Status circle */}
+      {/* Complete toggle */}
       <td className="p-2 w-8">
         <button
           className="text-muted-foreground hover:text-primary transition-colors"
@@ -973,14 +973,11 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
         </button>
       </td>
 
-      {/* Name + assignees */}
-      <td className="p-2 min-w-[250px]">
-        <div className="flex items-start gap-2">
-          <span className={`text-sm font-medium line-clamp-1 flex-1 ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
-            {task.title}
-          </span>
-          <BoardTaskAvatars taskId={task.id} />
-        </div>
+      {/* Task name */}
+      <td className="p-2 min-w-[220px]">
+        <span className={`text-sm font-medium line-clamp-1 ${isCompleted ? "line-through text-muted-foreground" : ""}`}>
+          {task.title}
+        </span>
         {companyName && (
           <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 mt-0.5">
             <Building2 className="h-3 w-3" />{companyName}
@@ -988,14 +985,30 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
         )}
       </td>
 
-      {/* Due date */}
+      {/* Assigned to */}
       <td className="p-2 w-28">
+        <BoardTaskAvatars taskId={task.id} />
+      </td>
+
+      {/* Start date */}
+      <td className="p-2 w-24">
+        {task.startDate ? (
+          <span className="text-xs text-muted-foreground">
+            {formatShortDate(task.startDate)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground/40">—</span>
+        )}
+      </td>
+
+      {/* Due date */}
+      <td className="p-2 w-24">
         {task.dueDate ? (
           <span className={`text-xs font-medium ${getDueDateClass(task)}`}>
             {formatShortDate(task.dueDate)}
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-xs text-muted-foreground/40">—</span>
         )}
       </td>
 
@@ -1004,10 +1017,10 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
         {cat ? (
           <span className="flex items-center gap-1 text-xs">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#888" }} />
-            {cat.name}
+            <span className="truncate max-w-[110px]">{cat.name}</span>
           </span>
         ) : (
-          <span className="text-xs text-muted-foreground">None</span>
+          <span className="text-xs text-muted-foreground/40">—</span>
         )}
       </td>
 
@@ -1024,18 +1037,16 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
       </td>
 
       {/* Labels */}
-      <td className="p-2 min-w-[120px]">
-        <LabelPills labels={taskLabels} max={3} />
+      <td className="p-2 min-w-[100px]">
+        <LabelPills labels={taskLabels} max={2} />
       </td>
 
-      {/* Checklist */}
-      <td className="p-2 w-20">
-        <ChecklistCount taskId={task.id} />
-      </td>
-
-      {/* Credits */}
-      <td className="p-2 w-16">
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{task.creditCost}cr</Badge>
+      {/* Quick look — checklist progress + credits */}
+      <td className="p-2 w-28">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <ChecklistCount taskId={task.id} />
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{task.creditCost}cr</Badge>
+        </div>
       </td>
 
       {/* Actions */}
@@ -1107,21 +1118,22 @@ function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, co
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
             <th className="p-2 w-8"></th>
-            <SortHeader label="Name" sKey="title" />
+            <SortHeader label="Task Name" sKey="title" />
+            <th className="text-left p-2 w-28 whitespace-nowrap">Assigned To</th>
+            <th className="text-left p-2 w-24 whitespace-nowrap">Start</th>
             <SortHeader label="Due Date" sKey="dueDate" />
             <th className="text-left p-2 w-36 whitespace-nowrap">Bucket</th>
             <SortHeader label="Status" sKey="status" />
             <SortHeader label="Priority" sKey="priority" />
-            <th className="text-left p-2 min-w-[120px]">Labels</th>
-            <th className="text-left p-2 w-20 whitespace-nowrap">Checklist</th>
-            <th className="text-left p-2 w-16">Credits</th>
+            <th className="text-left p-2 min-w-[100px]">Labels</th>
+            <th className="text-left p-2 w-28 whitespace-nowrap">Quick Look</th>
             <th className="p-2 w-8"></th>
           </tr>
         </thead>
         <tbody>
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={10} className="text-center py-10 text-muted-foreground text-sm">No tasks found.</td>
+              <td colSpan={11} className="text-center py-10 text-muted-foreground text-sm">No tasks found.</td>
             </tr>
           ) : (
             sorted.map((task) => (
@@ -1662,7 +1674,7 @@ export function ProjectBoard({
           {/* Board/Grid status filter */}
           {(viewMode === "board" || viewMode === "grid") && (
             <div className="flex items-center gap-1 flex-wrap">
-              {(["active", "pending", "in_progress", "review", "approved"] as const).map((s) => (
+              {(["active", "pending", "in_progress", "review", "approved", "completed"] as const).map((s) => (
                 <Button
                   key={s}
                   variant={boardStatusFilter === s ? "default" : "outline"}
