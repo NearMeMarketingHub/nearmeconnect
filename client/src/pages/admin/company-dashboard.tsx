@@ -2340,7 +2340,6 @@ export default function CompanyDashboard() {
               { value: "credit-history", label: "Credit History" },
               { value: "onboarding", label: "Info Hub" },
               { value: "users", label: "Users", count: companyUsers.length },
-              { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
             ]}
             activeTab={activeTab}
@@ -2395,10 +2394,6 @@ export default function CompanyDashboard() {
             <TabsTrigger value="users" data-testid="tab-users">
               <Users className="h-4 w-4 mr-2" />
               Users ({companyUsers.length})
-            </TabsTrigger>
-            <TabsTrigger value="cadences" data-testid="tab-cadences">
-              <Repeat className="h-4 w-4 mr-2" />
-              Cadences
             </TabsTrigger>
             <TabsTrigger value="reporting" data-testid="tab-reporting">
               <BarChart3 className="h-4 w-4 mr-2" />
@@ -4352,77 +4347,6 @@ export default function CompanyDashboard() {
           {/* Company Info / Onboarding Tab */}
           <TabsContent value="onboarding" className="space-y-4">
             {companyId && <CompanyInfoHub companyId={companyId} />}
-          </TabsContent>
-
-          {/* Cadences Tab */}
-          <TabsContent value="cadences" className="space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Recurring tasks that auto-generate each month</p>
-              </div>
-              <Button onClick={() => setCreateCadenceOpen(true)} data-testid="button-create-cadence">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Cadence
-              </Button>
-            </div>
-
-            {cadencesLoading ? (
-              <div className="space-y-4">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
-              </div>
-            ) : !cadenceList || cadenceList.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <Repeat className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">No cadences set up yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">Create a cadence to auto-generate recurring tasks each month</p>
-                  <Button className="mt-4" onClick={() => setCreateCadenceOpen(true)}>
-                    Create your first cadence
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {cadenceList.map((cadence: any) => (
-                  <Card
-                    key={cadence.id}
-                    className="cursor-pointer hover-elevate"
-                    onClick={() => { setSelectedCadence(cadence); setCadenceDetailOpen(true); }}
-                    data-testid={`cadence-card-${cadence.id}`}
-                  >
-                    <CardContent className="py-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="bg-primary/10 p-2 rounded-lg flex-shrink-0">
-                            <Repeat className="w-4 h-4 text-primary" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{cadence.title}</p>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-                              <span className="capitalize">{cadence.frequency}</span>
-                              {cadence.assignedToName && (
-                                <>
-                                  <span className="text-muted-foreground/50">&bull;</span>
-                                  <span>{cadence.assignedToName}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {cadence.noCredit ? (
-                            <Badge variant="outline" className="text-xs">No Credit</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs font-mono">{cadence.creditCost} cr</Badge>
-                          )}
-                          <Badge className="bg-green-500 text-xs">Active</Badge>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
           </TabsContent>
 
           <TabsContent value="campaigns" className="space-y-4">
