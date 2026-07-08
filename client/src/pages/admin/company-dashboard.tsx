@@ -164,6 +164,12 @@ interface CalendarDay {
   tasks: Task[];
 }
 
+const TIER_PRICES: Record<string, string> = {
+  essentials: "$2,500 / mo",
+  growth: "$5,000 / mo",
+  accelerator: "$7,000 / mo",
+};
+
 const CATEGORY_COLORS = [
   { label: "Blue", value: "#3b82f6" },
   { label: "Green", value: "#22c55e" },
@@ -569,7 +575,7 @@ export default function CompanyDashboard() {
   
   // Parse URL query params
   const urlParams = new URLSearchParams(searchString);
-  const initialTab = urlParams.get("tab") || "details";
+  const initialTab = urlParams.get("tab") || "overview";
   const initialThread = urlParams.get("thread");
   
   const isMobile = useIsMobile();
@@ -1722,6 +1728,22 @@ export default function CompanyDashboard() {
   const completedTasks = (tasks || []).filter(t => t.status === "completed");
   const pendingApprovalTasks = (tasks || []).filter((t) => t.approvalStatus === "pending_approval");
 
+  // Overview tab derived values
+  const overviewToday = new Date(); overviewToday.setHours(0, 0, 0, 0);
+  const overdueTasks = activeTasks.filter(t => t.dueDate && new Date(t.dueDate) < overviewToday);
+  const inReviewTasks = activeTasks.filter(t => t.status === "review");
+  const urgentHighTasks = activeTasks.filter(t => (t.priority === "urgent" || t.priority === "high") && !overdueTasks.find(o => o.id === t.id));
+  const creditTotal = (company?.monthlyCredits || 0) + (company?.bonusCredits || 0);
+  const creditRemaining = company?.credits || 0;
+  const creditUsed = Math.max(0, creditTotal - creditRemaining);
+  const creditPct = creditTotal > 0 ? Math.min(100, Math.max(0, (creditRemaining / creditTotal) * 100)) : 100;
+  const recentlyCompleted = [...completedTasks]
+    .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime())
+    .slice(0, 8);
+  const completedThisPeriod = billingPeriod
+    ? completedTasks.filter(t => t.completedAt && isDateInBillingPeriod(new Date(t.completedAt), billingPeriod))
+    : completedTasks;
+
   const currentBillingPeriodTasks = (tasks || []).filter(task => {
     if (!billingPeriod) return true;
     return isTaskInBillingPeriod(task, billingPeriod);
@@ -2330,6 +2352,7 @@ export default function CompanyDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <MobileTabMenu
             tabs={[
+              { value: "overview", label: "Overview" },
               { value: "details", label: "Details" },
               { value: "pending_approval", label: "Pending Approval", count: pendingApprovalTasks.length, hidden: pendingApprovalTasks.length === 0 },
               { value: "tasks", label: "Tasks", count: activeTasks.length },
@@ -2347,6 +2370,10 @@ export default function CompanyDashboard() {
             title="Company Dashboard"
           />
           <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1" data-testid="tabs-company-dashboard">
+            <TabsTrigger value="overview" data-testid="tab-overview">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Overview
+            </TabsTrigger>
             <TabsTrigger value="details" data-testid="tab-details">
               <Settings className="h-4 w-4 mr-2" />
               Details
@@ -2400,6 +2427,310 @@ export default function CompanyDashboard() {
               Reporting
             </TabsTrigger>
           </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Credit gauge + retainer */}
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Credit gauge */}
+              <Card className="md:col-span-2">
+                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Coins className="h-4 w-4 text-muted-foreground" />
+                    Credits Remaining
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className={
+                      creditPct > 50
+                        ? "border-green-500 text-green-600 dark:text-green-400"
+                        : creditPct > 25
+                        ? "border-yellow-500 text-yellow-600 dark:text-yellow-400"
+                        : "border-destructive text-destructive"
+                    }
+                  >
+                    {creditPct.toFixed(0)}% left
+                  </Badge>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-end gap-2">
+                    <span className="text-4xl font-bold" data-testid="text-overview-credits">{creditRemaining}</span>
+                    <span className="text-lg text-muted-foreground pb-0.5">/ {creditTotal} credits</span>
+                  </div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        creditPct > 50 ? "bg-green-500" : creditPct > 25 ? "bg-yellow-500" : "bg-destructive"
+                      }`}
+                      style={{ width: `${creditPct}%` }}
+                      data-testid="bar-credit-remaining"
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{creditUsed} used this period</span>
+                    <span>{company.monthlyCredits} monthly allocation{company.bonusCredits > 0 ? ` + ${company.bonusCredits} bonus` : ""}</span>
+                  </div>
+                  {projectedCredits > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs pt-0.5">
+                      <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-muted-foreground">Projected usage this period:</span>
+                      <span className={projectedCredits > creditTotal ? "text-destructive font-medium" : "font-medium"}>
+                        {projectedCredits.toFixed(1)} credits
+                      </span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Retainer card */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-muted-foreground" />
+                    Retainer
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <div className="text-2xl font-bold capitalize">{company.subscriptionTier}</div>
+                    <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">{TIER_PRICES[company.subscriptionTier] || "Custom"}</p>
+                  </div>
+                  <Separator />
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Monthly credits</span>
+                      <span className="font-medium">{company.monthlyCredits}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Industry</span>
+                      <span className="font-medium truncate max-w-[120px] text-right">{company.industry || "—"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status</span>
+                      <span className={`font-medium ${company.isPaused ? "text-destructive" : "text-green-600 dark:text-green-400"}`}>
+                        {company.isPaused ? "Paused" : "Active"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Quick stat row */}
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Active Tasks</p>
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="text-3xl font-bold">{activeTasks.length}</div>
+                  {overdueTasks.length > 0 && (
+                    <p className="text-xs text-destructive mt-0.5 font-medium">{overdueTasks.length} overdue</p>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Review</p>
+                    <CheckCheck className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="text-3xl font-bold">{inReviewTasks.length}</div>
+                  {pendingApprovalTasks.length > 0 && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5 font-medium">{pendingApprovalTasks.length} pending approval</p>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Completed (Period)</p>
+                    <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="text-3xl font-bold">{completedThisPeriod.length}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{completedTasks.length} total</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Priority</p>
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="text-3xl font-bold">{urgentHighTasks.length + overdueTasks.length}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">need attention</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Outstanding / Priority Tasks */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  Outstanding &amp; Priority Tasks
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {overdueTasks.length === 0 && inReviewTasks.length === 0 && pendingApprovalTasks.length === 0 && urgentHighTasks.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                    <p className="text-sm font-medium">All caught up!</p>
+                    <p className="text-xs">No overdue or priority tasks right now.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {overdueTasks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-destructive mb-2">Overdue ({overdueTasks.length})</p>
+                        <div className="space-y-1.5">
+                          {overdueTasks.map(task => (
+                            <div
+                              key={task.id}
+                              className="flex items-center justify-between p-2.5 rounded-md border border-destructive/30 bg-destructive/5 cursor-pointer hover:bg-destructive/10 transition-colors"
+                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
+                              data-testid={`row-overview-overdue-${task.id}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <XCircle className="h-4 w-4 text-destructive shrink-0" />
+                                <span className="text-sm font-medium truncate">{task.title}</span>
+                              </div>
+                              <span className="text-xs text-destructive shrink-0 ml-2">
+                                Due {new Date(task.dueDate!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {pendingApprovalTasks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-yellow-600 dark:text-yellow-400 mb-2">Pending Approval ({pendingApprovalTasks.length})</p>
+                        <div className="space-y-1.5">
+                          {pendingApprovalTasks.map(task => (
+                            <div
+                              key={task.id}
+                              className="flex items-center justify-between p-2.5 rounded-md border border-yellow-500/30 bg-yellow-500/5 cursor-pointer hover:bg-yellow-500/10 transition-colors"
+                              onClick={() => { setSelectedTask(task); setActiveTab("pending_approval"); }}
+                              data-testid={`row-overview-approval-${task.id}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                                <span className="text-sm font-medium truncate">{task.title}</span>
+                              </div>
+                              <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-600 dark:text-yellow-400 shrink-0 ml-2">Awaiting approval</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {inReviewTasks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 mb-2">In Review ({inReviewTasks.length})</p>
+                        <div className="space-y-1.5">
+                          {inReviewTasks.map(task => (
+                            <div
+                              key={task.id}
+                              className="flex items-center justify-between p-2.5 rounded-md border border-blue-500/30 bg-blue-500/5 cursor-pointer hover:bg-blue-500/10 transition-colors"
+                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
+                              data-testid={`row-overview-review-${task.id}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CheckCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                                <span className="text-sm font-medium truncate">{task.title}</span>
+                              </div>
+                              <Badge variant="outline" className="text-xs border-blue-500 text-blue-600 dark:text-blue-400 shrink-0 ml-2">Review</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {urgentHighTasks.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400 mb-2">High Priority ({urgentHighTasks.length})</p>
+                        <div className="space-y-1.5">
+                          {urgentHighTasks.slice(0, 5).map(task => (
+                            <div
+                              key={task.id}
+                              className="flex items-center justify-between p-2.5 rounded-md border border-orange-500/30 bg-orange-500/5 cursor-pointer hover:bg-orange-500/10 transition-colors"
+                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
+                              data-testid={`row-overview-priority-${task.id}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Zap className="h-4 w-4 text-orange-500 shrink-0" />
+                                <span className="text-sm font-medium truncate">{task.title}</span>
+                              </div>
+                              <Badge variant="outline" className="text-xs border-orange-500 text-orange-600 dark:text-orange-400 shrink-0 ml-2 capitalize">{task.priority}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Completion report */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                    Completion Report
+                  </CardTitle>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span><span className="font-semibold text-foreground">{completedThisPeriod.length}</span> this period</span>
+                    <span><span className="font-semibold text-foreground">{completedTasks.length}</span> total</span>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {recentlyCompleted.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Circle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No completed tasks yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {recentlyCompleted.map(task => (
+                      <div
+                        key={task.id}
+                        className="flex items-center justify-between p-2.5 rounded-md border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
+                        data-testid={`row-overview-completed-${task.id}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                          <span className="text-sm font-medium truncate">{task.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          {task.creditsDeducted && (
+                            <Badge variant="secondary" className="text-xs">{task.creditCost} cr</Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {task.completedAt
+                              ? new Date(task.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {completedTasks.length > 8 && (
+                      <button
+                        className="w-full text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
+                        onClick={() => { setActiveTab("tasks"); setCompanyTaskFilter("completed"); }}
+                        data-testid="button-overview-see-all-completed"
+                      >
+                        View all {completedTasks.length} completed tasks →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Details Tab */}
           <TabsContent value="details" className="space-y-6">
