@@ -1357,8 +1357,22 @@ export const insertCompanyCredentialSchema = createInsertSchema(companyCredentia
 export type InsertCompanyCredential = z.infer<typeof insertCompanyCredentialSchema>;
 export type CompanyCredential = typeof companyCredentials.$inferSelect;
 
-export const knowledgeSectionEnum = ["links", "profile", "ideas", "resources"] as const;
+export const knowledgeSectionEnum = ["links", "profile", "ideas", "resources", "icp", "persona", "keywords"] as const;
 export type KnowledgeSection = typeof knowledgeSectionEnum[number];
+
+// ─── Company Profile (branding, social, logos, summary) ───────────────────────
+export const companyProfiles = pgTable("company_profiles", {
+  companyId: varchar("company_id").primaryKey().references(() => companies.id, { onDelete: "cascade" }),
+  summary: text("summary"),
+  brandColors: text("brand_colors"),
+  socialLinks: text("social_links"),
+  primaryLogoUrl: text("primary_logo_url"),
+  secondaryLogoUrl: text("secondary_logo_url"),
+  faviconUrl: text("favicon_url"),
+  updatedAt: text("updated_at"),
+});
+
+export type CompanyProfile = typeof companyProfiles.$inferSelect;
 
 // Admin-managed knowledge hub items per company
 export const companyKnowledgeItems = pgTable("company_knowledge_items", {

@@ -104,6 +104,8 @@ import {
   type InsertCompanyCredential,
   type CompanyKnowledgeItem,
   type InsertCompanyKnowledgeItem,
+  type CompanyProfile,
+  companyProfiles,
   tierCredits,
   type SubscriptionTier,
   companies,
@@ -461,6 +463,10 @@ export interface IStorage {
   createCompanyKnowledgeItem(data: InsertCompanyKnowledgeItem): Promise<CompanyKnowledgeItem>;
   updateCompanyKnowledgeItem(id: string, data: Partial<CompanyKnowledgeItem>): Promise<CompanyKnowledgeItem | undefined>;
   deleteCompanyKnowledgeItem(id: string): Promise<void>;
+
+  // Company Profile (branding, social, logos, summary)
+  getCompanyProfile(companyId: string): Promise<CompanyProfile | null>;
+  upsertCompanyProfile(companyId: string, data: Partial<CompanyProfile>): Promise<CompanyProfile>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2587,6 +2593,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompanyKnowledgeItem(id: string): Promise<void> {
     await db.delete(companyKnowledgeItems).where(eq(companyKnowledgeItems.id, id));
+  }
+
+  async getCompanyProfile(companyId: string): Promise<CompanyProfile | null> {
+    const [row] = await db.select().from(companyProfiles).where(eq(companyProfiles.companyId, companyId));
+    return row ?? null;
+  }
+
+  async upsertCompanyProfile(companyId: string, data: Partial<CompanyProfile>): Promise<CompanyProfile> {
+    const now = new Date().toISOString();
+    const [row] = await db
+      .insert(companyProfiles)
+      .values({ companyId, ...data, updatedAt: now })
+      .onConflictDoUpdate({
+        target: companyProfiles.companyId,
+        set: { ...data, updatedAt: now },
+      })
+      .returning();
+    return row;
   }
 }
 

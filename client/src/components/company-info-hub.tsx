@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { ClientOnboarding, CompanyCredential, CompanyKnowledgeItem } from "@shared/schema";
+import type { ClientOnboarding, CompanyCredential, CompanyKnowledgeItem, CompanyProfile } from "@shared/schema";
 import {
   CheckCircle,
   XCircle,
@@ -36,6 +36,20 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Palette,
+  Image,
+  Users,
+  Target,
+  Hash,
+  Upload,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Youtube,
+  Twitter,
+  Building2,
+  MapPin,
+  FileText,
 } from "lucide-react";
 
 interface CompanyInfoHubProps {
@@ -58,6 +72,23 @@ interface LoginCredentialEntry {
   recoveryNotes?: string;
 }
 
+interface BrandColor {
+  name: string;
+  hex: string;
+}
+
+interface SocialLinks {
+  website?: string;
+  facebook?: string;
+  instagram?: string;
+  twitter?: string;
+  linkedin?: string;
+  youtube?: string;
+  tiktok?: string;
+  pinterest?: string;
+  googleBusiness?: string;
+}
+
 function parseSocialPlatforms(json: string | null | undefined): SocialPlatform[] {
   if (!json) return [];
   try { return JSON.parse(json) as SocialPlatform[]; } catch { return []; }
@@ -68,11 +99,39 @@ function parseLoginCredentials(json: string | null | undefined): LoginCredential
   try { return JSON.parse(json) as LoginCredentialEntry[]; } catch { return []; }
 }
 
+function parseBrandColors(json: string | null | undefined): BrandColor[] {
+  if (!json) return [];
+  try { return JSON.parse(json) as BrandColor[]; } catch { return []; }
+}
+
+function parseSocialLinks(json: string | null | undefined): SocialLinks {
+  if (!json) return {};
+  try { return JSON.parse(json) as SocialLinks; } catch { return {}; }
+}
+
 const KNOWLEDGE_SECTIONS = [
   { key: "links" as const, label: "Links", icon: Link2, description: "Important URLs, social profiles, tools" },
   { key: "profile" as const, label: "Profile Info", icon: User, description: "Company background, target audience, tone" },
   { key: "ideas" as const, label: "Ideas & Strategies", icon: Lightbulb, description: "Campaign ideas, strategic notes" },
   { key: "resources" as const, label: "Resources", icon: BookOpen, description: "Reference materials, templates, guides" },
+] as const;
+
+const MARKETING_INTEL_SECTIONS = [
+  { key: "icp" as const, label: "Ideal Customer Profiles (ICP)", icon: Target, description: "Define ideal customers by industry, company size, pain points, etc." },
+  { key: "persona" as const, label: "Buyer Personas", icon: Users, description: "Detailed profiles of target buyers including goals, challenges, and behaviors" },
+  { key: "keywords" as const, label: "Keyword Lists", icon: Hash, description: "Target keywords, negative keywords, and SEO/SEM terms" },
+] as const;
+
+const SOCIAL_PLATFORMS = [
+  { key: "website", label: "Website", icon: Globe, placeholder: "https://yoursite.com" },
+  { key: "facebook", label: "Facebook", icon: Facebook, placeholder: "https://facebook.com/page" },
+  { key: "instagram", label: "Instagram", icon: Instagram, placeholder: "https://instagram.com/handle" },
+  { key: "twitter", label: "X / Twitter", icon: Twitter, placeholder: "https://x.com/handle" },
+  { key: "linkedin", label: "LinkedIn", icon: Linkedin, placeholder: "https://linkedin.com/company/name" },
+  { key: "youtube", label: "YouTube", icon: Youtube, placeholder: "https://youtube.com/@channel" },
+  { key: "tiktok", label: "TikTok", icon: Hash, placeholder: "https://tiktok.com/@handle" },
+  { key: "pinterest", label: "Pinterest", icon: MapPin, placeholder: "https://pinterest.com/profile" },
+  { key: "googleBusiness", label: "Google Business", icon: Building2, placeholder: "https://business.google.com/..." },
 ] as const;
 
 // ─── Credential row ───────────────────────────────────────────────────────────
@@ -144,7 +203,6 @@ function CredentialRow({ cred, companyId }: { cred: CompanyCredential; companyId
           </AlertDialog>
         </div>
       </div>
-
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Edit Credential</DialogTitle></DialogHeader>
@@ -264,7 +322,7 @@ function AddCredentialDialog({ companyId, onClose }: { companyId: string; onClos
 }
 
 // ─── Add knowledge item inline form ──────────────────────────────────────────
-function AddKnowledgeItemForm({ companyId, section, onDone }: { companyId: string; section: "links" | "profile" | "ideas" | "resources"; onDone: () => void }) {
+function AddKnowledgeItemForm({ companyId, section, onDone }: { companyId: string; section: string; onDone: () => void }) {
   const [form, setForm] = useState({ title: "", url: "", content: "" });
   const { toast } = useToast();
 
@@ -287,15 +345,304 @@ function AddKnowledgeItemForm({ companyId, section, onDone }: { companyId: strin
   );
 }
 
+// ─── Company Profile Card ─────────────────────────────────────────────────────
+function CompanyProfileCard({ companyId, profile, onProfileUpdated }: { companyId: string; profile: CompanyProfile | null; onProfileUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [summary, setSummary] = useState(profile?.summary || "");
+  const { toast } = useToast();
+
+  const saveMutation = useMutation({
+    mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/profile`, { summary }),
+    onSuccess: () => { onProfileUpdated(); setEditing(false); toast({ title: "Profile saved" }); },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            Company Summary
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={() => { setSummary(profile?.summary || ""); setEditing(v => !v); }} data-testid="button-toggle-edit-summary">
+            {editing ? <><X className="h-3.5 w-3.5 mr-1.5" />Cancel</> : <><Pencil className="h-3.5 w-3.5 mr-1.5" />Edit</>}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {editing ? (
+          <div className="space-y-3">
+            <Textarea
+              value={summary}
+              onChange={e => setSummary(e.target.value)}
+              placeholder="Describe this company — their industry, mission, tone of voice, what makes them unique, target market overview, etc."
+              rows={5}
+              data-testid="input-company-summary"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-summary">
+                <Save className="h-3.5 w-3.5 mr-1.5" />{saveMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          </div>
+        ) : profile?.summary ? (
+          <p className="text-sm whitespace-pre-wrap text-muted-foreground" data-testid="text-company-summary">{profile.summary}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">No company summary yet. Click Edit to add one.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Branding Card (colors + logos) ──────────────────────────────────────────
+function BrandingCard({ companyId, profile, onProfileUpdated }: { companyId: string; profile: CompanyProfile | null; onProfileUpdated: () => void }) {
+  const [addColorOpen, setAddColorOpen] = useState(false);
+  const [newColorName, setNewColorName] = useState("");
+  const [newColorHex, setNewColorHex] = useState("#000000");
+  const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
+  const fileInputRefs = { primary: useRef<HTMLInputElement>(null), secondary: useRef<HTMLInputElement>(null), favicon: useRef<HTMLInputElement>(null) };
+  const { toast } = useToast();
+
+  const colors = parseBrandColors(profile?.brandColors);
+
+  const saveColorsMutation = useMutation({
+    mutationFn: async (newColors: BrandColor[]) => apiRequest("PATCH", `/api/companies/${companyId}/profile`, { brandColors: JSON.stringify(newColors) }),
+    onSuccess: () => { onProfileUpdated(); toast({ title: "Colors saved" }); },
+    onError: () => toast({ title: "Failed to save colors", variant: "destructive" }),
+  });
+
+  const addColor = () => {
+    if (!newColorName.trim()) return;
+    const updated = [...colors, { name: newColorName.trim(), hex: newColorHex }];
+    saveColorsMutation.mutate(updated);
+    setNewColorName("");
+    setNewColorHex("#000000");
+    setAddColorOpen(false);
+  };
+
+  const removeColor = (idx: number) => {
+    const updated = colors.filter((_, i) => i !== idx);
+    saveColorsMutation.mutate(updated);
+  };
+
+  const handleLogoUpload = async (logoType: "primary" | "secondary" | "favicon", file: File) => {
+    setUploadingLogo(logoType);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("logoType", logoType);
+      const res = await fetch(`/api/companies/${companyId}/logo-upload`, { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Upload failed");
+      onProfileUpdated();
+      toast({ title: "Logo uploaded" });
+    } catch {
+      toast({ title: "Failed to upload logo", variant: "destructive" });
+    } finally {
+      setUploadingLogo(null);
+    }
+  };
+
+  const logoSlots: { key: "primary" | "secondary" | "favicon"; label: string; url?: string | null }[] = [
+    { key: "primary", label: "Primary Logo", url: profile?.primaryLogoUrl },
+    { key: "secondary", label: "Secondary / Alt Logo", url: profile?.secondaryLogoUrl },
+    { key: "favicon", label: "Favicon / Icon", url: profile?.faviconUrl },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Palette className="h-4 w-4 text-muted-foreground" />
+          Branding
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Brand Colors */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium">Brand Colors</h4>
+            <Button variant="outline" size="sm" onClick={() => setAddColorOpen(true)} data-testid="button-add-color">
+              <Plus className="h-3.5 w-3.5 mr-1" />Add Color
+            </Button>
+          </div>
+          {colors.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No brand colors added yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {colors.map((c, i) => (
+                <div key={i} className="flex items-center gap-2 border rounded-lg px-2.5 py-1.5 bg-card" data-testid={`color-swatch-${i}`}>
+                  <div className="w-5 h-5 rounded-full border border-border/50 shrink-0" style={{ backgroundColor: c.hex }} />
+                  <span className="text-xs font-medium">{c.name}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{c.hex}</span>
+                  <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:text-destructive" onClick={() => removeColor(i)} data-testid={`button-remove-color-${i}`}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <Dialog open={addColorOpen} onOpenChange={setAddColorOpen}>
+            <DialogContent className="max-w-xs">
+              <DialogHeader><DialogTitle>Add Brand Color</DialogTitle></DialogHeader>
+              <div className="space-y-3">
+                <div><Label>Color Name</Label><Input value={newColorName} onChange={e => setNewColorName(e.target.value)} placeholder="e.g. Primary Blue" data-testid="input-color-name" /></div>
+                <div className="flex items-center gap-3">
+                  <Label>Color</Label>
+                  <input type="color" value={newColorHex} onChange={e => setNewColorHex(e.target.value)} className="h-9 w-16 rounded border cursor-pointer" data-testid="input-color-picker" />
+                  <Input value={newColorHex} onChange={e => setNewColorHex(e.target.value)} className="font-mono text-sm" data-testid="input-color-hex" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddColorOpen(false)}>Cancel</Button>
+                <Button onClick={addColor} disabled={!newColorName.trim()} data-testid="button-confirm-add-color">Add</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <Separator />
+
+        {/* Logo Upload */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium flex items-center gap-2"><Image className="h-4 w-4 text-muted-foreground" />Logos</h4>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {logoSlots.map(({ key, label, url }) => (
+              <div key={key} className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                <div
+                  className="border border-dashed rounded-lg p-3 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-muted/30 transition-colors min-h-[80px]"
+                  onClick={() => fileInputRefs[key].current?.click()}
+                  data-testid={`logo-upload-zone-${key}`}
+                >
+                  {url ? (
+                    <img src={url} alt={label} className="max-h-12 max-w-full object-contain" />
+                  ) : (
+                    <>
+                      <Upload className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground text-center">Click to upload</span>
+                    </>
+                  )}
+                  {uploadingLogo === key && <span className="text-xs text-muted-foreground">Uploading…</span>}
+                </div>
+                <input
+                  ref={fileInputRefs[key]}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(key, f); }}
+                  data-testid={`input-logo-file-${key}`}
+                />
+                {url && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground h-6"
+                    onClick={() => fileInputRefs[key].current?.click()}
+                    data-testid={`button-replace-logo-${key}`}
+                  >Replace</Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Social Media Links Card ──────────────────────────────────────────────────
+function SocialLinksCard({ companyId, profile, onProfileUpdated }: { companyId: string; profile: CompanyProfile | null; onProfileUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [links, setLinks] = useState<SocialLinks>(() => parseSocialLinks(profile?.socialLinks));
+  const { toast } = useToast();
+
+  const saveMutation = useMutation({
+    mutationFn: async () => apiRequest("PATCH", `/api/companies/${companyId}/profile`, { socialLinks: JSON.stringify(links) }),
+    onSuccess: () => { onProfileUpdated(); setEditing(false); toast({ title: "Social links saved" }); },
+    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+  });
+
+  const saved = parseSocialLinks(profile?.socialLinks);
+  const hasAny = Object.values(saved).some(v => v);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Globe className="h-4 w-4 text-muted-foreground" />
+            Social Media & Web Presence
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={() => { setLinks(parseSocialLinks(profile?.socialLinks)); setEditing(v => !v); }} data-testid="button-toggle-edit-social">
+            {editing ? <><X className="h-3.5 w-3.5 mr-1.5" />Cancel</> : <><Pencil className="h-3.5 w-3.5 mr-1.5" />Edit</>}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {editing ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {SOCIAL_PLATFORMS.map(({ key, label, icon: Icon, placeholder }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1">
+                    <Label className="text-xs sr-only">{label}</Label>
+                    <Input
+                      value={(links as any)[key] || ""}
+                      onChange={e => setLinks(p => ({ ...p, [key]: e.target.value }))}
+                      placeholder={placeholder}
+                      className="text-sm"
+                      data-testid={`input-social-${key}`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-social">
+                <Save className="h-3.5 w-3.5 mr-1.5" />{saveMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          </div>
+        ) : hasAny ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {SOCIAL_PLATFORMS.filter(({ key }) => (saved as any)[key]).map(({ key, label, icon: Icon }) => (
+              <a
+                key={key}
+                href={(saved as any)[key].startsWith("http") ? (saved as any)[key] : `https://${(saved as any)[key]}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 border rounded-lg hover:bg-muted/50 transition-colors text-sm"
+                data-testid={`link-social-${key}`}
+              >
+                <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-xs font-medium truncate">{(saved as any)[key].replace(/^https?:\/\//, "")}</p>
+                </div>
+                <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto shrink-0" />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">No social links added yet. Click Edit to add them.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Onboarding full edit form ────────────────────────────────────────────────
 type OnboardingEditForm = {
-  // Client Info
   primaryContactName: string;
   primaryContactEmail: string;
   primaryContactPhone: string;
   website: string;
   specialNotes: string;
-  // Platform Access
   youtubeInviteDate: string;
   youtubeFeatureEligibilityDate: string;
   metaBusinessInviteDate: string;
@@ -304,36 +651,27 @@ type OnboardingEditForm = {
   youtubeFeatureNA: boolean;
   metaBusinessNA: boolean;
   googleBusinessNA: boolean;
-  // GBP Recovery
   needsGbpRecovery: boolean;
   gbpBusinessName: string;
   gbpBusinessAddress: string;
   gbpContactEmail: string;
   gbpContactPhone: string;
   gbpAdditionalContext: string;
-  // Social & Login JSON (editable as serialized JSON)
   socialPlatformsJson: string;
   loginCredentialsJson: string;
-  // Brand Assets
   brandAssetLinks: string;
   brandAssetFilesJson: string;
-  // Seasonal
   seasonalPreferencesJson: string;
   holidayPreferencesJson: string;
   seasonalNotes: string;
   otherHolidays: string;
-  // Authorization
   authorizationName: string;
   authorizationDate: string;
   authorizationSignature: string;
-  // Checklist flags
   socialProfilesListed: boolean;
   loginCredentialsProvided: boolean;
   brandAssetsProvided: boolean;
   seasonalPreferencesConfirmed: boolean;
-  // Authorization
-  authorizationName: string;
-  authorizationDate: string;
 };
 
 function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
@@ -360,26 +698,22 @@ function buildFormFromOnboarding(o: ClientOnboarding): OnboardingEditForm {
     socialPlatformsJson: o.socialPlatforms ? JSON.stringify(parseSocialPlatforms(o.socialPlatforms), null, 2) : "[]",
     loginCredentialsJson: o.loginCredentials ? JSON.stringify(parseLoginCredentials(o.loginCredentials), null, 2) : "[]",
     brandAssetLinks: o.brandAssetLinks || "",
+    brandAssetFilesJson: "[]",
+    seasonalPreferencesJson: "[]",
+    holidayPreferencesJson: "[]",
     seasonalNotes: o.seasonalNotes || "",
     otherHolidays: o.otherHolidays || "",
+    authorizationName: o.authorizationName || "",
+    authorizationDate: o.authorizationDate || "",
+    authorizationSignature: "",
     socialProfilesListed: o.socialProfilesListed ?? false,
     loginCredentialsProvided: o.loginCredentialsProvided ?? false,
     brandAssetsProvided: o.brandAssetsProvided ?? false,
     seasonalPreferencesConfirmed: o.seasonalPreferencesConfirmed ?? false,
-    authorizationName: o.authorizationName || "",
-    authorizationDate: o.authorizationDate || "",
   };
 }
 
-function OnboardingEditPanel({
-  onboarding,
-  companyId,
-  onClose,
-}: {
-  onboarding: ClientOnboarding;
-  companyId: string;
-  onClose: () => void;
-}) {
+function OnboardingEditPanel({ onboarding, companyId, onClose }: { onboarding: ClientOnboarding; companyId: string; onClose: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState<OnboardingEditForm>(() => buildFormFromOnboarding(onboarding));
   const set = (field: keyof OnboardingEditForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -423,11 +757,7 @@ function OnboardingEditPanel({
       };
       await apiRequest("PATCH", `/api/companies/${companyId}/onboarding`, payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "onboarding"] });
-      toast({ title: "Onboarding data saved" });
-      onClose();
-    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "onboarding"] }); toast({ title: "Onboarding data saved" }); onClose(); },
     onError: () => toast({ title: "Failed to save onboarding data", variant: "destructive" }),
   });
 
@@ -445,7 +775,6 @@ function OnboardingEditPanel({
         </div>
       </div>
 
-      {/* Client Info */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Client Info</h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -459,7 +788,6 @@ function OnboardingEditPanel({
 
       <Separator />
 
-      {/* Platform Access */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Platform Access Invites</h4>
         {[
@@ -483,121 +811,77 @@ function OnboardingEditPanel({
 
       <Separator />
 
-      {/* GBP Recovery */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">GBP Recovery</h4>
           <Checkbox id="oe-gbp" checked={form.needsGbpRecovery} onCheckedChange={setCheck("needsGbpRecovery")} data-testid="checkbox-oe-gbp" />
-          <Label htmlFor="oe-gbp" className="text-xs cursor-pointer">Needs Recovery</Label>
         </div>
         {form.needsGbpRecovery && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 pl-1">
-            <div><Label htmlFor="oe-gbp-name">Business Name</Label><Input id="oe-gbp-name" value={form.gbpBusinessName} onChange={set("gbpBusinessName")} data-testid="input-oe-gbp-name" /></div>
-            <div><Label htmlFor="oe-gbp-addr">Business Address</Label><Input id="oe-gbp-addr" value={form.gbpBusinessAddress} onChange={set("gbpBusinessAddress")} data-testid="input-oe-gbp-addr" /></div>
-            <div><Label htmlFor="oe-gbp-email">Contact Email</Label><Input id="oe-gbp-email" type="email" value={form.gbpContactEmail} onChange={set("gbpContactEmail")} data-testid="input-oe-gbp-email" /></div>
-            <div><Label htmlFor="oe-gbp-phone">Contact Phone</Label><Input id="oe-gbp-phone" value={form.gbpContactPhone} onChange={set("gbpContactPhone")} data-testid="input-oe-gbp-phone" /></div>
-            <div className="col-span-2"><Label htmlFor="oe-gbp-ctx">Additional Context</Label><Textarea id="oe-gbp-ctx" value={form.gbpAdditionalContext} onChange={set("gbpAdditionalContext")} rows={2} data-testid="input-oe-gbp-ctx" /></div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div><Label>Business Name</Label><Input value={form.gbpBusinessName} onChange={set("gbpBusinessName")} data-testid="input-oe-gbp-name" /></div>
+            <div><Label>Business Address</Label><Input value={form.gbpBusinessAddress} onChange={set("gbpBusinessAddress")} data-testid="input-oe-gbp-address" /></div>
+            <div><Label>Contact Email</Label><Input value={form.gbpContactEmail} onChange={set("gbpContactEmail")} data-testid="input-oe-gbp-email" /></div>
+            <div><Label>Contact Phone</Label><Input value={form.gbpContactPhone} onChange={set("gbpContactPhone")} data-testid="input-oe-gbp-phone" /></div>
+            <div className="col-span-2"><Label>Additional Context</Label><Textarea value={form.gbpAdditionalContext} onChange={set("gbpAdditionalContext")} rows={2} data-testid="input-oe-gbp-context" /></div>
           </div>
         )}
       </div>
 
       <Separator />
 
-      {/* Social Platforms JSON */}
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Social Platforms</h4>
-        <p className="text-xs text-muted-foreground">Edit as JSON array. Each entry: {"{"} platform, exists, handle, accountEmail, notes {"}"}.</p>
-        <Textarea
-          id="oe-social"
-          value={form.socialPlatformsJson}
-          onChange={set("socialPlatformsJson")}
-          rows={6}
-          className="font-mono text-xs"
-          data-testid="input-oe-social-platforms"
-        />
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Checklist Flags</h4>
+        {[
+          { field: "socialProfilesListed" as const, label: "Social media profiles listed" },
+          { field: "loginCredentialsProvided" as const, label: "Login credentials provided" },
+          { field: "brandAssetsProvided" as const, label: "Brand assets provided" },
+          { field: "seasonalPreferencesConfirmed" as const, label: "Seasonal preferences confirmed" },
+        ].map(({ field, label }) => (
+          <div key={field} className="flex items-center gap-2">
+            <Checkbox id={field} checked={form[field] as boolean} onCheckedChange={setCheck(field)} data-testid={`checkbox-oe-${field}`} />
+            <Label htmlFor={field} className="cursor-pointer text-sm">{label}</Label>
+          </div>
+        ))}
       </div>
 
       <Separator />
 
-      {/* Login Credentials JSON */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Login Credentials (client-submitted)</h4>
-        <p className="text-xs text-muted-foreground">Edit as JSON array. Each entry: {"{"} platform, username, password, twoFactorMethod, recoveryNotes {"}"}.</p>
-        <Textarea
-          id="oe-login-creds"
-          value={form.loginCredentialsJson}
-          onChange={set("loginCredentialsJson")}
-          rows={6}
-          className="font-mono text-xs"
-          data-testid="input-oe-login-credentials"
-        />
-      </div>
-
-      <Separator />
-
-      {/* Brand Assets */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Brand Assets</h4>
-        <div><Label htmlFor="oe-brand">Brand Asset Links</Label><Textarea id="oe-brand" value={form.brandAssetLinks} onChange={set("brandAssetLinks")} rows={2} placeholder="Google Drive link, Dropbox, etc." data-testid="input-oe-brand" /></div>
+        <div><Label>Brand Asset Links</Label><Textarea value={form.brandAssetLinks} onChange={set("brandAssetLinks")} rows={2} placeholder="Drive links, Dropbox URLs, etc." data-testid="input-oe-brand-links" /></div>
       </div>
 
       <Separator />
 
-      {/* Seasonal */}
       <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Seasonal & Holiday Preferences</h4>
-        <div><Label htmlFor="oe-seasonal-notes">Seasonal Notes</Label><Textarea id="oe-seasonal-notes" value={form.seasonalNotes} onChange={set("seasonalNotes")} rows={2} data-testid="input-oe-seasonal-notes" /></div>
-        <div><Label htmlFor="oe-holidays">Other Holidays / Notes</Label><Textarea id="oe-holidays" value={form.otherHolidays} onChange={set("otherHolidays")} rows={2} data-testid="input-oe-holidays" /></div>
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Seasonal Preferences</h4>
+        <div><Label>Seasonal Notes</Label><Textarea value={form.seasonalNotes} onChange={set("seasonalNotes")} rows={2} data-testid="input-oe-seasonal-notes" /></div>
+        <div><Label>Other Holidays</Label><Input value={form.otherHolidays} onChange={set("otherHolidays")} data-testid="input-oe-other-holidays" /></div>
       </div>
 
       <Separator />
 
-      {/* Checklist Flags */}
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Checklist Status</h4>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {[
-            { field: "socialProfilesListed" as const, label: "Social media profiles listed" },
-            { field: "loginCredentialsProvided" as const, label: "Login credentials provided" },
-            { field: "brandAssetsProvided" as const, label: "Brand assets shared" },
-            { field: "seasonalPreferencesConfirmed" as const, label: "Seasonal preferences confirmed" },
-          ].map(({ field, label }) => (
-            <div key={field} className="flex items-center gap-2">
-              <Checkbox id={`oe-${field}`} checked={form[field] as boolean} onCheckedChange={setCheck(field)} data-testid={`checkbox-oe-${field}`} />
-              <Label htmlFor={`oe-${field}`} className="text-sm cursor-pointer">{label}</Label>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Authorization */}
       <div className="space-y-3">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Authorization</h4>
         <div className="grid grid-cols-2 gap-3">
-          <div><Label htmlFor="oe-auth-name">Authorized By</Label><Input id="oe-auth-name" value={form.authorizationName} onChange={set("authorizationName")} data-testid="input-oe-auth-name" /></div>
-          <div><Label htmlFor="oe-auth-date">Authorization Date</Label><Input id="oe-auth-date" type="date" value={form.authorizationDate} onChange={set("authorizationDate")} data-testid="input-oe-auth-date" /></div>
+          <div><Label>Authorized By</Label><Input value={form.authorizationName} onChange={set("authorizationName")} data-testid="input-oe-auth-name" /></div>
+          <div><Label>Date</Label><Input type="date" value={form.authorizationDate} onChange={set("authorizationDate")} data-testid="input-oe-auth-date" /></div>
         </div>
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-onboarding-bottom">
-          <Save className="h-3.5 w-3.5 mr-1.5" />{saveMutation.isPending ? "Saving…" : "Save All Changes"}
-        </Button>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
       </div>
     </div>
   );
 }
 
-// ─── Main hub component ───────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
   const { toast } = useToast();
   const [addCredOpen, setAddCredOpen] = useState(false);
   const [editingOnboarding, setEditingOnboarding] = useState(false);
-  const [addingKnowledgeSection, setAddingKnowledgeSection] = useState<"links" | "profile" | "ideas" | "resources" | null>(null);
-  const [openKnowledgeSections, setOpenKnowledgeSections] = useState<Record<string, boolean>>({ links: true, profile: false, ideas: false, resources: false });
+  const [addingKnowledgeSection, setAddingKnowledgeSection] = useState<string | null>(null);
+  const [openKnowledgeSections, setOpenKnowledgeSections] = useState<Record<string, boolean>>({
+    links: true, profile: false, ideas: false, resources: false,
+    icp: false, persona: false, keywords: false,
+  });
 
   const { data: onboarding } = useQuery<ClientOnboarding | null>({
     queryKey: ["/api/companies", companyId, "onboarding"],
@@ -617,6 +901,12 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
     enabled: !!companyId,
   });
 
+  const { data: profile, refetch: refetchProfile } = useQuery<CompanyProfile | null>({
+    queryKey: ["/api/companies", companyId, "profile"],
+    queryFn: async () => { const r = await fetch(`/api/companies/${companyId}/profile`); if (!r.ok) return null; return r.json(); },
+    enabled: !!companyId,
+  });
+
   const accessComplete = onboarding
     ? (onboarding.youtubeInviteDate || onboarding.youtubeInviteNA) &&
       (onboarding.youtubeFeatureEligibilityDate || onboarding.youtubeFeatureNA) &&
@@ -624,8 +914,74 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
       (onboarding.googleBusinessInviteDate || onboarding.googleBusinessNA)
     : false;
 
+  const handleProfileUpdated = () => {
+    refetchProfile();
+  };
+
   return (
     <div className="space-y-6">
+      {/* ── Company Summary ───────────────────────────────── */}
+      <CompanyProfileCard companyId={companyId} profile={profile ?? null} onProfileUpdated={handleProfileUpdated} />
+
+      {/* ── Branding (colors + logos) ─────────────────────── */}
+      <BrandingCard companyId={companyId} profile={profile ?? null} onProfileUpdated={handleProfileUpdated} />
+
+      {/* ── Social Media & Web Presence ───────────────────── */}
+      <SocialLinksCard companyId={companyId} profile={profile ?? null} onProfileUpdated={handleProfileUpdated} />
+
+      <Separator />
+
+      {/* ── Marketing Intelligence ────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Target className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-base font-semibold">Marketing Intelligence</h3>
+        </div>
+        <div className="space-y-3">
+          {MARKETING_INTEL_SECTIONS.map(({ key, label, icon: Icon, description }) => {
+            const sectionItems = knowledgeItems.filter(item => item.section === key);
+            const isOpen = openKnowledgeSections[key];
+            return (
+              <Card key={key}>
+                <Collapsible open={isOpen} onOpenChange={() => setOpenKnowledgeSections(p => ({ ...p, [key]: !p[key] }))}>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="pb-0 cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg py-3" data-testid={`button-toggle-intel-${key}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium text-sm">{label}</span>
+                          {sectionItems.length > 0 && <Badge variant="secondary" className="text-xs">{sectionItems.length}</Badge>}
+                        </div>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                      </div>
+                      {!isOpen && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-3 space-y-3">
+                      {sectionItems.length > 0 ? (
+                        <div className="space-y-2">{sectionItems.map(item => <KnowledgeItemRow key={item.id} item={item} companyId={companyId} />)}</div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">{description} — nothing added yet.</p>
+                      )}
+                      {addingKnowledgeSection === key ? (
+                        <AddKnowledgeItemForm companyId={companyId} section={key} onDone={() => setAddingKnowledgeSection(null)} />
+                      ) : (
+                        <Button variant="ghost" size="sm" className="text-muted-foreground h-7" onClick={() => setAddingKnowledgeSection(key)} data-testid={`button-add-intel-${key}`}>
+                          <Plus className="h-3.5 w-3.5 mr-1" />Add entry
+                        </Button>
+                      )}
+                    </CardContent>
+                  </CollapsibleContent>
+                </Collapsible>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      <Separator />
+
       {/* ── Onboarding Status card ───────────────────────────── */}
       {onboarding ? (
         <>
@@ -665,21 +1021,14 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
                 </>
               )}
               {editingOnboarding && (
-                <OnboardingEditPanel
-                  onboarding={onboarding}
-                  companyId={companyId}
-                  onClose={() => setEditingOnboarding(false)}
-                />
+                <OnboardingEditPanel onboarding={onboarding} companyId={companyId} onClose={() => setEditingOnboarding(false)} />
               )}
             </CardContent>
           </Card>
 
-          {/* ── Client details read view ─────────────────────── */}
           {!editingOnboarding && (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Client Details</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-3"><CardTitle className="text-base">Client Details</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
                   <div><p className="text-xs text-muted-foreground">Primary Contact</p><p className="font-medium">{onboarding.primaryContactName || <span className="text-muted-foreground italic">Not set</span>}</p></div>
@@ -700,13 +1049,12 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
             </Card>
           )}
 
-          {/* ── Social Platforms ─────────────────────────────── */}
           {!editingOnboarding && (() => {
             const active = parseSocialPlatforms(onboarding.socialPlatforms).filter(p => p.exists);
             if (!active.length) return null;
             return (
               <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base">Social Platforms</CardTitle></CardHeader>
+                <CardHeader className="pb-3"><CardTitle className="text-base">Social Platforms (Onboarding)</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     {active.map((p) => (
@@ -721,7 +1069,6 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
             );
           })()}
 
-          {/* ── Onboarding login credentials (client-submitted) */}
           {!editingOnboarding && (() => {
             const creds = parseLoginCredentials(onboarding.loginCredentials);
             if (!creds.length) return null;
@@ -744,7 +1091,6 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
             );
           })()}
 
-          {/* ── GBP Recovery read view ───────────────────────── */}
           {!editingOnboarding && onboarding.needsGbpRecovery && (
             <Card>
               <CardHeader className="pb-3">

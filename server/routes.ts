@@ -3880,6 +3880,61 @@ export async function registerRoutes(
     }
   });
 
+  // ── Company Profile (branding, social, logos, summary) ─────────────────────
+  app.get("/api/companies/:id/profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const profile = await storage.getCompanyProfile(req.params.id);
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch company profile" });
+    }
+  });
+
+  app.patch("/api/companies/:id/profile", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      const { summary, brandColors, socialLinks, primaryLogoUrl, secondaryLogoUrl, faviconUrl } = req.body;
+      const data: Record<string, string | null> = {};
+      if (summary !== undefined) data.summary = summary || null;
+      if (brandColors !== undefined) data.brandColors = brandColors || null;
+      if (socialLinks !== undefined) data.socialLinks = socialLinks || null;
+      if (primaryLogoUrl !== undefined) data.primaryLogoUrl = primaryLogoUrl || null;
+      if (secondaryLogoUrl !== undefined) data.secondaryLogoUrl = secondaryLogoUrl || null;
+      if (faviconUrl !== undefined) data.faviconUrl = faviconUrl || null;
+      const profile = await storage.upsertCompanyProfile(req.params.id, data);
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update company profile" });
+    }
+  });
+
+  const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+  app.post("/api/companies/:id/logo-upload", isAuthenticated, logoUpload.single("file"), async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+      if (!req.file) return res.status(400).json({ error: "No file provided" });
+      const logoType = (req.body.logoType as string) || "primary";
+      const ext = req.file.originalname.split(".").pop() || "png";
+      const objPath = `public/logos/${req.params.id}/${logoType}.${ext}`;
+      const { uploadBuffer } = await import("./object-storage-helpers");
+      const storedPath = await uploadBuffer(objPath, req.file.buffer, req.file.mimetype);
+      const fieldMap: Record<string, string> = { primary: "primaryLogoUrl", secondary: "secondaryLogoUrl", favicon: "faviconUrl" };
+      const field = fieldMap[logoType] || "primaryLogoUrl";
+      await storage.upsertCompanyProfile(req.params.id, { [field]: storedPath });
+      res.json({ url: storedPath, field });
+    } catch (error: any) {
+      console.error("Logo upload error:", error);
+      res.status(500).json({ error: error.message || "Failed to upload logo" });
+    }
+  });
+
   app.post("/api/companies/:id/onboarding/complete", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const userId = req.user!.id;
