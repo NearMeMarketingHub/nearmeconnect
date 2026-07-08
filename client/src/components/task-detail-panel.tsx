@@ -81,7 +81,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
   const [editingRecurrence, setEditingRecurrence] = useState(false);
   const [recurrenceIsRecurring, setRecurrenceIsRecurring] = useState(false);
-  const [recurrencePattern, setRecurrencePattern] = useState<"day_of_month" | "day_of_week" | "biweekly">("day_of_month");
+  const [recurrencePattern, setRecurrencePattern] = useState<string>("monthly");
+  const [recurrenceStartDate, setRecurrenceStartDate] = useState("");
   const [recurrenceDay, setRecurrenceDay] = useState("1");
   const [recurrenceWeekday, setRecurrenceWeekday] = useState("1");
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState("1");
@@ -1644,9 +1645,15 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                     {task.isRecurring ? (
                       <>
                         Recurring:{" "}
-                        {task.recurrencePattern === "day_of_month" && task.recurrenceDay !== null && `Day ${task.recurrenceDay} each month`}
-                        {task.recurrencePattern === "day_of_week" && task.recurrenceWeekday !== null && task.recurrenceWeekOrdinal !== null && `${task.recurrenceWeekOrdinal === -1 ? "Last" : ["1st", "2nd", "3rd", "4th"][task.recurrenceWeekOrdinal - 1]} ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][task.recurrenceWeekday]} each month`}
-                        {task.recurrencePattern === "biweekly" && task.recurrenceWeekday !== null && `Every other ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][task.recurrenceWeekday]}`}
+                        {(task.recurrencePattern === "daily") && "Every day"}
+                        {(task.recurrencePattern === "weekly") && task.recurrenceWeekday !== null && `Every ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][task.recurrenceWeekday]}`}
+                        {(task.recurrencePattern === "biweekly") && task.recurrenceWeekday !== null && `Every other ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][task.recurrenceWeekday]}`}
+                        {(task.recurrencePattern === "monthly" || task.recurrencePattern === "day_of_month") && task.recurrenceDay !== null && `Day ${task.recurrenceDay} each month`}
+                        {(task.recurrencePattern === "quarterly") && task.recurrenceDay !== null && `Day ${task.recurrenceDay} every 3 months`}
+                        {(task.recurrencePattern === "semi_annually") && task.recurrenceDay !== null && `Day ${task.recurrenceDay} every 6 months`}
+                        {(task.recurrencePattern === "annually") && task.recurrenceDay !== null && task.recurrenceWeekday !== null && `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][task.recurrenceWeekday]} ${task.recurrenceDay} each year`}
+                        {task.recurrencePattern === "day_of_week" && task.recurrenceWeekday !== null && task.recurrenceWeekOrdinal !== null && `${task.recurrenceWeekOrdinal === -1 ? "Last" : ["1st","2nd","3rd","4th"][task.recurrenceWeekOrdinal - 1]} ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][task.recurrenceWeekday]} each month`}
+                        {task.startDate && <span className="ml-1 text-xs">(from {task.startDate})</span>}
                       </>
                     ) : "Not recurring"}
                   </div>
@@ -1656,7 +1663,9 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                       variant="outline"
                       onClick={() => {
                         setRecurrenceIsRecurring(task.isRecurring);
-                        setRecurrencePattern((task.recurrencePattern as "day_of_month" | "day_of_week" | "biweekly") || "day_of_month");
+                        const p = task.recurrencePattern === "day_of_month" ? "monthly" : task.recurrencePattern || "monthly";
+                        setRecurrencePattern(p);
+                        setRecurrenceStartDate(task.startDate || "");
                         setRecurrenceDay(String(task.recurrenceDay ?? 1));
                         setRecurrenceWeekday(String(task.recurrenceWeekday ?? 1));
                         setRecurrenceWeekOrdinal(String(task.recurrenceWeekOrdinal ?? 1));
@@ -1715,19 +1724,54 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                   {recurrenceIsRecurring && (
                     <div className="space-y-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">Pattern</Label>
-                        <Select value={recurrencePattern} onValueChange={(val) => setRecurrencePattern(val as "day_of_month" | "day_of_week" | "biweekly")}>
+                        <Label className="text-xs">Frequency</Label>
+                        <Select value={recurrencePattern} onValueChange={setRecurrencePattern}>
                           <SelectTrigger data-testid="select-edit-recurrence-pattern" className="h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="day_of_month">Same day each month</SelectItem>
-                            <SelectItem value="day_of_week">Same week & day each month</SelectItem>
-                            <SelectItem value="biweekly">Every other week</SelectItem>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                            <SelectItem value="semi_annually">Semi-annually</SelectItem>
+                            <SelectItem value="annually">Annually</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                      {recurrencePattern === "day_of_month" && (
+
+                      {/* Start date — shown for all patterns */}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start Date</Label>
+                        <Input
+                          type="date"
+                          value={recurrenceStartDate}
+                          onChange={(e) => setRecurrenceStartDate(e.target.value)}
+                          className="h-8 text-xs"
+                          data-testid="input-recurrence-start-date"
+                        />
+                      </div>
+
+                      {/* Weekly / Bi-weekly: pick day of week */}
+                      {(recurrencePattern === "weekly" || recurrencePattern === "biweekly") && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Day of Week</Label>
+                          <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
+                            <SelectTrigger data-testid="select-edit-recurrence-weekday" className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((d, i) => (
+                                <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {/* Monthly / Quarterly / Semi-annually: pick day of month */}
+                      {(recurrencePattern === "monthly" || recurrencePattern === "quarterly" || recurrencePattern === "semi_annually") && (
                         <div className="space-y-1">
                           <Label className="text-xs">Day of Month</Label>
                           <Select value={recurrenceDay} onValueChange={setRecurrenceDay}>
@@ -1735,63 +1779,43 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
                                 <SelectItem key={d} value={String(d)}>{d}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          {parseInt(recurrenceDay) > 28 && (
-                            <p className="text-xs text-muted-foreground">
-                              In shorter months, this task will fall on the last day of the month
-                            </p>
-                          )}
                         </div>
                       )}
-                      {recurrencePattern === "day_of_week" && (
+
+                      {/* Annually: pick month + day */}
+                      {recurrencePattern === "annually" && (
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
-                            <Label className="text-xs">Occurrence</Label>
-                            <Select value={recurrenceWeekOrdinal} onValueChange={setRecurrenceWeekOrdinal}>
-                              <SelectTrigger data-testid="select-edit-week-ordinal" className="h-8 text-xs">
+                            <Label className="text-xs">Month</Label>
+                            <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
+                              <SelectTrigger data-testid="select-edit-recurrence-month" className="h-8 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="1">1st</SelectItem>
-                                <SelectItem value="2">2nd</SelectItem>
-                                <SelectItem value="3">3rd</SelectItem>
-                                <SelectItem value="4">4th</SelectItem>
-                                <SelectItem value="-1">Last</SelectItem>
+                                {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
+                                  <SelectItem key={i} value={String(i)}>{m}</SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Day</Label>
-                            <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
-                              <SelectTrigger data-testid="select-edit-weekday" className="h-8 text-xs">
+                            <Select value={recurrenceDay} onValueChange={setRecurrenceDay}>
+                              <SelectTrigger data-testid="select-edit-recurrence-annual-day" className="h-8 text-xs">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => (
-                                  <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                                  <SelectItem key={d} value={String(d)}>{d}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
-                        </div>
-                      )}
-                      {recurrencePattern === "biweekly" && (
-                        <div className="space-y-1">
-                          <Label className="text-xs">Day of Week</Label>
-                          <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
-                            <SelectTrigger data-testid="select-edit-biweekly-day" className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => (
-                                <SelectItem key={i} value={String(i)}>{d}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
                         </div>
                       )}
                     </div>
@@ -1806,22 +1830,34 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
                         recurrenceDay?: number | null;
                         recurrenceWeekday?: number | null;
                         recurrenceWeekOrdinal?: number | null;
+                        startDate?: string | null;
                       } = { isRecurring: recurrenceIsRecurring };
                       if (recurrenceIsRecurring) {
                         data.recurrencePattern = recurrencePattern;
-                        if (recurrencePattern === "day_of_month") {
+                        data.startDate = recurrenceStartDate || null;
+                        if (recurrencePattern === "daily") {
+                          data.recurrenceDay = null;
+                          data.recurrenceWeekday = null;
+                          data.recurrenceWeekOrdinal = null;
+                        } else if (recurrencePattern === "weekly" || recurrencePattern === "biweekly") {
+                          data.recurrenceDay = null;
+                          data.recurrenceWeekday = parseInt(recurrenceWeekday);
+                          data.recurrenceWeekOrdinal = null;
+                        } else if (recurrencePattern === "monthly" || recurrencePattern === "quarterly" || recurrencePattern === "semi_annually") {
                           data.recurrenceDay = parseInt(recurrenceDay);
                           data.recurrenceWeekday = null;
                           data.recurrenceWeekOrdinal = null;
-                        } else if (recurrencePattern === "day_of_week") {
-                          data.recurrenceDay = null;
-                          data.recurrenceWeekday = parseInt(recurrenceWeekday);
-                          data.recurrenceWeekOrdinal = parseInt(recurrenceWeekOrdinal);
-                        } else if (recurrencePattern === "biweekly") {
-                          data.recurrenceDay = null;
-                          data.recurrenceWeekday = parseInt(recurrenceWeekday);
+                        } else if (recurrencePattern === "annually") {
+                          data.recurrenceDay = parseInt(recurrenceDay);
+                          data.recurrenceWeekday = parseInt(recurrenceWeekday); // month 0-11
                           data.recurrenceWeekOrdinal = null;
                         }
+                      } else {
+                        data.recurrencePattern = null;
+                        data.recurrenceDay = null;
+                        data.recurrenceWeekday = null;
+                        data.recurrenceWeekOrdinal = null;
+                        data.startDate = null;
                       }
                       updateRecurrenceMutation.mutate(data);
                     }}
