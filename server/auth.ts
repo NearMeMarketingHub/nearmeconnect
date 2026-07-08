@@ -8,6 +8,7 @@ import { db } from "./db";
 import { users, adminUsers, adminInvitations, companyMembers, companyInvitations, companies, chatThreads, chatThreadMembers, passwordResetTokens } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "./email";
+import { getBaseUrl } from "./baseUrl";
 import { syncContactToHubSpot, isHubSpotConnected } from "./hubspot";
 
 declare module "express-session" {
@@ -415,16 +416,7 @@ export function registerAuthRoutes(app: Express) {
           createdAt: new Date().toISOString(),
         });
 
-        const origin = req.headers.origin || req.headers.referer?.replace(/\/+$/, "");
-        const baseUrl = origin
-          ? origin.replace(/\/+$/, "")
-          : process.env.REPLIT_DEPLOYMENT
-            ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
-            : process.env.REPLIT_DEV_DOMAIN
-              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-              : "http://localhost:5000";
-
-        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+        const resetUrl = `${getBaseUrl(req)}/reset-password?token=${token}`;
 
         sendPasswordResetEmail({
           recipientEmail: user.email!,

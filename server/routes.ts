@@ -16,6 +16,7 @@ import { sendMeetingApprovalEmail, sendMeetingInviteEmail, sendMeetingRejectionE
 import { generateOnboardingPdf } from "./pdf-generator";
 import { syncCompanyToHubSpot, syncContactToHubSpot, createHubSpotTask, isHubSpotConnected, syncAllToHubSpot, getHubSpotCompanies, searchHubSpotCompanies, getHubSpotCompanyContacts, getHubSpotCompanyById } from "./hubspot";
 import { formatDateET, formatDateLongET, formatDateWeekdayET } from "./timezone";
+import { getBaseUrl } from "./baseUrl";
 
 import type { InsertNotification } from "@shared/schema";
 
@@ -2826,13 +2827,7 @@ export async function registerRoutes(
         expiresAt: expiresAt.toISOString(),
       });
 
-      const baseUrl = process.env.REPLIT_DEPLOYMENT
-        ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
-        : process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000";
-
-      const inviteUrl = `${baseUrl}/register?adminInvite=${token}`;
+      const inviteUrl = `${getBaseUrl(req)}/register?adminInvite=${token}`;
 
       if (existingUser) {
         await storage.createAdminUser({
@@ -3548,18 +3543,12 @@ export async function registerRoutes(
         const company = await storage.getCompany(companyId);
         const inviter = await storage.getUser(userId);
         const inviterName = inviter ? `${inviter.firstName || ""} ${inviter.lastName || ""}`.trim() || inviter.email : "Near Me Connect";
-        const baseUrl = process.env.REPLIT_DEPLOYMENT
-          ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
-          : process.env.REPLIT_DEV_DOMAIN 
-            ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-            : "http://localhost:5000";
-        
         sendCompanyInvitationEmail({
           recipientEmail: email,
           inviterName,
           companyName: company?.name || "a company",
           role: role || "team_member",
-          inviteUrl: `${baseUrl}/signup?invite=${token}`,
+          inviteUrl: `${getBaseUrl(req)}/signup?invite=${token}`,
           expiresAt: expiresAt.toISOString(),
         }).catch(err => console.error("Failed to send invitation email:", err));
       }
@@ -10309,16 +10298,7 @@ export async function registerRoutes(
         createdAt: new Date().toISOString(),
       });
 
-      const origin = req.headers.origin || req.headers.referer?.replace(/\/+$/, "");
-      const baseUrl = origin
-        ? origin.replace(/\/+$/, "")
-        : process.env.REPLIT_DEPLOYMENT
-          ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
-          : process.env.REPLIT_DEV_DOMAIN
-            ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-            : "http://localhost:5000";
-
-      const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+      const resetUrl = `${getBaseUrl(req)}/reset-password?token=${token}`;
 
       await sendPasswordResetEmail({
         recipientEmail: user.email!,
