@@ -1439,13 +1439,10 @@ export function ProjectBoard({
         tasks: sortByDue(activeTasks.filter((t) => t.categoryId === cat.id)),
         isCompleted: false,
       })),
-      {
-        id: "uncategorized",
-        label: "Uncategorized",
-        color: null as string | null,
-        tasks: sortByDue(activeTasks.filter((t) => !t.categoryId)),
-        isCompleted: false,
-      },
+      ...((() => {
+        const uncatTasks = sortByDue(activeTasks.filter((t) => !t.categoryId));
+        return uncatTasks.length > 0 ? [{ id: "uncategorized", label: "Uncategorized", color: null as string | null, tasks: uncatTasks, isCompleted: false }] : [];
+      })()),
       completedCol,
     ];
   }, [categories, boardFilteredTasks, labelFiltered, isAllCompanies]);

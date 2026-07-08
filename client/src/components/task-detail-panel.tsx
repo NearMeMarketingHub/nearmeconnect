@@ -19,6 +19,7 @@ import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { useAuth } from "@/hooks/use-auth";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Task, TaskChecklistItem, TaskComment, TaskAttachment, TaskLink, DeliverableType } from "@shared/schema";
 
 interface ChatThread {
@@ -77,6 +78,7 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [newLinkLabel, setNewLinkLabel] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
   const [editingRecurrence, setEditingRecurrence] = useState(false);
   const [recurrenceIsRecurring, setRecurrenceIsRecurring] = useState(false);
   const [recurrencePattern, setRecurrencePattern] = useState<"day_of_month" | "day_of_week" | "biweekly">("day_of_month");
@@ -407,6 +409,17 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
     onError: (error: any) => {
       toast({ title: error.message || "Failed to update", variant: "destructive" });
     },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/tasks/${task?.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      if (companyId) queryClient.invalidateQueries({ queryKey: ["/api/tasks", { companyId }] });
+      toast({ title: "Task deleted" });
+      onClose();
+    },
+    onError: () => toast({ title: "Failed to delete task", variant: "destructive" }),
   });
 
   const internalApproveMutation = useMutation({
@@ -937,6 +950,16 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
               <SheetTitle className="text-left text-lg" data-testid="text-task-title">
                 {task.title}
               </SheetTitle>
+              {isAdmin && (
+                <Button
+                  variant="ghost" size="icon"
+                  className="absolute top-3 right-10 h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => setConfirmDeleteTask(true)}
+                  data-testid="button-delete-task"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
               {isAdmin && editingDescription ? (
                 <div className="mt-1 space-y-2">
                   <Textarea
@@ -2542,6 +2565,27 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmDeleteTask} onOpenChange={setConfirmDeleteTask}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete "{task.title}"? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteTaskMutation.mutate()}
+              data-testid="button-confirm-delete-task"
+            >
+              {deleteTaskMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
