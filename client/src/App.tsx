@@ -38,13 +38,12 @@ import AdminCalendar from "@/pages/admin/calendar";
 import AdminChat from "@/pages/admin/chat";
 import AdminTasks from "@/pages/admin/tasks";
 import AdminSandbox from "@/pages/admin/sandbox";
-import AdminGovernment from "@/pages/admin/government";
 import AdminReporting from "@/pages/admin/reporting";
 import AdminUserManagement from "@/pages/admin/user-management";
 import AdminCustomRoles from "@/pages/admin/custom-roles";
 import AdminSubscriptionTiers from "@/pages/admin/subscription-tiers";
 import CompanyDashboard from "@/pages/admin/company-dashboard";
-import ClientGovernment from "@/pages/client/government";
+import GovernmentFormPage from "@/pages/government-form";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import SignPage from "@/pages/sign";
@@ -141,6 +140,11 @@ function AppContent() {
     return <SignPage />;
   }
 
+  // Allow access to government form without authentication
+  if (location.startsWith("/form/")) {
+    return <GovernmentFormPage />;
+  }
+
   if (authLoading || (isAuthenticated && userInfoLoading)) {
     return <LoadingScreen />;
   }
@@ -177,7 +181,6 @@ function AppContent() {
         <Route path="/admin/credit-store" component={AdminCreditStore} />
         <Route path="/admin/settings" component={AdminSettings} />
         <Route path="/admin/sandbox" component={AdminSandbox} />
-        <Route path="/admin/government" component={AdminGovernment} />
         <Route path="/admin/reporting" component={AdminReporting} />
         <Route path="/admin/user-management" component={AdminUserManagement} />
         <Route path="/admin/custom-roles" component={AdminCustomRoles} />
@@ -223,7 +226,6 @@ function AppContent() {
         <Route path="/client/team">
           {() => <ClientTeam companyId={companyId} />}
         </Route>
-        <Route path="/client/government">{() => <ClientGovernment />}</Route>
         <Route component={NotFound} />
       </Switch>
     );

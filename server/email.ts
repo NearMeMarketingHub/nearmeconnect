@@ -1895,3 +1895,67 @@ export async function sendOnboardingReminderEmail(data: OnboardingReminderEmailD
     return false;
   }
 }
+
+export interface GovernmentFormEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  companyName: string;
+  formType: string;
+  formUrl: string;
+}
+
+export async function sendGovernmentFormEmail(data: GovernmentFormEmailData): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const formLabel = data.formType === 'wosb' ? 'Women-Owned Small Business (WOSB) Certification' : data.formType.toUpperCase();
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+          <div style="background: #f97316; padding: 32px 40px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">Near Me Connect</h1>
+            <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">Client Portal</p>
+          </div>
+          <div style="padding: 40px;">
+            <h2 style="margin: 0 0 8px; color: #111827; font-size: 20px;">Action Required: Government Form</h2>
+            <p style="color: #6b7280; margin: 0 0 24px; font-size: 14px;">Hi ${data.recipientName},</p>
+            <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+              Your team at Near Me Connect has sent you a form to complete for <strong>${data.companyName}</strong>:
+            </p>
+            <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
+              <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827;">${formLabel}</p>
+              <p style="margin: 6px 0 0; font-size: 13px; color: #6b7280;">Please complete this form at your earliest convenience.</p>
+            </div>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${data.formUrl}" style="display: inline-block; background: #f97316; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+                Complete Form
+              </a>
+            </div>
+            <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+              If the button above doesn't work, copy and paste this link into your browser:<br>
+              <a href="${data.formUrl}" style="color: #f97316; word-break: break-all;">${data.formUrl}</a>
+            </p>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
+              Near Me Connect · This email was sent on behalf of ${data.companyName}
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    await client.emails.send({
+      from: fromEmail,
+      to: data.recipientEmail,
+      subject: `Action Required: ${formLabel} for ${data.companyName}`,
+      html,
+    });
+    console.log(`Government form email sent to ${data.recipientEmail}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send government form email:', error);
+    return false;
+  }
+}

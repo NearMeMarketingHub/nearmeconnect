@@ -1412,6 +1412,34 @@ export const insertTaskLabelSchema = createInsertSchema(taskLabels).omit({ id: t
 export type InsertTaskLabel = z.infer<typeof insertTaskLabelSchema>;
 export type TaskLabel = typeof taskLabels.$inferSelect;
 
+// ─── Government Form Requests ──────────────────────────────────────────────────
+export const governmentFormRequests = pgTable("government_form_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  formType: text("form_type").notNull().default("wosb"),
+  token: text("token").notNull().unique(),
+  status: text("status").notNull().default("draft"), // 'draft' | 'sent' | 'completed'
+  sentAt: text("sent_at"),
+  completedAt: text("completed_at"),
+  recipientEmail: text("recipient_email"),
+  recipientName: text("recipient_name"),
+  createdBy: varchar("created_by"),
+  createdAt: text("created_at").notNull(),
+  formData: text("form_data"), // JSON stringified submission
+  notes: text("notes"),
+});
+
+export const insertGovernmentFormRequestSchema = createInsertSchema(governmentFormRequests).omit({
+  id: true,
+  createdAt: true,
+  token: true,
+  formData: true,
+  sentAt: true,
+  completedAt: true,
+});
+export type InsertGovernmentFormRequest = z.infer<typeof insertGovernmentFormRequestSchema>;
+export type GovernmentFormRequest = typeof governmentFormRequests.$inferSelect;
+
 // ─── Task Label Assignments (many-to-many: tasks ↔ labels) ────────────────────
 export const taskLabelAssignments = pgTable("task_label_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

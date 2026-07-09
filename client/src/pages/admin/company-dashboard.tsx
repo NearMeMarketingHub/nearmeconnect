@@ -89,6 +89,9 @@ import {
   BarChart3,
   Menu,
   FolderOpen,
+  Landmark,
+  SendHorizonal,
+  Eye,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -875,6 +878,17 @@ export default function CompanyDashboard() {
   const { data: companyCustomRoles = [] } = useQuery<{ id: string; name: string; companyId: string }[]>({
     queryKey: ["/api/admin/custom-roles"],
     select: (data) => data.filter(r => r.companyId === companyId),
+  });
+
+  const { data: govForms = [], refetch: refetchGovForms } = useQuery<any[]>({
+    queryKey: ["/api/companies", companyId, "government-forms"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const res = await fetch(`/api/companies/${companyId}/government-forms`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!companyId,
   });
 
   const companyOwners = companyUsers.filter(u => u.role === "company_owner");
@@ -2378,6 +2392,7 @@ export default function CompanyDashboard() {
               { value: "onboarding", label: "Info Hub" },
               { value: "users", label: "Users", count: companyUsers.length },
               { value: "reporting", label: "Reporting" },
+              { value: "government", label: "Government" },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -2439,6 +2454,13 @@ export default function CompanyDashboard() {
             <TabsTrigger value="reporting" data-testid="tab-reporting">
               <BarChart3 className="h-4 w-4 mr-2" />
               Reporting
+            </TabsTrigger>
+            <TabsTrigger value="government" data-testid="tab-government">
+              <Landmark className="h-4 w-4 mr-2" />
+              Government
+              {govForms.some(f => f.status === "completed") && (
+                <Badge variant="secondary" className="ml-1 text-xs">{govForms.filter(f => f.status === "completed").length}</Badge>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -4948,6 +4970,11 @@ export default function CompanyDashboard() {
           <TabsContent value="reporting" className="space-y-6">
             <CompanyReportingTab companyId={companyId} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
+
+          {/* ── Government Tab ──────────────────────────────────────────── */}
+          <TabsContent value="government" className="space-y-6">
+            <GovernmentFormsPanel companyId={companyId || ""} govForms={govForms} refetch={refetchGovForms} />
+          </TabsContent>
         </Tabs>
       </div>
       {/* Task Detail Panel */}
@@ -6542,6 +6569,262 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
           <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
         </Avatar>
       )}
+    </div>
+  );
+}
+
+// ── Government Forms Panel ──────────────────────────────────────────────────
+function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: string; govForms: any[]; refetch: () => void }) {
+  const { toast } = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [viewSubmission, setViewSubmission] = useState<any>(null);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/government-forms`, {
+        formType: "wosb",
+        recipientEmail: newEmail,
+        recipientName: newName,
+        notes: newNotes,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Form created" });
+      setShowCreate(false);
+      setNewEmail(""); setNewName(""); setNewNotes("");
+      refetch();
+    },
+    onError: () => toast({ title: "Error creating form", variant: "destructive" }),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/government-forms/${id}/send`, {});
+      return res.json();
+    },
+    onSuccess: () => { toast({ title: "Form sent via email" }); refetch(); },
+    onError: () => toast({ title: "Failed to send form", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/government-forms/${id}`, {});
+    },
+    onSuccess: () => { toast({ title: "Form deleted" }); refetch(); },
+    onError: () => toast({ title: "Failed to delete form", variant: "destructive" }),
+  });
+
+  const statusBadge = (status: string) => {
+    if (status === "completed") return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Completed</Badge>;
+    if (status === "sent") return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Sent</Badge>;
+    return <Badge variant="outline">Draft</Badge>;
+  };
+
+  const formLabel = (type: string) => type === "wosb" ? "WOSB Certification" : type.toUpperCase();
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold flex items-center gap-2">
+            <Landmark className="w-4 h-4" /> Government Forms
+          </h3>
+          <p className="text-sm text-muted-foreground mt-0.5">Send government certification forms to this company's contacts.</p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-gov-form">
+          <Plus className="w-4 h-4 mr-1" /> New Form
+        </Button>
+      </div>
+
+      {/* Forms list */}
+      {govForms.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Landmark className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+            <p className="font-medium">No forms yet</p>
+            <p className="text-sm text-muted-foreground mt-1">Create a form to send to this company's contacts for completion.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {govForms.map((form: any) => (
+            <Card key={form.id} data-testid={`card-gov-form-${form.id}`}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{formLabel(form.formType)}</span>
+                      {statusBadge(form.status)}
+                    </div>
+                    {form.recipientName && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Recipient: <span className="font-medium">{form.recipientName}</span>
+                        {form.recipientEmail && ` · ${form.recipientEmail}`}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Created {new Date(form.createdAt).toLocaleDateString()}
+                      {form.sentAt && ` · Sent ${new Date(form.sentAt).toLocaleDateString()}`}
+                      {form.completedAt && ` · Completed ${new Date(form.completedAt).toLocaleDateString()}`}
+                    </p>
+                    {form.notes && <p className="text-xs text-muted-foreground mt-1 italic">{form.notes}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {form.status === "completed" && (
+                      <Button size="sm" variant="outline" onClick={() => setViewSubmission(form)} data-testid={`button-view-submission-${form.id}`}>
+                        <Eye className="w-4 h-4 mr-1" /> View
+                      </Button>
+                    )}
+                    {form.status !== "completed" && form.recipientEmail && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => sendMutation.mutate(form.id)}
+                        disabled={sendMutation.isPending}
+                        data-testid={`button-send-form-${form.id}`}
+                      >
+                        <SendHorizonal className="w-4 h-4 mr-1" />
+                        {form.status === "sent" ? "Resend" : "Send"}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => deleteMutation.mutate(form.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-form-${form.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                {form.status !== "completed" && form.token && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Form link:</span>
+                    <code className="text-xs bg-muted px-2 py-0.5 rounded truncate max-w-xs">{`${window.location.origin}/form/${form.token}`}</code>
+                    <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/form/${form.token}`); toast({ title: "Link copied" }); }} data-testid={`button-copy-link-${form.id}`}>
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Create dialog */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="max-w-md" data-testid="dialog-create-gov-form">
+          <DialogHeader>
+            <DialogTitle>New Government Form</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-muted/40 rounded-lg">
+              <p className="text-sm font-medium">Women-Owned Small Business (WOSB) Certification</p>
+              <p className="text-xs text-muted-foreground mt-1">SBA self-certification form with conditional logic for ownership structure, control, and optional EDWOSB designation.</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gov-recipient-email">Recipient Email <span className="text-destructive">*</span></Label>
+              <Input id="gov-recipient-email" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="client@example.com" data-testid="input-gov-email" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gov-recipient-name">Recipient Name</Label>
+              <Input id="gov-recipient-name" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Jane Smith" data-testid="input-gov-name" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="gov-notes">Internal Notes (optional)</Label>
+              <Textarea id="gov-notes" rows={2} value={newNotes} onChange={e => setNewNotes(e.target.value)} data-testid="input-gov-notes" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={() => createMutation.mutate()} disabled={!newEmail || createMutation.isPending} data-testid="button-save-gov-form">
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Create Form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View submission dialog */}
+      {viewSubmission && (() => {
+        let parsed: any = null;
+        try { parsed = JSON.parse(viewSubmission.formData || "{}"); } catch {}
+        return (
+          <Dialog open={!!viewSubmission} onOpenChange={() => setViewSubmission(null)}>
+            <DialogContent className="max-w-2xl flex flex-col" style={{ maxHeight: "90vh" }} data-testid="dialog-view-submission">
+              <DialogHeader className="shrink-0">
+                <DialogTitle>{formLabel(viewSubmission.formType)} — Submission</DialogTitle>
+                <p className="text-sm text-muted-foreground">Completed {viewSubmission.completedAt ? new Date(viewSubmission.completedAt).toLocaleDateString() : ""}</p>
+              </DialogHeader>
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
+                {parsed?.businessInfo && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Business Information</h4>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {[["Legal Name", parsed.businessInfo.legalName], ["DBA", parsed.businessInfo.dba], ["Address", [parsed.businessInfo.streetAddress, parsed.businessInfo.city, parsed.businessInfo.state, parsed.businessInfo.zip].filter(Boolean).join(", ")], ["Phone", parsed.businessInfo.phone], ["Email", parsed.businessInfo.email], ["Website", parsed.businessInfo.website], ["EIN", parsed.businessInfo.ein], ["SAM UEI", parsed.businessInfo.samUei], ["NAICS", parsed.businessInfo.naicsCodes]].filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
+                      ))}
+                    </dl>
+                    {parsed.businessInfo.businessDescription && <p className="text-sm mt-2"><span className="text-muted-foreground">Business: </span>{parsed.businessInfo.businessDescription}</p>}
+                  </div>
+                )}
+                {parsed?.structureSize && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Structure & Size</h4>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {[["Structure", parsed.structureSize.businessStructure?.replace(/_/g, " ")], ["State of Org", parsed.structureSize.stateOfOrg], ["Established", parsed.structureSize.dateEstablished], ["Employees", parsed.structureSize.numEmployees], ["Receipts " + parsed.structureSize.receiptsYear1Label, parsed.structureSize.receiptsYear1 ? `$${Number(parsed.structureSize.receiptsYear1).toLocaleString()}` : ""], ["Receipts " + parsed.structureSize.receiptsYear2Label, parsed.structureSize.receiptsYear2 ? `$${Number(parsed.structureSize.receiptsYear2).toLocaleString()}` : ""], ["Receipts " + parsed.structureSize.receiptsYear3Label, parsed.structureSize.receiptsYear3 ? `$${Number(parsed.structureSize.receiptsYear3).toLocaleString()}` : ""]].filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+                {parsed?.ownership?.owners?.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Ownership</h4>
+                    <div className="space-y-3">
+                      {parsed.ownership.owners.map((o: any, i: number) => (
+                        <div key={i} className="text-sm p-3 bg-muted/30 rounded-lg">
+                          <p className="font-medium">{o.fullName} — {o.title} — {o.percentOwned}%</p>
+                          <p className="text-muted-foreground text-xs mt-1">Gender: {o.gender} · US Citizen: {o.usCitizen} · Veteran: {o.veteran}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {parsed?.control && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Control</h4>
+                    <dl className="space-y-2 text-sm">
+                      {[["Women own 51%+", parsed.control.womenMajority51], ["Highest Officer", `${parsed.control.highestOfficerName} (${parsed.control.highestOfficerTitle})`], ["HRO is Woman", parsed.control.highestOfficerIsWoman], ["Day-to-Day Manager", parsed.control.dayToDayManager ? `${parsed.control.dayToDayManager} (${parsed.control.dayToDayManagerTitle})` : ""], ["Mgr is Woman", parsed.control.dayToDayIsWoman], ["Non-woman control", parsed.control.nonWomanControl], ["Explanation", parsed.control.nonWomanControlExplanation]].filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k as string} className="flex gap-2"><dt className="text-muted-foreground w-40 shrink-0">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+                {parsed?.certification && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Certification</h4>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {[["Signed By", parsed.certification.certName], ["Title", parsed.certification.certTitle], ["Date", parsed.certification.certDate]].filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="shrink-0 pt-3 border-t">
+                <Button variant="outline" onClick={() => setViewSubmission(null)}>Close</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

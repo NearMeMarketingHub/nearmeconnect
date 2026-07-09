@@ -10360,5 +10360,125 @@ export async function registerRoutes(
     }
   });
 
+  // ── Government Form Requests ──────────────────────────────────────────────
+  app.get("/api/companies/:companyId/government-forms", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const forms = await storage.getGovernmentFormRequests(req.params.companyId);
+      res.json(forms);
+    } catch (error) {
+      console.error("Failed to fetch government forms:", error);
+      res.status(500).json({ error: "Failed to fetch government forms" });
+    }
+  });
+
+  app.post("/api/companies/:companyId/government-forms", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { companyId } = req.params;
+      const { formType = "wosb", recipientEmail, recipientName, notes } = req.body;
+      const crypto = await import("crypto");
+      const token = crypto.randomBytes(32).toString("hex");
+      const form = await storage.createGovernmentFormRequest({
+        companyId,
+        formType,
+        token,
+        status: "draft",
+        recipientEmail: recipientEmail || null,
+        recipientName: recipientName || null,
+        notes: notes || null,
+        createdBy: req.user?.id || null,
+        createdAt: new Date().toISOString(),
+        sentAt: null,
+        completedAt: null,
+        formData: null,
+      });
+      res.json(form);
+    } catch (error) {
+      console.error("Failed to create government form:", error);
+      res.status(500).json({ error: "Failed to create government form" });
+    }
+  });
+
+  app.post("/api/government-forms/:id/send", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const form = await storage.getGovernmentFormRequest(id);
+      if (!form) return res.status(404).json({ error: "Form not found" });
+      if (!form.recipientEmail) return res.status(400).json({ error: "No recipient email set" });
+
+      const company = await storage.getCompany(form.companyId);
+      const formUrl = `${getBaseUrl(req)}/form/${form.token}`;
+
+      const { sendGovernmentFormEmail } = await import("./email");
+      await sendGovernmentFormEmail({
+        recipientEmail: form.recipientEmail,
+        recipientName: form.recipientName || form.recipientEmail,
+        companyName: company?.name || "your company",
+        formType: form.formType,
+        formUrl,
+      });
+
+      const updated = await storage.updateGovernmentFormRequest(id, {
+        status: "sent",
+        sentAt: new Date().toISOString(),
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to send government form:", error);
+      res.status(500).json({ error: "Failed to send government form" });
+    }
+  });
+
+  app.patch("/api/government-forms/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const updated = await storage.updateGovernmentFormRequest(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Form not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to update government form:", error);
+      res.status(500).json({ error: "Failed to update government form" });
+    }
+  });
+
+  app.delete("/api/government-forms/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      await storage.deleteGovernmentFormRequest(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete government form:", error);
+      res.status(500).json({ error: "Failed to delete government form" });
+    }
+  });
+
+  // Public: get form metadata by token
+  app.get("/api/government-forms/token/:token", async (req, res) => {
+    try {
+      const form = await storage.getGovernmentFormRequestByToken(req.params.token);
+      if (!form) return res.status(404).json({ error: "Form not found" });
+      const company = await storage.getCompany(form.companyId);
+      res.json({ form, companyName: company?.name || "" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch form" });
+    }
+  });
+
+  // Public: submit completed form
+  app.post("/api/government-forms/token/:token/submit", async (req, res) => {
+    try {
+      const form = await storage.getGovernmentFormRequestByToken(req.params.token);
+      if (!form) return res.status(404).json({ error: "Form not found" });
+      if (form.status === "completed") return res.status(400).json({ error: "Form already submitted" });
+
+      const updated = await storage.updateGovernmentFormRequest(form.id, {
+        status: "completed",
+        completedAt: new Date().toISOString(),
+        formData: JSON.stringify(req.body),
+      });
+      res.json({ success: true, form: updated });
+    } catch (error) {
+      console.error("Failed to submit government form:", error);
+      res.status(500).json({ error: "Failed to submit form" });
+    }
+  });
+
   return httpServer;
 }

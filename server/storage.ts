@@ -166,6 +166,9 @@ import {
   type TaskLabel,
   type InsertTaskLabel,
   type TaskLabelAssignment,
+  governmentFormRequests,
+  type GovernmentFormRequest,
+  type InsertGovernmentFormRequest,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -468,6 +471,14 @@ export interface IStorage {
   // Company Profile (branding, social, logos, summary)
   getCompanyProfile(companyId: string): Promise<CompanyProfile | null>;
   upsertCompanyProfile(companyId: string, data: Partial<CompanyProfile>): Promise<CompanyProfile>;
+
+  // Government Form Requests
+  getGovernmentFormRequests(companyId: string): Promise<GovernmentFormRequest[]>;
+  getGovernmentFormRequest(id: string): Promise<GovernmentFormRequest | undefined>;
+  getGovernmentFormRequestByToken(token: string): Promise<GovernmentFormRequest | undefined>;
+  createGovernmentFormRequest(data: Omit<GovernmentFormRequest, 'id'>): Promise<GovernmentFormRequest>;
+  updateGovernmentFormRequest(id: string, data: Partial<GovernmentFormRequest>): Promise<GovernmentFormRequest | undefined>;
+  deleteGovernmentFormRequest(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2623,6 +2634,36 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return row;
+  }
+
+  async getGovernmentFormRequests(companyId: string): Promise<GovernmentFormRequest[]> {
+    return db.select().from(governmentFormRequests)
+      .where(eq(governmentFormRequests.companyId, companyId))
+      .orderBy(desc(governmentFormRequests.createdAt));
+  }
+
+  async getGovernmentFormRequest(id: string): Promise<GovernmentFormRequest | undefined> {
+    const [row] = await db.select().from(governmentFormRequests).where(eq(governmentFormRequests.id, id));
+    return row;
+  }
+
+  async getGovernmentFormRequestByToken(token: string): Promise<GovernmentFormRequest | undefined> {
+    const [row] = await db.select().from(governmentFormRequests).where(eq(governmentFormRequests.token, token));
+    return row;
+  }
+
+  async createGovernmentFormRequest(data: Omit<GovernmentFormRequest, 'id'>): Promise<GovernmentFormRequest> {
+    const [row] = await db.insert(governmentFormRequests).values(data as any).returning();
+    return row;
+  }
+
+  async updateGovernmentFormRequest(id: string, data: Partial<GovernmentFormRequest>): Promise<GovernmentFormRequest | undefined> {
+    const [row] = await db.update(governmentFormRequests).set(data).where(eq(governmentFormRequests.id, id)).returning();
+    return row;
+  }
+
+  async deleteGovernmentFormRequest(id: string): Promise<void> {
+    await db.delete(governmentFormRequests).where(eq(governmentFormRequests.id, id));
   }
 }
 
