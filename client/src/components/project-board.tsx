@@ -1177,14 +1177,16 @@ function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, co
       <table className="w-full text-sm min-w-[900px]">
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
-            <th className="p-2 w-8">
+            <th className="p-2 w-28">
               {onSelectAll && (
                 <button
                   onClick={() => onSelectAll(allSelected ? [] : allIds)}
-                  className="text-muted-foreground hover:text-primary transition-colors"
+                  className={`flex items-center gap-1.5 text-xs font-medium transition-colors ${allSelected ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  title={allSelected ? "Deselect all" : "Select all"}
                   data-testid="checkbox-grid-select-all"
                 >
-                  {allSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                  {allSelected ? <CheckSquare className="h-4 w-4 shrink-0" /> : <Square className="h-4 w-4 shrink-0" />}
+                  <span>{allSelected ? "Deselect All" : "Select All"}</span>
                 </button>
               )}
             </th>
