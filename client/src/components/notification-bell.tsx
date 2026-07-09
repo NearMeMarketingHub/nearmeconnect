@@ -50,6 +50,10 @@ export function NotificationBell() {
     queryKey: ["/api/notifications"],
   });
 
+  const { data: userInfo } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/auth/user"],
+  });
+
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
   });
@@ -82,12 +86,35 @@ export function NotificationBell() {
 
   const readCount = notifications.filter((n) => n.isRead).length;
 
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = async (notification: Notification) => {
     if (!notification.isRead) {
       markReadMutation.mutate(notification.id);
     }
     if (notification.link) {
-      const link = notification.link;
+      let link = notification.link;
+
+      // Admin users should not navigate to client-only URLs
+      if (userInfo?.isAdmin && link.startsWith("/client/tasks")) {
+        const taskId =
+          notification.relatedTaskId ||
+          new URLSearchParams(link.split("?")[1] || "").get("taskId");
+        if (taskId) {
+          try {
+            const res = await fetch(`/api/tasks/${taskId}`);
+            if (res.ok) {
+              const task = await res.json();
+              link = `/admin/companies/${task.companyId}?taskId=${task.id}`;
+            } else {
+              link = "/admin/dashboard";
+            }
+          } catch {
+            link = "/admin/dashboard";
+          }
+        } else {
+          link = "/admin/dashboard";
+        }
+      }
+
       setOpen(false);
       setTimeout(() => navigate(link), 0);
     }

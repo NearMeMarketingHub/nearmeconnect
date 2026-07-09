@@ -1849,6 +1849,25 @@ export function ProjectBoard({
         </div>
 
         <div className="flex items-center gap-1 flex-wrap">
+          {/* Grid select-all button */}
+          {viewMode === "grid" && (
+            <Button
+              variant={selectedIds.size > 0 && selectedIds.size === gridTasks.length ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => {
+                if (selectedIds.size > 0 && selectedIds.size === gridTasks.length) {
+                  clearSelection();
+                } else {
+                  setSelectAll(gridTasks.map((t) => t.id));
+                }
+              }}
+              data-testid="button-grid-select-all"
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              {selectedIds.size > 0 && selectedIds.size === gridTasks.length ? "Deselect All" : "Select All"}
+            </Button>
+          )}
           {/* Board/Grid status filter */}
           {(viewMode === "board" || viewMode === "grid") && (
             <div className="flex items-center gap-1 flex-wrap">
