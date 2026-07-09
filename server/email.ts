@@ -1907,7 +1907,11 @@ export interface GovernmentFormEmailData {
 export async function sendGovernmentFormEmail(data: GovernmentFormEmailData): Promise<boolean> {
   try {
     const { client, fromEmail } = await getUncachableResendClient();
-    const formLabel = data.formType === 'wosb' ? 'Women-Owned Small Business (WOSB) Certification' : data.formType.toUpperCase();
+    const formLabel = data.formType === 'wosb'
+      ? 'Women-Owned Small Business (WOSB) Certification'
+      : data.formType === 'edwosb'
+      ? 'Economically Disadvantaged Women-Owned Small Business (EDWOSB) Certification'
+      : data.formType.toUpperCase();
     const html = `
       <!DOCTYPE html>
       <html>

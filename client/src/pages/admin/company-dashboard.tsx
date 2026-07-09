@@ -6580,12 +6580,13 @@ function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: str
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newNotes, setNewNotes] = useState("");
+  const [newFormType, setNewFormType] = useState("wosb");
   const [viewSubmission, setViewSubmission] = useState<any>(null);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/companies/${companyId}/government-forms`, {
-        formType: "wosb",
+        formType: newFormType,
         recipientEmail: newEmail,
         recipientName: newName,
         notes: newNotes,
@@ -6595,7 +6596,7 @@ function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: str
     onSuccess: () => {
       toast({ title: "Form created" });
       setShowCreate(false);
-      setNewEmail(""); setNewName(""); setNewNotes("");
+      setNewEmail(""); setNewName(""); setNewNotes(""); setNewFormType("wosb");
       refetch();
     },
     onError: () => toast({ title: "Error creating form", variant: "destructive" }),
@@ -6624,7 +6625,10 @@ function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: str
     return <Badge variant="outline">Draft</Badge>;
   };
 
-  const formLabel = (type: string) => type === "wosb" ? "WOSB Certification" : type.toUpperCase();
+  const formLabel = (type: string) =>
+    type === "wosb" ? "WOSB Certification" :
+    type === "edwosb" ? "EDWOSB Certification" :
+    type.toUpperCase();
 
   return (
     <div className="space-y-5">
@@ -6724,9 +6728,28 @@ function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: str
             <DialogTitle>New Government Form</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="p-3 bg-muted/40 rounded-lg">
-              <p className="text-sm font-medium">Women-Owned Small Business (WOSB) Certification</p>
-              <p className="text-xs text-muted-foreground mt-1">SBA self-certification form with conditional logic for ownership structure, control, and optional EDWOSB designation.</p>
+            <div className="space-y-1">
+              <Label>Form Type <span className="text-destructive">*</span></Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewFormType("wosb")}
+                  className={`p-3 rounded-lg border-2 text-left transition-colors ${newFormType === "wosb" ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" : "border-border hover:border-muted-foreground/40"}`}
+                  data-testid="button-select-wosb"
+                >
+                  <p className="text-sm font-medium">WOSB</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Women-Owned Small Business</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewFormType("edwosb")}
+                  className={`p-3 rounded-lg border-2 text-left transition-colors ${newFormType === "edwosb" ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" : "border-border hover:border-muted-foreground/40"}`}
+                  data-testid="button-select-edwosb"
+                >
+                  <p className="text-sm font-medium">EDWOSB</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Economically Disadvantaged</p>
+                </button>
+              </div>
             </div>
             <div className="space-y-1">
               <Label htmlFor="gov-recipient-email">Recipient Email <span className="text-destructive">*</span></Label>
@@ -6794,6 +6817,35 @@ function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: str
                           <p className="text-muted-foreground text-xs mt-1">Gender: {o.gender} · US Citizen: {o.usCitizen} · Veteran: {o.veteran}</p>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+                {parsed?.womanOwners?.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Woman Owners & Financial Statements</h4>
+                    <div className="space-y-4">
+                      {parsed.womanOwners.map((o: any, i: number) => {
+                        const sum = (...vals: string[]) => vals.reduce((a: number, v: string) => a + (parseFloat((v || "").replace(/,/g, "")) || 0), 0);
+                        const totalAssets = sum(o.cashChecking, o.savings, o.retirement, o.stocks, o.realEstate, o.lifeInsurance, o.otherAssets);
+                        const totalLiabilities = sum(o.notesPayable, o.installmentLoans, o.otherLiabilities);
+                        const excluded = sum(o.primaryResidenceEquity, o.businessOwnershipValue);
+                        const netWorth = totalAssets - totalLiabilities - excluded;
+                        return (
+                          <div key={i} className="text-sm p-3 bg-muted/30 rounded-lg space-y-2">
+                            <p className="font-medium">{o.fullName} — {o.title} — {o.percentOwned}% · DOB: {o.dob || "—"}</p>
+                            <p className="text-muted-foreground text-xs">US Citizen: {o.usCitizen} · Home: {[o.homeAddress, o.homeCity, o.homeState].filter(Boolean).join(", ")}</p>
+                            {o.spouseName && <p className="text-xs text-muted-foreground">Spouse: {o.spouseName}{o.spouseBusinessInterests ? ` — ${o.spouseBusinessInterests}` : ""}</p>}
+                            <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
+                              <div><span className="text-muted-foreground">Total Assets</span><br /><span className="font-semibold">${totalAssets.toLocaleString()}</span></div>
+                              <div><span className="text-muted-foreground">Total Liabilities</span><br /><span className="font-semibold">${totalLiabilities.toLocaleString()}</span></div>
+                              <div><span className="text-muted-foreground">Adj. Net Worth</span><br /><span className={`font-semibold ${netWorth < 850000 ? "text-green-600" : "text-red-600"}`}>${netWorth.toLocaleString()}</span></div>
+                            </div>
+                            {(o.grossIncomeYear1 || o.grossIncomeYear2 || o.grossIncomeYear3) && (
+                              <p className="text-xs text-muted-foreground">Income: {o.grossIncomeYear1Label} ${Number(o.grossIncomeYear1 || 0).toLocaleString()} · {o.grossIncomeYear2Label} ${Number(o.grossIncomeYear2 || 0).toLocaleString()} · {o.grossIncomeYear3Label} ${Number(o.grossIncomeYear3 || 0).toLocaleString()}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

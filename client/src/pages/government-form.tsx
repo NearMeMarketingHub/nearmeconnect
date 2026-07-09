@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ChevronLeft, ChevronRight, CheckCircle2, Plus, Trash2, Loader2, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import EdwosbForm from "@/pages/government-form-edwosb";
 
 interface Owner {
   fullName: string;
@@ -131,6 +132,20 @@ export default function GovernmentFormPage() {
     onSuccess: () => setSubmitted(true),
     onError: () => toast({ title: "Error", description: "Failed to submit form. Please try again.", variant: "destructive" }),
   });
+
+  // Delegate to EDWOSB form if formType is edwosb
+  if (data?.form?.formType === "edwosb" && !submitted) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <EdwosbForm
+          token={token}
+          companyName={data.companyName}
+          onSubmit={(payload) => submitMutation.mutate(payload)}
+          isPending={submitMutation.isPending}
+        />
+      </div>
+    );
+  }
 
   const handleSubmit = () => {
     const payload = {
