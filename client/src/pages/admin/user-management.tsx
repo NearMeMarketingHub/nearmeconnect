@@ -102,6 +102,12 @@ export default function UserManagement() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [companyFilter, setCompanyFilter] = useState<string>("all");
   const [deleteUserTarget, setDeleteUserTarget] = useState<{ userId: string; name: string } | null>(null);
+
+  const [memberInviteOpen, setMemberInviteOpen] = useState(false);
+  const [memberInviteCompanyId, setMemberInviteCompanyId] = useState<string | null>(null);
+  const [memberInviteEmail, setMemberInviteEmail] = useState("");
+  const [memberInviteRole, setMemberInviteRole] = useState("team_member");
+
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<UsersData>({
@@ -197,6 +203,24 @@ export default function UserManagement() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to cancel invitation", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const memberInviteMutation = useMutation({
+    mutationFn: async ({ companyId, email, role }: { companyId: string; email: string; role: string }) => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/invitations`, { email, role });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Invitation sent", description: "The member will receive an email with a link to join." });
+      setMemberInviteOpen(false);
+      setMemberInviteEmail("");
+      setMemberInviteRole("team_member");
+      setMemberInviteCompanyId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to send invitation", description: err.message, variant: "destructive" });
     },
   });
 
@@ -458,6 +482,21 @@ export default function UserManagement() {
                     <Badge variant="secondary" className="text-xs">
                       {company.members.length} {company.members.length === 1 ? "member" : "members"}
                     </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto"
+                      data-testid={`button-invite-member-${company.id}`}
+                      onClick={() => {
+                        setMemberInviteCompanyId(company.id);
+                        setMemberInviteEmail("");
+                        setMemberInviteRole("team_member");
+                        setMemberInviteOpen(true);
+                      }}
+                    >
+                      <UserPlus className="h-3.5 w-3.5 mr-1" />
+                      Invite Member
+                    </Button>
                   </div>
                   {company.members.length === 0 ? (
                     <p className="text-sm text-muted-foreground ml-6">No members yet.</p>
@@ -551,6 +590,56 @@ export default function UserManagement() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Invite Member Dialog */}
+      <Dialog open={memberInviteOpen} onOpenChange={(open) => { setMemberInviteOpen(open); if (!open) setMemberInviteCompanyId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Member</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="member-invite-email">Email Address</Label>
+              <Input
+                id="member-invite-email"
+                type="email"
+                placeholder="member@example.com"
+                value={memberInviteEmail}
+                onChange={(e) => setMemberInviteEmail(e.target.value)}
+                data-testid="input-member-invite-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={memberInviteRole} onValueChange={setMemberInviteRole}>
+                <SelectTrigger data-testid="select-member-invite-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="company_owner">Owner – Full access</SelectItem>
+                  <SelectItem value="company_admin">Company Admin – Manage tasks &amp; settings</SelectItem>
+                  <SelectItem value="team_member">Team Member – Chats, requests, calendar</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setMemberInviteOpen(false)} data-testid="button-cancel-member-invite">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!memberInviteEmail.trim() || !memberInviteCompanyId) return;
+                  memberInviteMutation.mutate({ companyId: memberInviteCompanyId, email: memberInviteEmail.trim(), role: memberInviteRole });
+                }}
+                disabled={memberInviteMutation.isPending || !memberInviteEmail.trim()}
+                data-testid="button-send-member-invite"
+              >
+                {memberInviteMutation.isPending ? "Sending…" : "Send Invitation"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deleteUserTarget} onOpenChange={(open) => !open && setDeleteUserTarget(null)}>
         <AlertDialogContent>
