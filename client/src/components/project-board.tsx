@@ -39,6 +39,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Plus,
   Clock,
   CheckCircle2,
@@ -69,6 +83,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronsUpDown,
+  CheckSquare,
+  UserCheck,
+  Square,
 } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useToast } from "@/hooks/use-toast";
@@ -463,16 +480,16 @@ function QuickActionMenu({ task, companyId, onOpen }: { task: Task; companyId: s
       </DropdownMenu>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>Delete "{task.title}"? This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteMutation.mutate()}
+              onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(); }}
               data-testid={`confirm-delete-${task.id}`}
             >
               {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
@@ -495,9 +512,11 @@ interface BoardCardProps {
   draggable?: boolean;
   companyName?: string;
   taskLabels?: TaskLabel[];
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-function BoardCard({ task, companyId, onTaskClick, isDragging, categories, draggable = true, companyName, taskLabels = [] }: BoardCardProps) {
+function BoardCard({ task, companyId, onTaskClick, isDragging, categories, draggable = true, companyName, taskLabels = [], isSelected, onToggleSelect }: BoardCardProps) {
   const [showChecklist, setShowChecklist] = useState(false);
   const { toast } = useToast();
   const { attributes, listeners, setNodeRef, transform, isDragging: selfDragging } = useDraggable({
@@ -554,6 +573,16 @@ function BoardCard({ task, companyId, onTaskClick, isDragging, categories, dragg
 
           {/* Title row */}
           <div className="flex items-start gap-2">
+            {/* Selection checkbox (visible on hover or when selected) */}
+            {onToggleSelect && (
+              <button
+                className={`mt-0.5 shrink-0 transition-colors ${isSelected ? "text-primary" : "text-muted-foreground/40 opacity-0 group-hover:opacity-100"}`}
+                onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
+                data-testid={`checkbox-select-${task.id}`}
+              >
+                {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+              </button>
+            )}
             {/* Completion circle */}
             <button
               className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
@@ -743,11 +772,13 @@ interface BoardColumnProps {
   draggable?: boolean;
   companies?: { id: string; name: string }[];
   taskLabelsMap?: Map<string, TaskLabel[]>;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
 const COMPACT_TASK_LIMIT = 4;
 
-function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskClick, onAddTask, isCompleted, draggable, companies, taskLabelsMap }: BoardColumnProps) {
+function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskClick, onAddTask, isCompleted, draggable, companies, taskLabelsMap, selectedIds, onToggleSelect }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [isBodyCollapsed, setIsBodyCollapsed] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -816,6 +847,8 @@ function BoardColumn({ id, label, color, tasks, companyId, categories, onTaskCli
                 draggable={draggable && !isCompleted}
                 companyName={companies ? getCompanyName(task.companyId) : undefined}
                 taskLabels={taskLabelsMap?.get(task.id) || []}
+                isSelected={selectedIds?.has(task.id)}
+                onToggleSelect={onToggleSelect}
               />
             ))}
             {tasks.length === 0 && (
@@ -894,13 +927,22 @@ function OutstandingBar({ tasks, activeFilter, onFilter }: {
 
 // ─── Task List Row ────────────────────────────────────────────────────────────
 
-function TaskListRow({ task, companyId, categories, onTaskClick, companyName, taskLabels = [] }: {
-  task: Task; companyId: string; categories: TaskCategory[]; onTaskClick: (task: Task) => void; companyName?: string; taskLabels?: TaskLabel[];
+function TaskListRow({ task, companyId, categories, onTaskClick, companyName, taskLabels = [], isSelected, onToggleSelect }: {
+  task: Task; companyId: string; categories: TaskCategory[]; onTaskClick: (task: Task) => void; companyName?: string; taskLabels?: TaskLabel[]; isSelected?: boolean; onToggleSelect?: (id: string) => void;
 }) {
   const cat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
   return (
-    <Card className="cursor-pointer hover:shadow-sm transition-shadow" onClick={() => onTaskClick(task)} data-testid={`list-task-${task.id}`}>
+    <Card className={`group cursor-pointer hover:shadow-sm transition-shadow ${isSelected ? "ring-2 ring-primary" : ""}`} onClick={() => onTaskClick(task)} data-testid={`list-task-${task.id}`}>
       <CardContent className="py-2.5 px-4 flex items-center gap-3">
+        {onToggleSelect && (
+          <button
+            className={`shrink-0 transition-colors ${isSelected ? "text-primary" : "text-muted-foreground/40 opacity-0 group-hover:opacity-100"}`}
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
+            data-testid={`checkbox-list-select-${task.id}`}
+          >
+            {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+          </button>
+        )}
         {task.status === "completed"
           ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
           : <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -937,8 +979,8 @@ function TaskListRow({ task, companyId, categories, onTaskClick, companyName, ta
 
 // ─── Grid View (Spreadsheet) ──────────────────────────────────────────────────
 
-function GridRow({ task, categories, taskLabels, companyId, onTaskClick, companyName }: {
-  task: Task; categories: TaskCategory[]; taskLabels: TaskLabel[]; companyId: string; onTaskClick: (task: Task) => void; companyName?: string;
+function GridRow({ task, categories, taskLabels, companyId, onTaskClick, companyName, isSelected, onToggleSelect }: {
+  task: Task; categories: TaskCategory[]; taskLabels: TaskLabel[]; companyId: string; onTaskClick: (task: Task) => void; companyName?: string; isSelected?: boolean; onToggleSelect?: (id: string) => void;
 }) {
   const { toast } = useToast();
   const cat = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
@@ -955,10 +997,22 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
 
   return (
     <tr
-      className="group border-b hover:bg-muted/30 transition-colors cursor-pointer"
+      className={`group border-b hover:bg-muted/30 transition-colors cursor-pointer ${isSelected ? "bg-primary/5" : ""}`}
       onClick={() => onTaskClick(task)}
       data-testid={`grid-task-${task.id}`}
     >
+      {/* Selection checkbox */}
+      <td className="p-2 w-8">
+        {onToggleSelect ? (
+          <button
+            className={`transition-colors ${isSelected ? "text-primary" : "text-muted-foreground/40 opacity-0 group-hover:opacity-100"}`}
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(task.id); }}
+            data-testid={`checkbox-grid-select-${task.id}`}
+          >
+            {isSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+          </button>
+        ) : null}
+      </td>
       {/* Complete toggle */}
       <td className="p-2 w-8">
         <button
@@ -1057,13 +1111,16 @@ function GridRow({ task, categories, taskLabels, companyId, onTaskClick, company
   );
 }
 
-function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, companies }: {
+function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, companies, selectedIds, onToggleSelect, onSelectAll }: {
   tasks: Task[];
   categories: TaskCategory[];
   taskLabelsMap: Map<string, TaskLabel[]>;
   companyId: string;
   onTaskClick: (task: Task) => void;
   companies?: { id: string; name: string }[];
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
+  onSelectAll?: (ids: string[]) => void;
 }) {
   const [sortKey, setSortKey] = useState<string>("dueDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1112,11 +1169,25 @@ function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, co
 
   const getCompanyName = (cid: string) => companies?.find((c) => c.id === cid)?.name;
 
+  const allIds = sorted.map((t) => t.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds?.has(id));
+
   return (
     <div className="border rounded-lg overflow-auto" data-testid="grid-view">
       <table className="w-full text-sm min-w-[900px]">
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+            <th className="p-2 w-8">
+              {onSelectAll && (
+                <button
+                  onClick={() => onSelectAll(allSelected ? [] : allIds)}
+                  className="text-muted-foreground hover:text-primary transition-colors"
+                  data-testid="checkbox-grid-select-all"
+                >
+                  {allSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
+                </button>
+              )}
+            </th>
             <th className="p-2 w-8"></th>
             <SortHeader label="Task Name" sKey="title" />
             <th className="text-left p-2 w-28 whitespace-nowrap">Assigned To</th>
@@ -1133,7 +1204,7 @@ function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, co
         <tbody>
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={11} className="text-center py-10 text-muted-foreground text-sm">No tasks found.</td>
+              <td colSpan={12} className="text-center py-10 text-muted-foreground text-sm">No tasks found.</td>
             </tr>
           ) : (
             sorted.map((task) => (
@@ -1145,6 +1216,8 @@ function GridView({ tasks, categories, taskLabelsMap, companyId, onTaskClick, co
                 companyId={task.companyId || companyId}
                 onTaskClick={onTaskClick}
                 companyName={companies ? getCompanyName(task.companyId) : undefined}
+                isSelected={selectedIds?.has(task.id)}
+                onToggleSelect={onToggleSelect}
               />
             ))
           )}
@@ -1314,6 +1387,70 @@ export function ProjectBoard({
   const [listStatusFilter, setListStatusFilter] = useState<string>("active");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeLabelId, setActiveLabelId] = useState<string | null>(null);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignUserId, setReassignUserId] = useState<string>("");
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const setSelectAll = (ids: string[]) => setSelectedIds(new Set(ids));
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Members for reassign (only when single company)
+  const { data: members = [] } = useQuery<{ id: string; name: string; email: string }[]>({
+    queryKey: ["/api/companies", companyId, "members"],
+    queryFn: async () => {
+      const r = await fetch(`/api/companies/${companyId}/members`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: companyId !== "all" && reassignOpen,
+  });
+
+  // Bulk mutations
+  const bulkCompleteMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all([...selectedIds].map((id) => apiRequest("PATCH", `/api/tasks/${id}`, { status: "completed" })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: `${selectedIds.size} task${selectedIds.size !== 1 ? "s" : ""} completed` });
+      clearSelection();
+    },
+    onError: () => toast({ title: "Failed to complete tasks", variant: "destructive" }),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all([...selectedIds].map((id) => apiRequest("DELETE", `/api/tasks/${id}`)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: `${selectedIds.size} task${selectedIds.size !== 1 ? "s" : ""} deleted` });
+      clearSelection();
+    },
+    onError: () => toast({ title: "Failed to delete tasks", variant: "destructive" }),
+  });
+
+  const bulkReassignMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all([...selectedIds].map((id) => apiRequest("PATCH", `/api/tasks/${id}`, { assignedTo: reassignUserId || null })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: `${selectedIds.size} task${selectedIds.size !== 1 ? "s" : ""} reassigned` });
+      setReassignOpen(false);
+      clearSelection();
+    },
+    onError: () => toast({ title: "Failed to reassign tasks", variant: "destructive" }),
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -1583,6 +1720,45 @@ export function ProjectBoard({
       {/* Outstanding Bar */}
       <OutstandingBar tasks={windowedTasks} activeFilter={outstandingFilter} onFilter={setOutstandingFilter} />
 
+      {/* Bulk Action Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg flex-wrap" data-testid="bulk-toolbar">
+          <span className="text-sm font-medium text-primary">{selectedIds.size} selected</span>
+          <div className="flex-1" />
+          <Button
+            variant="outline" size="sm" className="h-7 text-xs gap-1.5"
+            onClick={() => bulkCompleteMutation.mutate()}
+            disabled={bulkCompleteMutation.isPending}
+            data-testid="bulk-complete"
+          >
+            {bulkCompleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+            Complete
+          </Button>
+          {companyId !== "all" && (
+            <Button
+              variant="outline" size="sm" className="h-7 text-xs gap-1.5"
+              onClick={() => setReassignOpen(true)}
+              data-testid="bulk-reassign"
+            >
+              <UserCheck className="h-3.5 w-3.5" />
+              Reassign
+            </Button>
+          )}
+          <Button
+            variant="outline" size="sm" className="h-7 text-xs gap-1.5 text-destructive hover:text-destructive"
+            onClick={() => bulkDeleteMutation.mutate()}
+            disabled={bulkDeleteMutation.isPending}
+            data-testid="bulk-delete"
+          >
+            {bulkDeleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Delete
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearSelection} data-testid="bulk-clear">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* View Toggle + Filters */}
       <div className="flex items-center gap-2 flex-wrap justify-between">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1739,6 +1915,8 @@ export function ProjectBoard({
                 draggable={canDnD}
                 companies={showCompanyLabel ? companies : undefined}
                 taskLabelsMap={taskLabelsMap}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
               />
             ))}
           </div>
@@ -1836,6 +2014,8 @@ export function ProjectBoard({
                       onTaskClick={onTaskClick}
                       companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
                       taskLabels={taskLabelsMap.get(task.id) || []}
+                      isSelected={selectedIds.has(task.id)}
+                      onToggleSelect={toggleSelect}
                     />
                   ))}
                 </div>
@@ -1860,6 +2040,8 @@ export function ProjectBoard({
                 onTaskClick={onTaskClick}
                 companyName={showCompanyLabel ? getCompanyName(task.companyId) : undefined}
                 taskLabels={taskLabelsMap.get(task.id) || []}
+                isSelected={selectedIds.has(task.id)}
+                onToggleSelect={toggleSelect}
               />
             ))
           )}
@@ -1875,6 +2057,9 @@ export function ProjectBoard({
           companyId={companyId}
           onTaskClick={onTaskClick}
           companies={showCompanyLabel ? companies : undefined}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onSelectAll={setSelectAll}
         />
       )}
 
@@ -1887,6 +2072,39 @@ export function ProjectBoard({
           categories={categories}
         />
       )}
+
+      {/* Reassign Dialog */}
+      <Dialog open={reassignOpen} onOpenChange={setReassignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reassign {selectedIds.size} Task{selectedIds.size !== 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Select value={reassignUserId} onValueChange={setReassignUserId}>
+              <SelectTrigger data-testid="reassign-user-select">
+                <SelectValue placeholder="Pick a team member…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {members.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name || m.email}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReassignOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => bulkReassignMutation.mutate()}
+              disabled={!reassignUserId || bulkReassignMutation.isPending}
+              data-testid="confirm-bulk-reassign"
+            >
+              {bulkReassignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Reassign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
