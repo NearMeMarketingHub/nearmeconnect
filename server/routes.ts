@@ -831,7 +831,7 @@ export async function registerRoutes(
 
       if (data.categoryId) {
         const category = await storage.getTaskCategory(data.categoryId);
-        if (!category || category.companyId !== data.companyId) {
+        if (!category || (category.companyId !== null && category.companyId !== data.companyId)) {
           return res.status(400).json({ error: "Invalid category for this company" });
         }
       }
@@ -851,9 +851,9 @@ export async function registerRoutes(
         const pattern = data.recurrencePattern || 'day_of_month';
         
         // Validate required fields based on pattern
-        if (pattern === 'day_of_month') {
+        if (pattern === 'day_of_month' || pattern === 'monthly') {
           if (data.recurrenceDay === null || data.recurrenceDay === undefined) {
-            return res.status(400).json({ error: "Day of month is required for day_of_month recurrence pattern" });
+            return res.status(400).json({ error: "Day of month is required for monthly recurrence pattern" });
           }
           dueDate = formatDateLocal(getRecurringTaskDueDate(data.recurrenceDay, period));
         } else if (pattern === 'day_of_week') {
