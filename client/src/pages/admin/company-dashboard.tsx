@@ -99,6 +99,7 @@ import { MentionInput, renderMessageWithMentions } from "@/components/mention-in
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
 import { CompanyInfoHub } from "@/components/company-info-hub";
 import { ProjectBoard } from "@/components/project-board";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -3328,17 +3329,19 @@ export default function CompanyDashboard() {
               </div>
             </div>
 
-            <ProjectBoard
-              companyId={companyId}
-              tasks={tasks || []}
-              categories={taskCategoriesData || []}
-              tasksLoading={tasksLoading}
-              onTaskClick={(task) => setSelectedTask(task)}
-              onAddTask={(categoryId) => {
-                if (categoryId) setTaskCategoryId(categoryId);
-                setTaskOpen(true);
-              }}
-            />
+            <SidebarProvider style={{ minHeight: 0 }} defaultOpen={false}>
+              <ProjectBoard
+                companyId={companyId}
+                tasks={tasks || []}
+                categories={taskCategoriesData || []}
+                tasksLoading={tasksLoading}
+                onTaskClick={(task) => setSelectedTask(task)}
+                onAddTask={(categoryId) => {
+                  if (categoryId) setTaskCategoryId(categoryId);
+                  setTaskOpen(true);
+                }}
+              />
+            </SidebarProvider>
           </TabsContent>
 
           {/* Calendar Tab */}
