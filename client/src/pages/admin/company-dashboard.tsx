@@ -1710,6 +1710,19 @@ export default function CompanyDashboard() {
     }
   }, [searchString]);
 
+  // Auto-open task from ?taskId= URL param (e.g. from notification links)
+  const urlTaskId = useMemo(() => new URLSearchParams(searchString).get("taskId"), [searchString]);
+  const [urlTaskOpened, setUrlTaskOpened] = useState(false);
+  useEffect(() => {
+    if (!urlTaskId || !tasks || urlTaskOpened) return;
+    const match = tasks.find(t => t.id === urlTaskId);
+    if (match) {
+      setSelectedTask(match);
+      setActiveTab("tasks");
+      setUrlTaskOpened(true);
+    }
+  }, [urlTaskId, tasks, urlTaskOpened]);
+
   // Auto-scroll messages
   useEffect(() => {
     if (messages.length > 0) {

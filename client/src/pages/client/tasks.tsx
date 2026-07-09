@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { parseLocalDate } from "@/lib/utils";
 import { ClientLayout } from "@/components/client-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +42,7 @@ interface ClientTasksProps {
 export default function ClientTasks({ companyId, embedded = false }: ClientTasksProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -76,6 +77,18 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     },
     enabled: !!companyId,
   });
+
+  // Auto-open task from ?taskId= URL param (e.g. from notification links)
+  const urlTaskId = useMemo(() => new URLSearchParams(searchString).get("taskId"), [searchString]);
+  const [urlTaskOpened, setUrlTaskOpened] = useState(false);
+  useEffect(() => {
+    if (!urlTaskId || !allTasks || urlTaskOpened) return;
+    const match = allTasks.find(t => t.id === urlTaskId);
+    if (match) {
+      setSelectedTask(match);
+      setUrlTaskOpened(true);
+    }
+  }, [urlTaskId, allTasks, urlTaskOpened]);
 
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],

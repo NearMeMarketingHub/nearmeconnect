@@ -892,12 +892,16 @@ export async function registerRoutes(
 
         if (data.assignedTo && isAdmin) {
           try {
+            const assigneeIsAdmin = await storage.isAdmin(data.assignedTo);
+            const assigneeLink = assigneeIsAdmin
+              ? `/admin/companies/${task.companyId}?taskId=${task.id}`
+              : `/client/tasks?taskId=${task.id}`;
             await createAndBroadcastNotification({
               userId: data.assignedTo,
               type: "task_assigned",
               title: "New Task Assigned",
               message: `You have been assigned to: ${task.title}`,
-              link: `/client/tasks?taskId=${task.id}`,
+              link: assigneeLink,
               createdBy: userId,
               relatedTaskId: task.id,
             });
@@ -946,12 +950,16 @@ export async function registerRoutes(
             }
 
             for (const approver of approversToNotify) {
+              const approverIsAdmin = await storage.isAdmin(approver.userId);
+              const approverLink = approverIsAdmin
+                ? `/admin/companies/${data.companyId}?taskId=${task.id}`
+                : `/client/tasks?taskId=${task.id}`;
               await createAndBroadcastNotification({
                 userId: approver.userId,
                 type: "task_review_request",
                 title: "Team Member Task Request",
                 message: `A team member submitted a task request that needs your approval: "${task.title}"`,
-                link: `/client/tasks?taskId=${task.id}`,
+                link: approverLink,
                 createdBy: userId,
                 relatedTaskId: task.id,
               });
