@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Building2, ListTodo, User, Plus, Repeat, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
@@ -52,6 +51,7 @@ export default function AdminTasks() {
   const [bulkRecurrenceWeekOrdinal, setBulkRecurrenceWeekOrdinal] = useState("1");
   const [bulkCalendarDate, setBulkCalendarDate] = useState(new Date());
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+  const [bulkQuantity, setBulkQuantity] = useState("1");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const { data: companies, isLoading: companiesLoading } = useQuery<Company[]>({
@@ -151,6 +151,7 @@ export default function AdminTasks() {
     setBulkRecurrenceDay("1");
     setBulkRecurrenceWeekday("1");
     setBulkRecurrenceWeekOrdinal("1");
+    setBulkQuantity("1");
     setSelectedCompanyIds([]);
   };
 
@@ -177,6 +178,7 @@ export default function AdminTasks() {
       recurrenceWeekOrdinal: bulkRecurrencePattern === "day_of_week" ? parseInt(bulkRecurrenceWeekOrdinal) : null,
     } : { recurrenceDay: null, recurrenceWeekday: null, recurrenceWeekOrdinal: null };
 
+    const qty = parseInt(bulkQuantity) || 1;
     const payload = {
       title: bulkTitle.trim(),
       description: bulkDescription.trim() || null,
@@ -190,6 +192,7 @@ export default function AdminTasks() {
       isRecurring: bulkIsRecurring,
       recurrencePattern: bulkIsRecurring ? bulkRecurrencePattern : null,
       categoryId: bulkCategoryId && bulkCategoryId !== "none" ? bulkCategoryId : null,
+      bulkQuantity: qty > 1 ? qty : null,
       ...recurringFields,
     };
 
@@ -295,14 +298,14 @@ export default function AdminTasks() {
 
       {/* Bulk Create Task Dialog */}
       <Dialog open={bulkCreateOpen} onOpenChange={(open) => { setBulkCreateOpen(open); if (!open) resetBulkForm(); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" data-testid="dialog-bulk-create-task">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl flex flex-col" style={{ maxHeight: "90vh" }} data-testid="dialog-bulk-create-task">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Create Task</DialogTitle>
             <p className="text-sm text-muted-foreground">Create a task for one or more companies at once.</p>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-1">
-            <div className="space-y-5 pb-2">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className="space-y-5 py-1">
 
               {/* Company Selection */}
               <div className="space-y-2">
@@ -396,22 +399,23 @@ export default function AdminTasks() {
                 </div>
               </div>
 
-              {/* Category + Due Date row */}
+              {/* Bulk Quantity + Due Date row */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label>Category</Label>
-                  <Select value={bulkCategoryId} onValueChange={setBulkCategoryId}>
-                    <SelectTrigger data-testid="select-bulk-category">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {globalCategories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Global categories only</p>
+                  <Label htmlFor="bulk-quantity">Quantity</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="bulk-quantity"
+                      type="number"
+                      min="1"
+                      value={bulkQuantity}
+                      onChange={(e) => setBulkQuantity(e.target.value)}
+                      className="w-24"
+                      data-testid="input-bulk-quantity"
+                    />
+                    <span className="text-sm text-muted-foreground">deliverables</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Set &gt; 1 for bulk (e.g. 30 posts)</p>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="bulk-due-date">Due Date</Label>
@@ -423,6 +427,23 @@ export default function AdminTasks() {
                     data-testid="input-bulk-due-date"
                   />
                 </div>
+              </div>
+
+              {/* Category row */}
+              <div className="space-y-1">
+                <Label>Category</Label>
+                <Select value={bulkCategoryId} onValueChange={setBulkCategoryId}>
+                  <SelectTrigger data-testid="select-bulk-category">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {globalCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Global categories only</p>
               </div>
 
               {/* Recurring toggle */}
@@ -637,9 +658,9 @@ export default function AdminTasks() {
               })()}
 
             </div>
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="pt-2 border-t mt-2">
+          <DialogFooter className="shrink-0 pt-3 border-t">
             <Button variant="outline" onClick={() => { setBulkCreateOpen(false); resetBulkForm(); }} disabled={bulkSubmitting}>
               Cancel
             </Button>
