@@ -1686,6 +1686,14 @@ export function ProjectBoard({
     return boardFilteredTasks;
   }, [boardFilteredTasks]);
 
+  // Tasks visible in the current view that support bulk select
+  const visibleSelectableTasks = useMemo(() => {
+    if (viewMode === "list") return listTasks;
+    if (viewMode === "grid") return gridTasks;
+    if (viewMode === "by-due-date") return byDueDateGroups.flatMap((g) => g.tasks);
+    return [];
+  }, [viewMode, listTasks, gridTasks, byDueDateGroups]);
+
   function handleDragStart(event: DragStartEvent) {
     setActiveTaskId(event.active.id as string);
   }
@@ -1788,6 +1796,26 @@ export function ProjectBoard({
             ))}
           </div>
 
+          {/* Select All — list, grid, by-due-date views */}
+          {visibleSelectableTasks.length > 0 && (
+            <Button
+              variant={selectedIds.size === visibleSelectableTasks.length ? "default" : "outline"}
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => {
+                if (selectedIds.size === visibleSelectableTasks.length) {
+                  clearSelection();
+                } else {
+                  setSelectAll(visibleSelectableTasks.map((t) => t.id));
+                }
+              }}
+              data-testid="button-select-all"
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              {selectedIds.size === visibleSelectableTasks.length ? "Deselect All" : "Select All"}
+            </Button>
+          )}
+
           {/* Focus mode / sidebar collapse */}
           {viewMode === "board" && (
             <Button
@@ -1849,25 +1877,6 @@ export function ProjectBoard({
         </div>
 
         <div className="flex items-center gap-1 flex-wrap">
-          {/* Grid select-all button */}
-          {viewMode === "grid" && (
-            <Button
-              variant={selectedIds.size > 0 && selectedIds.size === gridTasks.length ? "default" : "outline"}
-              size="sm"
-              className="h-7 text-xs gap-1.5"
-              onClick={() => {
-                if (selectedIds.size > 0 && selectedIds.size === gridTasks.length) {
-                  clearSelection();
-                } else {
-                  setSelectAll(gridTasks.map((t) => t.id));
-                }
-              }}
-              data-testid="button-grid-select-all"
-            >
-              <CheckSquare className="h-3.5 w-3.5" />
-              {selectedIds.size > 0 && selectedIds.size === gridTasks.length ? "Deselect All" : "Select All"}
-            </Button>
-          )}
           {/* Board/Grid status filter */}
           {(viewMode === "board" || viewMode === "grid") && (
             <div className="flex items-center gap-1 flex-wrap">
