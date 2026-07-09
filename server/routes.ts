@@ -549,6 +549,35 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/task-categories/global", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const categories = await storage.getGlobalTaskCategories();
+      res.json(categories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/task-categories/global", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const isAdmin = await storage.isAdmin(req.user!.id);
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      const { name, color, sortOrder } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Name is required" });
+      const category = await storage.createTaskCategory({
+        companyId: null as any,
+        name: name.trim(),
+        color: color || null,
+        sortOrder: sortOrder ?? 0,
+        isActive: true,
+      });
+      broadcastInvalidation("task-categories/global");
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/companies/:companyId/task-categories", isAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const isAdmin = await storage.isAdmin(req.user!.id);
@@ -591,7 +620,11 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: "Invalid category data", errors: parsed.error.flatten() });
       const category = await storage.updateTaskCategory(req.params.id, parsed.data);
       if (!category) return res.status(404).json({ message: "Category not found" });
-      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      if (category.companyId) {
+        broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      } else {
+        broadcastInvalidation("task-categories/global");
+      }
       res.json(category);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -605,7 +638,11 @@ export async function registerRoutes(
       const category = await storage.getTaskCategory(req.params.id);
       if (!category) return res.status(404).json({ message: "Category not found" });
       await storage.deleteTaskCategory(req.params.id);
-      broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      if (category.companyId) {
+        broadcastInvalidation(`companies/${category.companyId}/task-categories`);
+      } else {
+        broadcastInvalidation("task-categories/global");
+      }
       broadcastInvalidation("tasks");
       res.json({ success: true });
     } catch (error: any) {

@@ -106,10 +106,11 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 
 export const taskCategories = pgTable("task_categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
+  companyId: varchar("company_id"),
   name: text("name").notNull(),
   color: text("color"),
   sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
 });
 

@@ -168,7 +168,7 @@ import {
   type TaskLabelAssignment,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, or, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
 import { formatDateShortET } from "./timezone";
 
 export interface IStorage {
@@ -202,6 +202,7 @@ export interface IStorage {
   deleteAdminInvitation(id: string): Promise<void>;
 
   getTaskCategories(companyId: string): Promise<TaskCategory[]>;
+  getGlobalTaskCategories(): Promise<TaskCategory[]>;
   getAllTaskCategories(): Promise<TaskCategory[]>;
   getTaskCategory(id: string): Promise<TaskCategory | undefined>;
   createTaskCategory(category: InsertTaskCategory): Promise<TaskCategory>;
@@ -641,7 +642,18 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(taskCategories)
-      .where(eq(taskCategories.companyId, companyId))
+      .where(or(
+        eq(taskCategories.companyId, companyId),
+        and(isNull(taskCategories.companyId), eq(taskCategories.isActive, true)),
+      ))
+      .orderBy(taskCategories.sortOrder);
+  }
+
+  async getGlobalTaskCategories(): Promise<TaskCategory[]> {
+    return await db
+      .select()
+      .from(taskCategories)
+      .where(isNull(taskCategories.companyId))
       .orderBy(taskCategories.sortOrder);
   }
 

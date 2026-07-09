@@ -14,6 +14,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import AdminCompanies from "@/pages/admin/companies";
 import AdminAddCompany from "@/pages/admin/add-company";
 import AdminDeliverableTypes from "@/pages/admin/deliverable-types";
+import AdminTaskCategories from "@/pages/admin/task-categories";
 import AdminCampaigns from "@/pages/admin/campaigns";
 import AdminMeetings from "@/pages/admin/meetings";
 import AdminTraining from "@/pages/admin/training";
@@ -165,6 +166,7 @@ function AppContent() {
         <Route path="/admin/companies/new" component={AdminAddCompany} />
         <Route path="/admin/companies/:id" component={CompanyDashboard} />
         <Route path="/admin/deliverables" component={AdminDeliverableTypes} />
+        <Route path="/admin/task-categories" component={AdminTaskCategories} />
         <Route path="/admin/campaigns" component={AdminCampaigns} />
         <Route path="/admin/meetings" component={AdminMeetings} />
         <Route path="/admin/training" component={AdminTraining} />
