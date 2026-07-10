@@ -870,6 +870,11 @@ export async function registerRoutes(
           }
           // Use today as the anchor so the first due date is the next upcoming occurrence
           dueDate = formatDateLocal(getNextBiweeklyDate(data.recurrenceWeekday, new Date()));
+        } else if (pattern === 'weekly') {
+          if (data.recurrenceWeekday === null || data.recurrenceWeekday === undefined) {
+            return res.status(400).json({ error: "Weekday is required for weekly recurrence pattern" });
+          }
+          dueDate = formatDateLocal(getNextBiweeklyDate(data.recurrenceWeekday, new Date()));
         }
       }
 
@@ -1374,10 +1379,10 @@ export async function registerRoutes(
             if (ordinal === null || ordinal === undefined) {
               return res.status(400).json({ error: "Week ordinal is required for day_of_week recurrence pattern" });
             }
-          } else if (pattern === 'biweekly') {
+          } else if (pattern === 'biweekly' || pattern === 'weekly') {
             const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
             if (weekday === null || weekday === undefined) {
-              return res.status(400).json({ error: "Weekday is required for biweekly recurrence pattern" });
+              return res.status(400).json({ error: "Weekday is required for this recurrence pattern" });
             }
           }
           const turningOn = !existingTask.isRecurring;
@@ -1396,7 +1401,7 @@ export async function registerRoutes(
                 const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
                 const ordinal = req.body.recurrenceWeekOrdinal ?? existingTask.recurrenceWeekOrdinal;
                 req.body.dueDate = formatDateLocal(getWeekdayRecurringTaskDueDate(weekday, ordinal, period));
-              } else if (pattern === 'biweekly') {
+              } else if (pattern === 'biweekly' || pattern === 'weekly') {
                 const weekday = req.body.recurrenceWeekday ?? existingTask.recurrenceWeekday;
                 // Use today as anchor so the first due date is the next upcoming occurrence
                 req.body.dueDate = formatDateLocal(getNextBiweeklyDate(weekday, new Date()));
@@ -1502,7 +1507,8 @@ export async function registerRoutes(
           }
 
           // Recurring task creation on completion
-          if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.isRecurring && existingTask.billingPeriodStart && !req.body.endRecurrence) {
+          const isWeekBased = existingTask.recurrencePattern === 'weekly' || existingTask.recurrencePattern === 'biweekly';
+          if (newStatus === "completed" && existingTask.status !== "completed" && existingTask.isRecurring && (existingTask.billingPeriodStart || isWeekBased) && !req.body.endRecurrence) {
             try {
               const recurringCompany = await storage.getCompany(existingTask.companyId);
               if (recurringCompany) {
@@ -1512,10 +1518,23 @@ export async function registerRoutes(
                 let nextDueDate: Date | null = null;
                 let taskBillingPeriod = nextPeriod;
                 const pattern = existingTask.recurrencePattern || 'day_of_month';
-                if (pattern === 'day_of_month' && existingTask.recurrenceDay) {
+                if ((pattern === 'day_of_month' || pattern === 'monthly') && existingTask.recurrenceDay) {
                   nextDueDate = getRecurringTaskDueDate(existingTask.recurrenceDay, nextPeriod);
                 } else if (pattern === 'day_of_week' && existingTask.recurrenceWeekday !== null && existingTask.recurrenceWeekOrdinal !== null) {
                   nextDueDate = getWeekdayRecurringTaskDueDate(existingTask.recurrenceWeekday, existingTask.recurrenceWeekOrdinal, nextPeriod);
+                } else if (pattern === 'weekly' && existingTask.recurrenceWeekday !== null) {
+                  const currentDueDate = existingTask.dueDate ? new Date(existingTask.dueDate) : new Date();
+                  nextDueDate = new Date(currentDueDate);
+                  nextDueDate.setDate(nextDueDate.getDate() + 7);
+                  // Snap to the correct weekday in case of drift
+                  const targetWeekday = existingTask.recurrenceWeekday;
+                  const currentWeekday = nextDueDate.getDay();
+                  if (currentWeekday !== targetWeekday) {
+                    let diff = targetWeekday - currentWeekday;
+                    if (diff < 0) diff += 7;
+                    nextDueDate.setDate(nextDueDate.getDate() + diff);
+                  }
+                  taskBillingPeriod = getBillingPeriod(recurringCompany.billingStartDay, nextDueDate);
                 } else if (pattern === 'biweekly' && existingTask.recurrenceWeekday !== null) {
                   const currentDueDate = existingTask.dueDate ? new Date(existingTask.dueDate) : new Date();
                   nextDueDate = new Date(currentDueDate);
