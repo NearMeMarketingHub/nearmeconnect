@@ -1539,7 +1539,7 @@ export default function CompanyDashboard() {
     onSuccess: () => {
       setInviteEmail("");
       toast({ title: "Invitation sent successfully" });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/companies", companyId, "users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "invitations"] });
     },
     onError: () => {
       toast({ title: "Failed to send invitation", variant: "destructive" });

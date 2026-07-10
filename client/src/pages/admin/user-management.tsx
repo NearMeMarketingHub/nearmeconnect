@@ -208,7 +208,7 @@ export default function UserManagement() {
 
   const memberInviteMutation = useMutation({
     mutationFn: async ({ companyId, email, role }: { companyId: string; email: string; role: string }) => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/invitations`, { email, role });
+      const res = await apiRequest("POST", `/api/invitations`, { companyId, email, role });
       return res.json();
     },
     onSuccess: () => {
