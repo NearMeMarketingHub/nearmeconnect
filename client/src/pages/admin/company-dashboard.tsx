@@ -596,6 +596,7 @@ export default function CompanyDashboard() {
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
+  const [taskTopic, setTaskTopic] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
   const [deliverableType, setDeliverableType] = useState("");
   const [taskCategoryId, setTaskCategoryId] = useState("");
@@ -1638,6 +1639,7 @@ export default function CompanyDashboard() {
   const resetTaskForm = () => {
     setTaskTitle("");
     setTaskDescription("");
+    setTaskTopic("");
     setTaskPriority("medium");
     setDeliverableType("");
     setAssignedTo("");
@@ -1671,6 +1673,7 @@ export default function CompanyDashboard() {
       companyId,
       title: taskTitle,
       description: taskDescription || null,
+      topic: taskTopic || null,
       priority: taskPriority,
       deliverableType: deliverableType,
       creditCost: finalCreditCost,
@@ -2965,6 +2968,15 @@ export default function CompanyDashboard() {
                         onChange={(e) => setTaskDescription(e.target.value)}
                         placeholder="Task description"
                         data-testid="input-task-description"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Topic <span className="text-muted-foreground font-normal text-xs">(optional — not copied to next recurrence)</span></Label>
+                      <Input
+                        value={taskTopic}
+                        onChange={(e) => setTaskTopic(e.target.value)}
+                        placeholder="e.g. Q3 blog, July social content"
+                        data-testid="input-task-topic"
                       />
                     </div>
                     <div className="space-y-2">

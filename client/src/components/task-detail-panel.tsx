@@ -78,6 +78,8 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
   const [newLinkLabel, setNewLinkLabel] = useState("");
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [editingTopic, setEditingTopic] = useState(false);
+  const [topicDraft, setTopicDraft] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
   const [editingRecurrence, setEditingRecurrence] = useState(false);
   const [recurrenceIsRecurring, setRecurrenceIsRecurring] = useState(false);
@@ -1021,6 +1023,66 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
             </div>
           </div>
         </SheetHeader>
+
+        {/* Topic — per-instance field, editable by anyone, not copied to next recurrence */}
+        <div className="mt-4">
+          {editingTopic ? (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Topic</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  className="flex-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={topicDraft}
+                  onChange={(e) => setTopicDraft(e.target.value)}
+                  placeholder="e.g. Q3 blog, July social content…"
+                  autoFocus
+                  data-testid="input-edit-topic"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      updateTaskMutation.mutate({ topic: topicDraft.trim() || null });
+                      setEditingTopic(false);
+                    }
+                    if (e.key === "Escape") setEditingTopic(false);
+                  }}
+                />
+                <Button
+                  size="sm" variant="default" className="h-7 px-2"
+                  onClick={() => { updateTaskMutation.mutate({ topic: topicDraft.trim() || null }); setEditingTopic(false); }}
+                  data-testid="button-save-topic"
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />Save
+                </Button>
+                <Button
+                  size="sm" variant="ghost" className="h-7 px-2"
+                  onClick={() => setEditingTopic(false)}
+                  data-testid="button-cancel-topic"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="w-full text-left group flex items-center gap-2 rounded-md px-3 py-2 hover:bg-muted/60 transition-colors"
+              onClick={() => { setTopicDraft(task.topic || ""); setEditingTopic(true); }}
+              data-testid="button-edit-topic"
+            >
+              {task.topic ? (
+                <>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Topic</span>
+                  <span className="text-sm font-medium text-foreground truncate" data-testid="text-task-topic">{task.topic}</span>
+                  <Edit2 className="w-3 h-3 text-muted-foreground ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </>
+              ) : (
+                <>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0">Topic</span>
+                  <span className="text-sm text-muted-foreground italic">Click to add a topic…</span>
+                  <Edit2 className="w-3 h-3 text-muted-foreground ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </>
+              )}
+            </button>
+          )}
+        </div>
 
         <div className="mt-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">

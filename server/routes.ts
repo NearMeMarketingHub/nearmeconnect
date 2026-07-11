@@ -1053,6 +1053,14 @@ export async function registerRoutes(
       
       if (!isAdmin) {
         const membership = await storage.getCompanyMembership(existingTask.companyId, userId);
+
+        // Any company member can update the topic field on its own (per-instance individualization)
+        const bodyKeys = Object.keys(req.body);
+        if (bodyKeys.length === 1 && bodyKeys[0] === 'topic' && membership) {
+          const updatedTask = await storage.updateTask(req.params.id, { topic: req.body.topic ?? null });
+          return res.json(updatedTask);
+        }
+
         const isCompanyOwnerOrAdmin = membership && (membership.role === "company_owner" || membership.role === "company_admin");
 
         if (isCompanyOwnerOrAdmin) {
@@ -1060,7 +1068,7 @@ export async function registerRoutes(
             return res.status(403).json({ error: "Agency-managed tasks can only be updated by agency admins. Use approve/request changes for review tasks." });
           }
           const isPendingTask = existingTask.approvalStatus === "pending_internal_approval" || existingTask.approvalStatus === "pending_approval";
-          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost"] : ["status"];
+          const allowedFields = isPendingTask ? ["status", "deliverableType", "creditCost", "topic"] : ["status", "topic"];
           const bodyKeys = Object.keys(req.body);
           const hasDisallowedFields = bodyKeys.some(k => !allowedFields.includes(k));
           if (hasDisallowedFields) {
@@ -1071,7 +1079,7 @@ export async function registerRoutes(
           if (req.body.status && !allowedClientStatusChanges.includes(req.body.status)) {
             return res.status(403).json({ error: "Invalid status change for client-owned task" });
           }
-          const allowedFields = ["status"];
+          const allowedFields = ["status", "topic"];
           const bodyKeys = Object.keys(req.body);
           const hasDisallowedFields = bodyKeys.some(k => !allowedFields.includes(k));
           if (hasDisallowedFields) {

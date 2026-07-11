@@ -38,6 +38,7 @@ export default function AdminTasks() {
   const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
   const [bulkTitle, setBulkTitle] = useState("");
   const [bulkDescription, setBulkDescription] = useState("");
+  const [bulkTopic, setBulkTopic] = useState("");
   const [bulkPriority, setBulkPriority] = useState("medium");
   const [bulkDeliverableType, setBulkDeliverableType] = useState("");
   const [bulkCategoryId, setBulkCategoryId] = useState("none");
@@ -140,6 +141,7 @@ export default function AdminTasks() {
   const resetBulkForm = () => {
     setBulkTitle("");
     setBulkDescription("");
+    setBulkTopic("");
     setBulkPriority("medium");
     setBulkDeliverableType("");
     setBulkCategoryId("none");
@@ -182,6 +184,7 @@ export default function AdminTasks() {
     const payload = {
       title: bulkTitle.trim(),
       description: bulkDescription.trim() || null,
+      topic: bulkTopic.trim() || null,
       priority: bulkPriority,
       deliverableType: bulkDeliverableType,
       creditCost,
@@ -365,6 +368,18 @@ export default function AdminTasks() {
                   placeholder="Optional description"
                   rows={2}
                   data-testid="input-bulk-description"
+                />
+              </div>
+
+              {/* Topic */}
+              <div className="space-y-1">
+                <Label htmlFor="bulk-topic">Topic <span className="text-muted-foreground font-normal">(per-instance, not copied to next recurrence)</span></Label>
+                <Input
+                  id="bulk-topic"
+                  value={bulkTopic}
+                  onChange={(e) => setBulkTopic(e.target.value)}
+                  placeholder="e.g. Q3 blog, July social content"
+                  data-testid="input-bulk-topic"
                 />
               </div>
 

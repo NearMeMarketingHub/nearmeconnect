@@ -158,6 +158,7 @@ export const tasks = pgTable("tasks", {
   completedByName: text("completed_by_name"),
   cadenceId: varchar("cadence_id"),
   categoryId: varchar("category_id").references(() => taskCategories.id, { onDelete: "set null" }),
+  topic: text("topic"),
 });
 
 export const taskChecklistItems = pgTable("task_checklist_items", {
