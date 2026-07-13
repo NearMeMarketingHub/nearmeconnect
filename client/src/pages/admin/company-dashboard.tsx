@@ -92,6 +92,7 @@ import {
   Landmark,
   SendHorizonal,
   Eye,
+  CheckSquare,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -879,6 +880,21 @@ export default function CompanyDashboard() {
   const { data: companyCustomRoles = [] } = useQuery<{ id: string; name: string; companyId: string }[]>({
     queryKey: ["/api/admin/custom-roles"],
     select: (data) => data.filter(r => r.companyId === companyId),
+  });
+
+  const { data: checklistTemplates = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/checklist-templates"],
+  });
+
+  const { data: companyChecklists = [], refetch: refetchChecklists } = useQuery<any[]>({
+    queryKey: ["/api/companies", companyId, "checklists"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const res = await fetch(`/api/companies/${companyId}/checklists`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!companyId,
   });
 
   const { data: govForms = [], refetch: refetchGovForms } = useQuery<any[]>({
@@ -2395,6 +2411,7 @@ export default function CompanyDashboard() {
               { value: "onboarding", label: "Info Hub" },
               { value: "users", label: "Users", count: companyUsers.length },
               { value: "reporting", label: "Reporting" },
+              { value: "checklists", label: "Checklists", count: companyChecklists.length || undefined },
               { value: "government", label: "Government" },
             ]}
             activeTab={activeTab}
@@ -2457,6 +2474,13 @@ export default function CompanyDashboard() {
             <TabsTrigger value="reporting" data-testid="tab-reporting">
               <BarChart3 className="h-4 w-4 mr-2" />
               Reporting
+            </TabsTrigger>
+            <TabsTrigger value="checklists" data-testid="tab-checklists">
+              <ClipboardList className="h-4 w-4 mr-2" />
+              Checklists
+              {companyChecklists.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">{companyChecklists.length}</Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="government" data-testid="tab-government">
               <Landmark className="h-4 w-4 mr-2" />
@@ -4983,6 +5007,16 @@ export default function CompanyDashboard() {
             <CompanyReportingTab companyId={companyId} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
 
+          {/* ── Checklists Tab ──────────────────────────────────────────── */}
+          <TabsContent value="checklists" className="space-y-6">
+            <CompanyChecklistsPanel
+              companyId={companyId || ""}
+              checklists={companyChecklists}
+              templates={checklistTemplates}
+              refetch={refetchChecklists}
+            />
+          </TabsContent>
+
           {/* ── Government Tab ──────────────────────────────────────────── */}
           <TabsContent value="government" className="space-y-6">
             <GovernmentFormsPanel companyId={companyId || ""} govForms={govForms} refetch={refetchGovForms} />
@@ -6581,6 +6615,263 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
           <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
         </Avatar>
       )}
+    </div>
+  );
+}
+
+// ── Company Checklists Panel ─────────────────────────────────────────────────
+function CompanyChecklistsPanel({ companyId, checklists, templates, refetch }: { companyId: string; checklists: any[]; templates: any[]; refetch: () => void }) {
+  const { toast } = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("none");
+  const [selectedChecklist, setSelectedChecklist] = useState<any | null>(null);
+  const [newItemText, setNewItemText] = useState("");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemText, setEditingItemText] = useState("");
+
+  const refreshedChecklist = selectedChecklist ? checklists.find(c => c.id === selectedChecklist.id) ?? selectedChecklist : null;
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/checklists`, {
+        name: newName.trim(),
+        templateId: selectedTemplateId === "none" ? null : selectedTemplateId,
+      });
+      return res.json();
+    },
+    onSuccess: (created) => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
+      toast({ title: "Checklist created" });
+      setShowCreate(false);
+      setNewName("");
+      setSelectedTemplateId("none");
+      setSelectedChecklist(created);
+    },
+    onError: () => toast({ title: "Failed to create checklist", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/companies/${companyId}/checklists/${id}`, {}),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
+      toast({ title: "Checklist deleted" });
+      setSelectedChecklist(null);
+    },
+    onError: () => toast({ title: "Failed to delete checklist", variant: "destructive" }),
+  });
+
+  const addItemMutation = useMutation({
+    mutationFn: async ({ checklistId, text }: { checklistId: string; text: string }) => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/checklists/${checklistId}/items`, { text });
+      return res.json();
+    },
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
+      setNewItemText("");
+    },
+    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/company-checklist-items/${id}`, data),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
+      setEditingItemId(null);
+      setEditingItemText("");
+    },
+    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/company-checklist-items/${id}`, {}),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
+    },
+    onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <ClipboardList className="w-5 h-5" />
+            Project Checklists
+          </h3>
+          <p className="text-sm text-muted-foreground">Manage project checklists visible in the client portal.</p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-checklist">
+          <Plus className="w-4 h-4 mr-1" />New Checklist
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Checklist list */}
+        <div className="space-y-2">
+          {checklists.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <ClipboardList className="w-7 h-7 mx-auto mb-2 text-muted-foreground opacity-40" />
+                <p className="text-sm text-muted-foreground">No checklists yet.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowCreate(true)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" />Add one
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            checklists.map(c => {
+              const done = c.items.filter((i: any) => i.completed).length;
+              const total = c.items.length;
+              return (
+                <Card
+                  key={c.id}
+                  className={`cursor-pointer transition-colors hover-elevate ${refreshedChecklist?.id === c.id ? "border-primary" : ""}`}
+                  onClick={() => setSelectedChecklist(c)}
+                  data-testid={`card-checklist-${c.id}`}
+                >
+                  <CardHeader className="pb-2 pt-3 px-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-sm truncate">{c.name}</CardTitle>
+                      <Badge variant="secondary" className="text-xs shrink-0">{done}/{total}</Badge>
+                    </div>
+                    {total > 0 && (
+                      <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                        <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${Math.round((done / total) * 100)}%` }} />
+                      </div>
+                    )}
+                  </CardHeader>
+                </Card>
+              );
+            })
+          )}
+        </div>
+
+        {/* Checklist item editor */}
+        <div className="md:col-span-2">
+          {!refreshedChecklist ? (
+            <Card className="h-full">
+              <CardContent className="py-16 text-center">
+                <CheckSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
+                <p className="text-sm text-muted-foreground">Select a checklist to manage its items.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <CardTitle>{refreshedChecklist.name}</CardTitle>
+                    {refreshedChecklist.templateId && <p className="text-xs text-muted-foreground mt-0.5">Imported from template</p>}
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive shrink-0" data-testid="button-delete-checklist">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete checklist?</AlertDialogTitle>
+                        <AlertDialogDescription>This will permanently delete "{refreshedChecklist.name}" and all its items.</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteMutation.mutate(refreshedChecklist.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {refreshedChecklist.items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-3">No items. Add some below.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {refreshedChecklist.items.map((item: any, idx: number) => (
+                      <div key={item.id} className={`flex items-start gap-2 p-2 border rounded-lg group ${item.completed ? "bg-muted/40" : ""}`} data-testid={`item-checklist-${item.id}`}>
+                        <Checkbox
+                          checked={!!item.completed}
+                          onCheckedChange={(v) => updateItemMutation.mutate({ id: item.id, data: { completed: !!v } })}
+                          className="mt-0.5 shrink-0"
+                          data-testid={`checkbox-item-${item.id}`}
+                        />
+                        {editingItemId === item.id ? (
+                          <div className="flex-1 flex gap-2">
+                            <Input value={editingItemText} onChange={e => setEditingItemText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") updateItemMutation.mutate({ id: item.id, data: { text: editingItemText } }); if (e.key === "Escape") setEditingItemId(null); }} className="h-7 text-sm" autoFocus />
+                            <Button size="sm" className="h-7 px-2" onClick={() => updateItemMutation.mutate({ id: item.id, data: { text: editingItemText } })} disabled={updateItemMutation.isPending}>Save</Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingItemId(null)}><X className="w-3.5 h-3.5" /></Button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex-1 min-w-0">
+                              <span className={`text-sm ${item.completed ? "line-through text-muted-foreground" : ""}`}>{item.text}</span>
+                              {item.completed && item.completedBy && (
+                                <p className="text-xs text-muted-foreground mt-0.5">Completed by {item.completedBy}</p>
+                              )}
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => { setEditingItemId(item.id); setEditingItemText(item.text); }}><Pencil className="w-3 h-3" /></Button>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => deleteItemMutation.mutate(item.id)}><Trash2 className="w-3 h-3" /></Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Separator />
+                <div className="flex gap-2">
+                  <Input placeholder="Add a checklist item..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && newItemText.trim()) addItemMutation.mutate({ checklistId: refreshedChecklist.id, text: newItemText.trim() }); }} className="h-8 text-sm" data-testid="input-new-checklist-item" />
+                  <Button size="sm" className="h-8" disabled={!newItemText.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ checklistId: refreshedChecklist.id, text: newItemText.trim() })} data-testid="button-add-checklist-item">
+                    <Plus className="w-3.5 h-3.5 mr-1" />Add
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Create checklist dialog */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>New Checklist</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Checklist Name *</Label>
+              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Onboarding Steps" className="mt-1" data-testid="input-checklist-name" />
+            </div>
+            {templates.length > 0 && (
+              <div>
+                <Label>Import from Template (optional)</Label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger className="mt-1" data-testid="select-checklist-template">
+                    <SelectValue placeholder="No template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Start from scratch</SelectItem>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name} ({t.items?.length ?? 0} items)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending} data-testid="button-confirm-create-checklist">
+              {createMutation.isPending ? "Creating…" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

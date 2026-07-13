@@ -28,7 +28,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Building2, LogOut, Tag, Calendar, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers, LayoutGrid } from "lucide-react";
+import { LayoutDashboard, Building2, LogOut, Tag, Calendar, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers, LayoutGrid, ClipboardList } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
 import logoImage from "@assets/LogoNewMedium_1768860762303.png";
@@ -57,6 +57,7 @@ const configurationItems = [
   { title: "Custom Roles", href: "/admin/custom-roles", icon: ShieldCheck },
   { title: "Deliverables", href: "/admin/deliverables", icon: Tag },
   { title: "Task Categories", href: "/admin/task-categories", icon: LayoutGrid },
+  { title: "Checklist Templates", href: "/admin/checklist-templates", icon: ClipboardList },
   { title: "Subscription Tiers", href: "/admin/subscription-tiers", icon: Layers },
   { title: "Credit Store", href: "/admin/credit-store", icon: CreditCard },
   { title: "Reporting", href: "/admin/reporting", icon: BarChart3 },

@@ -169,6 +169,18 @@ import {
   governmentFormRequests,
   type GovernmentFormRequest,
   type InsertGovernmentFormRequest,
+  checklistTemplates,
+  checklistTemplateItems,
+  companyChecklists,
+  companyChecklistItems,
+  type ChecklistTemplate,
+  type InsertChecklistTemplate,
+  type ChecklistTemplateItem,
+  type InsertChecklistTemplateItem,
+  type CompanyChecklist,
+  type InsertCompanyChecklist,
+  type CompanyChecklistItem,
+  type InsertCompanyChecklistItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -479,6 +491,26 @@ export interface IStorage {
   createGovernmentFormRequest(data: Omit<GovernmentFormRequest, 'id'>): Promise<GovernmentFormRequest>;
   updateGovernmentFormRequest(id: string, data: Partial<GovernmentFormRequest>): Promise<GovernmentFormRequest | undefined>;
   deleteGovernmentFormRequest(id: string): Promise<void>;
+  // Checklist Templates
+  getChecklistTemplates(): Promise<ChecklistTemplate[]>;
+  getChecklistTemplate(id: string): Promise<ChecklistTemplate | undefined>;
+  createChecklistTemplate(data: InsertChecklistTemplate): Promise<ChecklistTemplate>;
+  updateChecklistTemplate(id: string, data: Partial<ChecklistTemplate>): Promise<ChecklistTemplate | undefined>;
+  deleteChecklistTemplate(id: string): Promise<void>;
+  getChecklistTemplateItems(templateId: string): Promise<ChecklistTemplateItem[]>;
+  createChecklistTemplateItem(data: InsertChecklistTemplateItem): Promise<ChecklistTemplateItem>;
+  updateChecklistTemplateItem(id: string, data: Partial<ChecklistTemplateItem>): Promise<ChecklistTemplateItem | undefined>;
+  deleteChecklistTemplateItem(id: string): Promise<void>;
+  // Company Checklists
+  getCompanyChecklists(companyId: string): Promise<CompanyChecklist[]>;
+  getCompanyChecklist(id: string): Promise<CompanyChecklist | undefined>;
+  createCompanyChecklist(data: InsertCompanyChecklist): Promise<CompanyChecklist>;
+  updateCompanyChecklist(id: string, data: Partial<CompanyChecklist>): Promise<CompanyChecklist | undefined>;
+  deleteCompanyChecklist(id: string): Promise<void>;
+  getCompanyChecklistItems(checklistId: string): Promise<CompanyChecklistItem[]>;
+  createCompanyChecklistItem(data: InsertCompanyChecklistItem): Promise<CompanyChecklistItem>;
+  updateCompanyChecklistItem(id: string, data: Partial<CompanyChecklistItem>): Promise<CompanyChecklistItem | undefined>;
+  deleteCompanyChecklistItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2664,6 +2696,76 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGovernmentFormRequest(id: string): Promise<void> {
     await db.delete(governmentFormRequests).where(eq(governmentFormRequests.id, id));
+  }
+
+  // ── Checklist Templates ───────────────────────────────────────────────────
+  async getChecklistTemplates(): Promise<ChecklistTemplate[]> {
+    return db.select().from(checklistTemplates).orderBy(checklistTemplates.createdAt);
+  }
+  async getChecklistTemplate(id: string): Promise<ChecklistTemplate | undefined> {
+    const [row] = await db.select().from(checklistTemplates).where(eq(checklistTemplates.id, id));
+    return row;
+  }
+  async createChecklistTemplate(data: InsertChecklistTemplate): Promise<ChecklistTemplate> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(checklistTemplates).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+  async updateChecklistTemplate(id: string, data: Partial<ChecklistTemplate>): Promise<ChecklistTemplate | undefined> {
+    const [row] = await db.update(checklistTemplates).set({ ...data, updatedAt: new Date().toISOString() }).where(eq(checklistTemplates.id, id)).returning();
+    return row;
+  }
+  async deleteChecklistTemplate(id: string): Promise<void> {
+    await db.delete(checklistTemplates).where(eq(checklistTemplates.id, id));
+  }
+  async getChecklistTemplateItems(templateId: string): Promise<ChecklistTemplateItem[]> {
+    return db.select().from(checklistTemplateItems).where(eq(checklistTemplateItems.templateId, templateId)).orderBy(checklistTemplateItems.sortOrder, checklistTemplateItems.createdAt);
+  }
+  async createChecklistTemplateItem(data: InsertChecklistTemplateItem): Promise<ChecklistTemplateItem> {
+    const [row] = await db.insert(checklistTemplateItems).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
+  }
+  async updateChecklistTemplateItem(id: string, data: Partial<ChecklistTemplateItem>): Promise<ChecklistTemplateItem | undefined> {
+    const [row] = await db.update(checklistTemplateItems).set(data).where(eq(checklistTemplateItems.id, id)).returning();
+    return row;
+  }
+  async deleteChecklistTemplateItem(id: string): Promise<void> {
+    await db.delete(checklistTemplateItems).where(eq(checklistTemplateItems.id, id));
+  }
+
+  // ── Company Checklists ────────────────────────────────────────────────────
+  async getCompanyChecklists(companyId: string): Promise<CompanyChecklist[]> {
+    return db.select().from(companyChecklists).where(eq(companyChecklists.companyId, companyId)).orderBy(companyChecklists.createdAt);
+  }
+  async getCompanyChecklist(id: string): Promise<CompanyChecklist | undefined> {
+    const [row] = await db.select().from(companyChecklists).where(eq(companyChecklists.id, id));
+    return row;
+  }
+  async createCompanyChecklist(data: InsertCompanyChecklist): Promise<CompanyChecklist> {
+    const now = new Date().toISOString();
+    const [row] = await db.insert(companyChecklists).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return row;
+  }
+  async updateCompanyChecklist(id: string, data: Partial<CompanyChecklist>): Promise<CompanyChecklist | undefined> {
+    const [row] = await db.update(companyChecklists).set({ ...data, updatedAt: new Date().toISOString() }).where(eq(companyChecklists.id, id)).returning();
+    return row;
+  }
+  async deleteCompanyChecklist(id: string): Promise<void> {
+    await db.delete(companyChecklists).where(eq(companyChecklists.id, id));
+  }
+  async getCompanyChecklistItems(checklistId: string): Promise<CompanyChecklistItem[]> {
+    return db.select().from(companyChecklistItems).where(eq(companyChecklistItems.checklistId, checklistId)).orderBy(companyChecklistItems.sortOrder, companyChecklistItems.createdAt);
+  }
+  async createCompanyChecklistItem(data: InsertCompanyChecklistItem): Promise<CompanyChecklistItem> {
+    const [row] = await db.insert(companyChecklistItems).values({ ...data, createdAt: new Date().toISOString() }).returning();
+    return row;
+  }
+  async updateCompanyChecklistItem(id: string, data: Partial<CompanyChecklistItem>): Promise<CompanyChecklistItem | undefined> {
+    const [row] = await db.update(companyChecklistItems).set(data).where(eq(companyChecklistItems.id, id)).returning();
+    return row;
+  }
+  async deleteCompanyChecklistItem(id: string): Promise<void> {
+    await db.delete(companyChecklistItems).where(eq(companyChecklistItems.id, id));
   }
 }
 

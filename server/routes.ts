@@ -10489,6 +10489,159 @@ export async function registerRoutes(
   });
 
   // Public: submit completed form
+  // ── Checklist Templates (admin-managed) ─────────────────────────────────────
+  app.get("/api/admin/checklist-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const templates = await storage.getChecklistTemplates();
+      const result = await Promise.all(templates.map(async (t) => ({
+        ...t,
+        items: await storage.getChecklistTemplateItems(t.id),
+      })));
+      res.json(result);
+    } catch { res.status(500).json({ error: "Failed to fetch templates" }); }
+  });
+
+  app.post("/api/admin/checklist-templates", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const { name, description } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "Name required" });
+      const template = await storage.createChecklistTemplate({ name: name.trim(), description: description || null });
+      res.status(201).json({ ...template, items: [] });
+    } catch { res.status(500).json({ error: "Failed to create template" }); }
+  });
+
+  app.patch("/api/admin/checklist-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const updated = await storage.updateChecklistTemplate(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Template not found" });
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update template" }); }
+  });
+
+  app.delete("/api/admin/checklist-templates/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      await storage.deleteChecklistTemplate(req.params.id);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete template" }); }
+  });
+
+  app.post("/api/admin/checklist-templates/:id/items", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const { text, sortOrder } = req.body;
+      if (!text?.trim()) return res.status(400).json({ error: "Text required" });
+      const item = await storage.createChecklistTemplateItem({ templateId: req.params.id, text: text.trim(), sortOrder: sortOrder ?? 0 });
+      res.status(201).json(item);
+    } catch { res.status(500).json({ error: "Failed to create template item" }); }
+  });
+
+  app.patch("/api/admin/checklist-template-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const updated = await storage.updateChecklistTemplateItem(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Item not found" });
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update template item" }); }
+  });
+
+  app.delete("/api/admin/checklist-template-items/:id", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      await storage.deleteChecklistTemplateItem(req.params.id);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete template item" }); }
+  });
+
+  // ── Company Checklists ────────────────────────────────────────────────────────
+  app.get("/api/companies/:companyId/checklists", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const checklists = await storage.getCompanyChecklists(req.params.companyId);
+      const result = await Promise.all(checklists.map(async (c) => ({
+        ...c,
+        items: await storage.getCompanyChecklistItems(c.id),
+      })));
+      res.json(result);
+    } catch { res.status(500).json({ error: "Failed to fetch checklists" }); }
+  });
+
+  app.post("/api/companies/:companyId/checklists", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const { name, templateId } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "Name required" });
+      const checklist = await storage.createCompanyChecklist({ companyId: req.params.companyId, name: name.trim(), templateId: templateId || null });
+      // If importing from template, copy items
+      let items: any[] = [];
+      if (templateId) {
+        const templateItems = await storage.getChecklistTemplateItems(templateId);
+        items = await Promise.all(templateItems.map((ti, idx) =>
+          storage.createCompanyChecklistItem({ checklistId: checklist.id, text: ti.text, sortOrder: idx, completed: false })
+        ));
+      }
+      res.status(201).json({ ...checklist, items });
+    } catch { res.status(500).json({ error: "Failed to create checklist" }); }
+  });
+
+  app.patch("/api/companies/:companyId/checklists/:checklistId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const updated = await storage.updateCompanyChecklist(req.params.checklistId, req.body);
+      if (!updated) return res.status(404).json({ error: "Checklist not found" });
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update checklist" }); }
+  });
+
+  app.delete("/api/companies/:companyId/checklists/:checklistId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      await storage.deleteCompanyChecklist(req.params.checklistId);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete checklist" }); }
+  });
+
+  app.post("/api/companies/:companyId/checklists/:checklistId/items", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      const { text, sortOrder } = req.body;
+      if (!text?.trim()) return res.status(400).json({ error: "Text required" });
+      const item = await storage.createCompanyChecklistItem({ checklistId: req.params.checklistId, text: text.trim(), sortOrder: sortOrder ?? 0, completed: false });
+      res.status(201).json(item);
+    } catch { res.status(500).json({ error: "Failed to create checklist item" }); }
+  });
+
+  app.patch("/api/company-checklist-items/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { completed, text } = req.body;
+      const updateData: Record<string, unknown> = {};
+      if (text !== undefined) {
+        if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+        updateData.text = text;
+      }
+      if (completed !== undefined) {
+        updateData.completed = completed;
+        updateData.completedAt = completed ? new Date().toISOString() : null;
+        const userName = req.user?.isAdmin
+          ? "Admin"
+          : `${(req as any).companyMember?.firstName || ""} ${(req as any).companyMember?.lastName || ""}`.trim() || "User";
+        updateData.completedBy = completed ? userName : null;
+      }
+      const updated = await storage.updateCompanyChecklistItem(req.params.itemId, updateData as any);
+      if (!updated) return res.status(404).json({ error: "Item not found" });
+      res.json(updated);
+    } catch { res.status(500).json({ error: "Failed to update checklist item" }); }
+  });
+
+  app.delete("/api/company-checklist-items/:itemId", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.user?.isAdmin) return res.status(403).json({ error: "Admins only" });
+      await storage.deleteCompanyChecklistItem(req.params.itemId);
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: "Failed to delete checklist item" }); }
+  });
+
   app.post("/api/government-forms/token/:token/submit", async (req, res) => {
     try {
       const form = await storage.getGovernmentFormRequestByToken(req.params.token);

@@ -22,6 +22,7 @@ import AdminMediaProfiles from "@/pages/admin/media-profiles";
 import AdminMediaSubmissions from "@/pages/admin/media-submissions";
 import AdminCreditStore from "@/pages/admin/credit-store";
 import AdminSettings from "@/pages/admin/settings";
+import AdminChecklistTemplates from "@/pages/admin/checklist-templates";
 import ClientDashboard from "@/pages/client/dashboard";
 import ClientTasks from "@/pages/client/tasks";
 import ClientCredits from "@/pages/client/credits";
@@ -171,6 +172,7 @@ function AppContent() {
         <Route path="/admin/companies/:id" component={CompanyDashboard} />
         <Route path="/admin/deliverables" component={AdminDeliverableTypes} />
         <Route path="/admin/task-categories" component={AdminTaskCategories} />
+        <Route path="/admin/checklist-templates" component={AdminChecklistTemplates} />
         <Route path="/admin/campaigns" component={AdminCampaigns} />
         <Route path="/admin/meetings" component={AdminMeetings} />
         <Route path="/admin/training" component={AdminTraining} />

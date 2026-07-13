@@ -1441,6 +1441,60 @@ export const insertGovernmentFormRequestSchema = createInsertSchema(governmentFo
 export type InsertGovernmentFormRequest = z.infer<typeof insertGovernmentFormRequestSchema>;
 export type GovernmentFormRequest = typeof governmentFormRequests.$inferSelect;
 
+// ─── Checklist Templates (admin-managed reusable templates) ───────────────────
+export const checklistTemplates = pgTable("checklist_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertChecklistTemplateSchema = createInsertSchema(checklistTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertChecklistTemplate = z.infer<typeof insertChecklistTemplateSchema>;
+export type ChecklistTemplate = typeof checklistTemplates.$inferSelect;
+
+export const checklistTemplateItems = pgTable("checklist_template_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").notNull().references(() => checklistTemplates.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertChecklistTemplateItemSchema = createInsertSchema(checklistTemplateItems).omit({ id: true, createdAt: true });
+export type InsertChecklistTemplateItem = z.infer<typeof insertChecklistTemplateItemSchema>;
+export type ChecklistTemplateItem = typeof checklistTemplateItems.$inferSelect;
+
+// ─── Company Checklists (per-company checklist instances) ─────────────────────
+export const companyChecklists = pgTable("company_checklists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  templateId: varchar("template_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCompanyChecklistSchema = createInsertSchema(companyChecklists).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCompanyChecklist = z.infer<typeof insertCompanyChecklistSchema>;
+export type CompanyChecklist = typeof companyChecklists.$inferSelect;
+
+export const companyChecklistItems = pgTable("company_checklist_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  checklistId: varchar("checklist_id").notNull().references(() => companyChecklists.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  completedAt: text("completed_at"),
+  completedBy: text("completed_by"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertCompanyChecklistItemSchema = createInsertSchema(companyChecklistItems).omit({ id: true, createdAt: true, completedAt: true, completedBy: true });
+export type InsertCompanyChecklistItem = z.infer<typeof insertCompanyChecklistItemSchema>;
+export type CompanyChecklistItem = typeof companyChecklistItems.$inferSelect;
+
 // ─── Task Label Assignments (many-to-many: tasks ↔ labels) ────────────────────
 export const taskLabelAssignments = pgTable("task_label_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
