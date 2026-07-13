@@ -68,7 +68,7 @@ export default function AdminTasks() {
   });
 
   const { data: deliverableTypes = [] } = useQuery<DeliverableType[]>({
-    queryKey: ["/api/admin/deliverables"],
+    queryKey: ["/api/deliverable-types"],
   });
 
   const { data: globalCategories = [] } = useQuery<TaskCategory[]>({
