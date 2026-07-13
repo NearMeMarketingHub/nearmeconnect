@@ -50,6 +50,10 @@ import {
   Building2,
   MapPin,
   FileText,
+  Calendar,
+  Star,
+  FileArchive,
+  Minus,
 } from "lucide-react";
 
 interface CompanyInfoHubProps {
@@ -97,6 +101,28 @@ function parseSocialPlatforms(json: string | null | undefined): SocialPlatform[]
 function parseLoginCredentials(json: string | null | undefined): LoginCredentialEntry[] {
   if (!json) return [];
   try { return JSON.parse(json) as LoginCredentialEntry[]; } catch { return []; }
+}
+
+function parseStringArray(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((s: unknown) => typeof s === "string") : [];
+  } catch { return []; }
+}
+
+interface BrandAssetFile {
+  name: string;
+  objectPath: string;
+  uploadedAt?: string;
+}
+
+function parseBrandAssetFiles(json: string | null | undefined): BrandAssetFile[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
 function parseBrandColors(json: string | null | undefined): BrandColor[] {
@@ -1109,6 +1135,128 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
               </CardContent>
             </Card>
           )}
+
+          {/* ── Platform Access Status ── */}
+          {!editingOnboarding && (() => {
+            const items = [
+              { label: "YouTube Channel Invite", date: onboarding.youtubeInviteDate, na: onboarding.youtubeInviteNA },
+              { label: "YouTube Feature Eligibility", date: onboarding.youtubeFeatureEligibilityDate, na: onboarding.youtubeFeatureNA },
+              { label: "Meta Business Suite Invite", date: onboarding.metaBusinessInviteDate, na: onboarding.metaBusinessNA },
+              { label: "Google Business Profile Invite", date: onboarding.googleBusinessInviteDate, na: onboarding.googleBusinessNA },
+            ];
+            const hasAny = items.some(i => i.date || i.na);
+            if (!hasAny) return null;
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />Platform Access Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {items.map(({ label, date, na }) => (
+                      <div key={label} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
+                        <span className="text-muted-foreground">{label}</span>
+                        {na ? (
+                          <Badge variant="secondary" className="text-xs">N/A</Badge>
+                        ) : date ? (
+                          <span className="font-medium flex items-center gap-1.5">
+                            <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                            {new Date(date).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground italic flex items-center gap-1.5">
+                            <Minus className="h-3.5 w-3.5" />Pending
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Marketing Preferences ── */}
+          {!editingOnboarding && (() => {
+            const seasons = parseStringArray(onboarding.seasonalPreferences);
+            const holidays = parseStringArray(onboarding.holidayPreferences);
+            const hasData = seasons.length > 0 || holidays.length > 0 || onboarding.otherHolidays || onboarding.seasonalNotes;
+            if (!hasData) return null;
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Star className="h-4 w-4 text-muted-foreground" />Marketing Preferences
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {seasons.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Seasonal Focus</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {seasons.map(s => <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {holidays.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Holiday Campaigns</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {holidays.map(h => <Badge key={h} variant="outline" className="text-xs">{h}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {onboarding.otherHolidays && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Other Holidays / Events</p>
+                      <p className="text-sm mt-0.5">{onboarding.otherHolidays}</p>
+                    </div>
+                  )}
+                  {onboarding.seasonalNotes && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Seasonal Notes</p>
+                      <p className="text-sm mt-0.5 whitespace-pre-wrap">{onboarding.seasonalNotes}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* ── Brand Asset Files ── */}
+          {!editingOnboarding && (() => {
+            const files = parseBrandAssetFiles(onboarding.brandAssetFiles);
+            if (!files.length) return null;
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileArchive className="h-4 w-4 text-muted-foreground" />Brand Asset Files
+                    <Badge variant="secondary" className="text-xs">{files.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {files.map((file, i) => (
+                      <div key={i} className="flex items-center justify-between p-2.5 border rounded-lg text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="font-medium truncate">{file.name}</span>
+                        </div>
+                        {file.uploadedAt && (
+                          <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                            {new Date(file.uploadedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </>
       ) : (
         <Card>
