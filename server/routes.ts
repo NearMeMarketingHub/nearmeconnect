@@ -4144,6 +4144,28 @@ export async function registerRoutes(
     }
   });
 
+  // Admin override: mark onboarding complete or reset it without side effects
+  app.post("/api/companies/:id/onboarding/admin-override", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ error: "Only admins can override onboarding status" });
+      }
+      const companyId = req.params.id;
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      const { complete } = req.body as { complete: boolean };
+      await storage.updateCompany(companyId, { onboardingComplete: !!complete });
+      res.json({ success: true, onboardingComplete: !!complete });
+    } catch (error) {
+      console.error("Failed to override onboarding status:", error);
+      res.status(500).json({ error: "Failed to update onboarding status" });
+    }
+  });
+
   // Media uploads to SharePoint
   const upload = multer({ 
     storage: multer.memoryStorage(),

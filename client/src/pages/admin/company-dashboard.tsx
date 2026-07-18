@@ -4791,7 +4791,7 @@ export default function CompanyDashboard() {
 
           {/* Company Info / Onboarding Tab */}
           <TabsContent value="onboarding" className="space-y-4">
-            {companyId && <CompanyInfoHub companyId={companyId} />}
+            {companyId && <CompanyInfoHub companyId={companyId} onboardingComplete={company?.onboardingComplete} />}
           </TabsContent>
 
           <TabsContent value="campaigns" className="space-y-4">

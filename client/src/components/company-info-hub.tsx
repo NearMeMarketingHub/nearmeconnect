@@ -58,6 +58,7 @@ import {
 
 interface CompanyInfoHubProps {
   companyId: string;
+  onboardingComplete?: boolean;
 }
 
 interface SocialPlatform {
@@ -899,10 +900,21 @@ function OnboardingEditPanel({ onboarding, companyId, onClose }: { onboarding: C
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
+export function CompanyInfoHub({ companyId, onboardingComplete }: CompanyInfoHubProps) {
   const { toast } = useToast();
   const [addCredOpen, setAddCredOpen] = useState(false);
   const [editingOnboarding, setEditingOnboarding] = useState(false);
+
+  const overrideOnboardingMutation = useMutation({
+    mutationFn: async (complete: boolean) =>
+      apiRequest("POST", `/api/companies/${companyId}/onboarding/admin-override`, { complete }),
+    onSuccess: (_data, complete) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: complete ? "Onboarding marked as complete" : "Onboarding reset to pending" });
+    },
+    onError: () => toast({ title: "Failed to update onboarding status", variant: "destructive" }),
+  });
   const [addingKnowledgeSection, setAddingKnowledgeSection] = useState<string | null>(null);
   const [openKnowledgeSections, setOpenKnowledgeSections] = useState<Record<string, boolean>>({
     links: true, profile: false, ideas: false, resources: false,
@@ -1013,14 +1025,54 @@ export function CompanyInfoHub({ companyId }: CompanyInfoHubProps) {
         <>
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  {onboardingComplete
+                    ? <CheckCircle className="h-4 w-4 text-green-500" />
+                    : <XCircle className="h-4 w-4 text-muted-foreground" />}
                   Onboarding Status
+                  {onboardingComplete
+                    ? <span className="text-xs font-normal text-green-600 dark:text-green-400">(Complete)</span>
+                    : <span className="text-xs font-normal text-muted-foreground">(Pending)</span>}
                 </CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setEditingOnboarding(v => !v)} data-testid="button-toggle-edit-onboarding">
-                  {editingOnboarding ? <><X className="h-3.5 w-3.5 mr-1.5" />Cancel</> : <><Pencil className="h-3.5 w-3.5 mr-1.5" />Edit All Fields</>}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {onboardingComplete ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="outline" size="sm" disabled={overrideOnboardingMutation.isPending} data-testid="button-reset-onboarding">
+                          <X className="h-3.5 w-3.5 mr-1.5" />Reset Onboarding
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Reset Onboarding?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will mark onboarding as incomplete. The client will see the onboarding form again. No tasks or data will be deleted.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => overrideOnboardingMutation.mutate(false)}>
+                            Reset
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={overrideOnboardingMutation.isPending}
+                      onClick={() => overrideOnboardingMutation.mutate(true)}
+                      data-testid="button-mark-onboarding-complete"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5 mr-1.5" />Mark as Complete
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setEditingOnboarding(v => !v)} data-testid="button-toggle-edit-onboarding">
+                    {editingOnboarding ? <><X className="h-3.5 w-3.5 mr-1.5" />Cancel</> : <><Pencil className="h-3.5 w-3.5 mr-1.5" />Edit Fields</>}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
