@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, Building2 } from "lucide-react";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo-nobg.png";
 
 interface OnboardingLayoutProps {
   children: React.ReactNode;

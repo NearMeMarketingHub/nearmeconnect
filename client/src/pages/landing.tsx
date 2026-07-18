@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BarChart3, Users, CheckCircle, Sparkles } from "lucide-react";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo-nobg.png";
 
 export default function LandingPage() {
   return (
@@ -11,7 +11,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 gap-4">
             <div className="flex items-center gap-2">
-              <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto" />
+              <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto dark:brightness-0 dark:invert" />
               <span className="text-lg font-bold tracking-tight">Near Me Connect</span>
             </div>
             <div className="flex items-center gap-3">

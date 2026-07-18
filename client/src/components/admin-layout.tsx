@@ -31,7 +31,7 @@ import {
 import { LayoutDashboard, Building2, LogOut, Tag, Calendar, MessageCircle, Megaphone, Video, GraduationCap, ListTodo, Cloud, CreditCard, Settings, ChevronDown, Briefcase, Wrench, FlaskConical, Landmark, BarChart3, FileImage, Upload, Users, ShieldCheck, Layers, LayoutGrid, ClipboardList } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { MobileBackButton } from "@/components/mobile-back-button";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo-nobg.png";
 
 const coreItems = [
   { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
@@ -123,7 +123,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           <SidebarContent>
             <div className="p-4 border-b">
               <div className="flex items-center gap-2">
-                <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto" />
+                <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto dark:brightness-0 dark:invert" />
                 <span className="font-bold tracking-tight">Admin Portal</span>
               </div>
             </div>

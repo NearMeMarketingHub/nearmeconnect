@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, CheckCircle2, Plus, Trash2, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import logoImage from "@assets/LogoNewMedium_1768860762303.png";
+import logoImage from "@assets/near-me-connect-logo-nobg.png";
 
 const STEPS = [
   "Business Information",
@@ -191,7 +191,7 @@ export default function EdwosbForm({ token, companyName, onSubmit, isPending }: 
       {/* Header */}
       <div className="bg-white dark:bg-gray-950 border-b">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-          <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto" />
+          <img src={logoImage} alt="Near Me Connect" className="h-8 w-auto dark:brightness-0 dark:invert" />
           <div>
             <p className="text-xs text-muted-foreground">{companyName}</p>
             <h1 className="text-sm font-semibold leading-tight">Economically Disadvantaged Women-Owned Small Business (EDWOSB) Certification</h1>
