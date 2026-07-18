@@ -53,6 +53,7 @@ export default function AdminTasks() {
   const [bulkCalendarDate, setBulkCalendarDate] = useState(new Date());
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [bulkQuantity, setBulkQuantity] = useState("1");
+  const [bulkAssignedTo, setBulkAssignedTo] = useState("none");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const { data: companies, isLoading: companiesLoading } = useQuery<Company[]>({
@@ -75,6 +76,16 @@ export default function AdminTasks() {
     queryKey: ["/api/task-categories/global"],
     queryFn: async () => {
       const r = await fetch("/api/task-categories/global");
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: bulkCreateOpen,
+  });
+
+  const { data: adminUsers = [] } = useQuery<{ id: string; firstName: string | null; lastName: string | null; email: string }[]>({
+    queryKey: ["/api/admin-users"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin-users");
       if (!r.ok) return [];
       return r.json();
     },
@@ -149,6 +160,7 @@ export default function AdminTasks() {
     setBulkTaskOwnership("agency");
     setBulkNoCredit(false);
     setBulkIsRecurring(false);
+    setBulkAssignedTo("none");
     setBulkRecurrencePattern("monthly");
     setBulkRecurrenceDay("1");
     setBulkRecurrenceWeekday("1");
@@ -195,6 +207,7 @@ export default function AdminTasks() {
       isRecurring: bulkIsRecurring,
       recurrencePattern: bulkIsRecurring ? bulkRecurrencePattern : null,
       categoryId: bulkCategoryId && bulkCategoryId !== "none" ? bulkCategoryId : null,
+      assignedTo: bulkAssignedTo && bulkAssignedTo !== "none" ? bulkAssignedTo : null,
       bulkQuantity: qty > 1 ? qty : null,
       ...recurringFields,
     };
@@ -459,6 +472,24 @@ export default function AdminTasks() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">Global categories only</p>
+              </div>
+
+              {/* Assignee */}
+              <div className="space-y-1">
+                <Label>Assignee</Label>
+                <Select value={bulkAssignedTo} onValueChange={setBulkAssignedTo}>
+                  <SelectTrigger data-testid="select-bulk-assignee">
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {adminUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Recurring toggle */}

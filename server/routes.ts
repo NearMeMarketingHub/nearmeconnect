@@ -958,7 +958,7 @@ export async function registerRoutes(
                 dueDate: task.dueDate || undefined,
                 priority: task.priority,
                 companyName: company.name,
-                portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${task.id}`,
+                portalUrl: `${getBaseUrl(req)}/client/tasks?taskId=${task.id}`,
               }).catch(err => console.error("Failed to send task assignment email:", err));
             }
           } catch (notifError) {
@@ -1092,7 +1092,7 @@ export async function registerRoutes(
 
       if (req.body.categoryId !== undefined && req.body.categoryId !== null) {
         const category = await storage.getTaskCategory(req.body.categoryId);
-        if (!category || category.companyId !== existingTask.companyId) {
+        if (!category || (category.companyId !== null && category.companyId !== existingTask.companyId)) {
           return res.status(400).json({ error: "Invalid category for this company" });
         }
       }
@@ -1506,7 +1506,7 @@ export async function registerRoutes(
                   dueDate: existingTask.dueDate || undefined,
                   priority: existingTask.priority,
                   companyName: assigneeCompany.name,
-                  portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
+                  portalUrl: `${getBaseUrl(req)}/client/tasks?taskId=${existingTask.id}`,
                 }).catch(err => console.error("Failed to send task assignment email:", err));
               }
             } catch (notifError) {
@@ -1623,7 +1623,7 @@ export async function registerRoutes(
                   oldStatus: existingTask.status,
                   newStatus: newStatus,
                   companyName: statusEmailCompany.name,
-                  portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
+                  portalUrl: `${getBaseUrl(req)}/client/tasks?taskId=${existingTask.id}`,
                 }).catch(err => console.error("Failed to send task status change email:", err));
               }
             } catch (emailError) {
@@ -1655,7 +1655,7 @@ export async function registerRoutes(
                       recipientName: [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ') || 'Team Member',
                       taskTitle: existingTask.title,
                       companyName: reviewCompany.name,
-                      portalUrl: `${process.env.REPLIT_DEPLOYMENT_URL || 'https://localhost:5000'}/client/tasks?taskId=${existingTask.id}`,
+                      portalUrl: `${getBaseUrl(req)}/client/tasks?taskId=${existingTask.id}`,
                     }).catch(err => console.error("Failed to send task in-review email:", err));
                   }
                 }
