@@ -48,6 +48,10 @@ import GovernmentFormPage from "@/pages/government-form";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import SignPage from "@/pages/sign";
+import PricingPage from "@/pages/pricing";
+import SubscribePage from "@/pages/subscribe";
+import SubscribeSuccessPage from "@/pages/subscribe-success";
+import ClientSubscription from "@/pages/client/subscription";
 import NotFound from "@/pages/not-found";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -116,6 +120,17 @@ function AppContent() {
     const token = params.get("token");
     navigate(`/signup?invite=${token || ""}`, { replace: true });
     return null;
+  }
+
+  // Public marketing / subscription pages — no auth required
+  if (location.startsWith("/pricing")) {
+    return <PricingPage />;
+  }
+  if (location.startsWith("/subscribe/success")) {
+    return <SubscribeSuccessPage />;
+  }
+  if (location.startsWith("/subscribe")) {
+    return <SubscribePage />;
   }
 
   // Always allow access to signup page, regardless of auth state
@@ -227,6 +242,9 @@ function AppContent() {
         <Route path="/client/training">{() => <ClientTraining />}</Route>
         <Route path="/client/team">
           {() => <ClientTeam companyId={companyId} />}
+        </Route>
+        <Route path="/client/subscription">
+          {() => <ClientSubscription companyId={companyId} />}
         </Route>
         <Route component={NotFound} />
       </Switch>

@@ -8904,6 +8904,128 @@ export async function registerRoutes(
     }
   });
 
+  // ===== SaaS Subscription Routes =====
+
+  app.get("/api/subscription/plans", (_req, res) => {
+    res.json([
+      {
+        tier: "starter",
+        name: "Starter",
+        price: 69,
+        features: ["Task management & tracking", "Campaign management", "Meetings & calendar", "Training resources", "Media uploads", "Chat & messaging"],
+      },
+      {
+        tier: "growth",
+        name: "Growth",
+        price: 89,
+        features: ["Everything in Starter", "Credit system", "Credit usage tracking", "Task credit deductions"],
+      },
+      {
+        tier: "pro",
+        name: "Pro",
+        price: 99,
+        features: ["Everything in Growth", "Reporting & analytics", "Credit store", "Buy additional credits"],
+      },
+    ]);
+  });
+
+  app.post("/api/subscription/signup", async (req, res) => {
+    try {
+      const { plan, companyName, firstName, lastName, email, password } = req.body;
+      if (!["starter", "growth", "pro"].includes(plan)) {
+        return res.status(400).json({ error: "Invalid plan selected." });
+      }
+      if (!companyName?.trim() || !firstName?.trim() || !lastName?.trim() || !email?.trim() || !password) {
+        return res.status(400).json({ error: "All fields are required." });
+      }
+      if ((password as string).length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters." });
+      }
+      const { isStripeConfigured, createSubscriptionCheckoutSession } = await import("./stripe");
+      if (!isStripeConfigured()) {
+        return res.status(503).json({ error: "Payment system is temporarily unavailable. Please contact support." });
+      }
+      const normalizedEmail = (email as string).toLowerCase().trim();
+      const existingUser = await storage.getUserByEmail(normalizedEmail);
+      if (existingUser) {
+        return res.status(400).json({ error: "An account with this email already exists. Please sign in instead." });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+      const pending = await storage.createPendingSignup({
+        companyName: (companyName as string).trim(),
+        ownerFirstName: (firstName as string).trim(),
+        ownerLastName: (lastName as string).trim(),
+        email: normalizedEmail,
+        passwordHash,
+        saasTier: plan,
+      });
+      const session = await createSubscriptionCheckoutSession({
+        pendingSignupId: pending.id,
+        saasTier: plan as "starter" | "growth" | "pro",
+        email: normalizedEmail,
+        companyName: (companyName as string).trim(),
+        successUrl: `${getBaseUrl(req)}/subscribe/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${getBaseUrl(req)}/pricing`,
+      });
+      await storage.updatePendingSignup(pending.id, { stripeSessionId: session.id });
+      res.json({ checkoutUrl: session.url });
+    } catch (error: any) {
+      console.error("Subscription signup error:", error);
+      res.status(500).json({ error: "Failed to create checkout session. Please try again." });
+    }
+  });
+
+  app.get("/api/subscription/status", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const companyId = req.query.companyId as string;
+      if (!companyId) return res.status(400).json({ error: "companyId required" });
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const company = await storage.getCompany(companyId);
+      if (!company) return res.status(404).json({ error: "Company not found" });
+      res.json({
+        saasTier: company.saasTier || "internal",
+        subscriptionStatus: company.stripeSubscriptionStatus || null,
+        stripeCustomerId: company.stripeCustomerId || null,
+        companyName: company.name,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch subscription status" });
+    }
+  });
+
+  app.post("/api/subscription/portal", isAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { companyId } = req.body;
+      if (!companyId) return res.status(400).json({ error: "companyId required" });
+      const userId = req.user!.id;
+      const isAdmin = await storage.isAdmin(userId);
+      if (!isAdmin) {
+        const member = await storage.getCompanyMember(userId, companyId);
+        if (!member) return res.status(403).json({ error: "Access denied" });
+      }
+      const company = await storage.getCompany(companyId);
+      if (!company) return res.status(404).json({ error: "Company not found" });
+      if (!company.stripeCustomerId) {
+        return res.status(400).json({ error: "No billing account found. Please contact support." });
+      }
+      const { createBillingPortalSession } = await import("./stripe");
+      const portalSession = await createBillingPortalSession(
+        company.stripeCustomerId,
+        `${getBaseUrl(req)}/client/subscription`
+      );
+      res.json({ portalUrl: portalSession.url });
+    } catch (error) {
+      console.error("Billing portal error:", error);
+      res.status(500).json({ error: "Failed to open billing portal. Please try again." });
+    }
+  });
+
   // Stripe webhook handler
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     try {
@@ -8964,6 +9086,65 @@ export async function registerRoutes(
               }
             }
           }
+        }
+      }
+
+      // ── SaaS subscription created via Checkout ─────────────────────────────
+      if (event.type === "checkout.session.completed") {
+        const saasSession = event.data.object as any;
+        if (saasSession.metadata?.signupType === "saas_subscription") {
+          const pendingSignupId = saasSession.metadata?.pendingSignupId as string | undefined;
+          const saasTier = (saasSession.metadata?.saasTier as string) || "starter";
+          if (pendingSignupId) {
+            const pending = await storage.getPendingSignupById(pendingSignupId);
+            if (pending && pending.status === "pending") {
+              const newCompany = await storage.createCompany({
+                name: pending.companyName,
+                saasTier,
+                clientType: "marketing",
+                subscriptionTier: "essentials",
+              });
+              await storage.updateCompany(newCompany.id, {
+                stripeCustomerId: saasSession.customer,
+                stripeSubscriptionId: saasSession.subscription,
+                stripeSubscriptionStatus: "active",
+              });
+              const { randomUUID } = await import("crypto");
+              const newUser = await storage.createUserWithId(randomUUID(), {
+                email: pending.email,
+                password: pending.passwordHash,
+                firstName: pending.ownerFirstName,
+                lastName: pending.ownerLastName,
+              });
+              await storage.createCompanyMember({
+                companyId: newCompany.id,
+                userId: newUser.id,
+                role: "owner",
+              });
+              await storage.updatePendingSignup(pending.id, { status: "completed" });
+              broadcastInvalidation(["/api/companies"]);
+              console.log(`[SaaS] Company created: ${newCompany.id}, user: ${newUser.id}, tier: ${saasTier}`);
+            }
+          }
+        }
+      }
+
+      // ── Subscription status changes ─────────────────────────────────────────
+      if (event.type === "customer.subscription.updated") {
+        const sub = event.data.object as any;
+        const subCompany = await storage.getCompanyByStripeSubscriptionId(sub.id);
+        if (subCompany) {
+          await storage.updateCompany(subCompany.id, { stripeSubscriptionStatus: sub.status });
+          broadcastInvalidation(["/api/companies"]);
+        }
+      }
+
+      if (event.type === "customer.subscription.deleted") {
+        const sub = event.data.object as any;
+        const subCompany = await storage.getCompanyByStripeSubscriptionId(sub.id);
+        if (subCompany) {
+          await storage.updateCompany(subCompany.id, { stripeSubscriptionStatus: "canceled" });
+          broadcastInvalidation(["/api/companies"]);
         }
       }
 

@@ -181,6 +181,8 @@ import {
   type InsertCompanyChecklist,
   type CompanyChecklistItem,
   type InsertCompanyChecklistItem,
+  pendingSignups,
+  type PendingSignup,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, ne, isNull, isNotNull, gt, lt, sql, inArray } from "drizzle-orm";
@@ -188,11 +190,14 @@ import { formatDateShortET } from "./timezone";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
 
   getCompany(id: string): Promise<Company | undefined>;
   getAllCompanies(): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, data: Partial<Company>): Promise<Company | undefined>;
+  getCompanyByStripeSubscriptionId(subscriptionId: string): Promise<Company | undefined>;
+  getCompanyByStripeCustomerId(customerId: string): Promise<Company | undefined>;
 
   getCompanyMember(userId: string, companyId: string): Promise<CompanyMember | undefined>;
   getCompanyMembers(companyId: string): Promise<CompanyMember[]>;
@@ -360,6 +365,12 @@ export interface IStorage {
   getChatMentions(messageId: string): Promise<ChatMention[]>;
   createChatMention(mention: InsertChatMention): Promise<ChatMention>;
 
+  // Pending SaaS signups
+  createPendingSignup(data: { companyName: string; ownerFirstName: string; ownerLastName: string; email: string; passwordHash: string; saasTier: string }): Promise<PendingSignup>;
+  getPendingSignupById(id: string): Promise<PendingSignup | undefined>;
+  getPendingSignupBySessionId(sessionId: string): Promise<PendingSignup | undefined>;
+  updatePendingSignup(id: string, data: Partial<PendingSignup>): Promise<void>;
+
   // Sandbox methods
   createCompanyWithId(id: string, company: InsertCompany): Promise<Company>;
   createUserWithId(id: string, data: { email: string; password: string; firstName: string; lastName: string }): Promise<User>;
@@ -519,6 +530,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
   async getCompany(id: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.id, id));
     return company;
@@ -568,6 +584,22 @@ export class DatabaseStorage implements IStorage {
       .set(data)
       .where(eq(companies.id, id))
       .returning();
+    return company;
+  }
+
+  async getCompanyByStripeSubscriptionId(subscriptionId: string): Promise<Company | undefined> {
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.stripeSubscriptionId, subscriptionId));
+    return company;
+  }
+
+  async getCompanyByStripeCustomerId(customerId: string): Promise<Company | undefined> {
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.stripeCustomerId, customerId));
     return company;
   }
 
@@ -2080,6 +2112,34 @@ export class DatabaseStorage implements IStorage {
       lastName: data.lastName,
     }).returning();
     return user;
+  }
+
+  async createPendingSignup(data: { companyName: string; ownerFirstName: string; ownerLastName: string; email: string; passwordHash: string; saasTier: string }): Promise<PendingSignup> {
+    const [signup] = await db.insert(pendingSignups).values({
+      companyName: data.companyName,
+      ownerFirstName: data.ownerFirstName,
+      ownerLastName: data.ownerLastName,
+      email: data.email,
+      passwordHash: data.passwordHash,
+      saasTier: data.saasTier,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    }).returning();
+    return signup;
+  }
+
+  async getPendingSignupById(id: string): Promise<PendingSignup | undefined> {
+    const [signup] = await db.select().from(pendingSignups).where(eq(pendingSignups.id, id));
+    return signup;
+  }
+
+  async getPendingSignupBySessionId(sessionId: string): Promise<PendingSignup | undefined> {
+    const [signup] = await db.select().from(pendingSignups).where(eq(pendingSignups.stripeSessionId, sessionId));
+    return signup;
+  }
+
+  async updatePendingSignup(id: string, data: Partial<PendingSignup>): Promise<void> {
+    await db.update(pendingSignups).set(data).where(eq(pendingSignups.id, id));
   }
 
   async deleteSandboxData(companyId: string): Promise<void> {

@@ -23,7 +23,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, ListTodo, CreditCard, Settings, LogOut, Building2, Upload, Calendar, MessageCircle, Megaphone, Video, GraduationCap, AlertTriangle, Users } from "lucide-react";
+import { LayoutDashboard, ListTodo, CreditCard, Settings, LogOut, Building2, Upload, Calendar, MessageCircle, Megaphone, Video, GraduationCap, AlertTriangle, Users, Receipt } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotificationBell } from "@/components/notification-bell";
 import logoImage from "@assets/near-me-connect-logo-nobg.png";
@@ -39,10 +39,11 @@ const allNavItems = [
   { title: "Training", href: "/client/training", icon: GraduationCap, pageKey: "training", roles: ["company_owner", "company_admin", "team_member"], clientTypes: ["marketing", "government"] },
   { title: "Calendar", href: "/client/calendar", icon: Calendar, pageKey: "calendar", roles: ["company_owner", "company_admin", "team_member"], clientTypes: ["marketing", "government"] },
   { title: "Chat", href: "/client/chat", icon: MessageCircle, pageKey: "chat", roles: ["company_owner", "company_admin", "team_member"], clientTypes: ["marketing", "government"] },
-  { title: "Credits", href: "/client/credits", icon: CreditCard, pageKey: "credits", roles: ["company_owner", "company_admin"], clientTypes: ["marketing", "government"] },
+  { title: "Credits", href: "/client/credits", icon: CreditCard, pageKey: "credits", roles: ["company_owner", "company_admin"], clientTypes: ["marketing", "government"], requiresCredits: true },
   { title: "Media Uploads", href: "/client/media-uploads", icon: Upload, pageKey: "media_uploads", roles: ["company_owner", "company_admin"], clientTypes: ["marketing", "government"] },
   { title: "Team", href: "/client/team", icon: Users, pageKey: "team", roles: ["company_owner", "company_admin"], clientTypes: ["marketing", "government"] },
   { title: "Settings", href: "/client/settings", icon: Settings, pageKey: "settings", roles: ["company_owner", "company_admin"], clientTypes: ["marketing", "government"] },
+  { title: "Subscription", href: "/client/subscription", icon: Receipt, pageKey: "subscription", roles: ["company_owner", "company_admin"], clientTypes: ["marketing"], saasOnly: true },
 ];
 
 interface UserInfo {
@@ -84,10 +85,16 @@ export function ClientLayout({ children, companyId: propCompanyId }: ClientLayou
   });
 
   const clientType = (company as any)?.clientType || "marketing";
+  const saasTier: string = (company as any)?.saasTier || "internal";
+  const hasCredits = saasTier !== "starter";
+  const isSaasCustomer = saasTier !== "internal";
 
   const navItems = allNavItems.filter(item => {
     const hasClientType = item.clientTypes.includes(clientType);
     if (!hasClientType) return false;
+
+    if ((item as any).requiresCredits && !hasCredits) return false;
+    if ((item as any).saasOnly && !isSaasCustomer) return false;
 
     if (userRole === "custom" && customRole) {
       return customRole.allowedViews.includes(item.pageKey);
@@ -162,7 +169,7 @@ export function ClientLayout({ children, companyId: propCompanyId }: ClientLayou
               )}
             </div>
             <div className="flex items-center gap-3">
-              {company && (
+              {company && hasCredits && (
                 <Badge variant="secondary" className="font-mono" data-testid="credit-badge">
                   {company.credits} credits
                 </Badge>

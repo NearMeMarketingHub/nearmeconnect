@@ -25,6 +25,10 @@ export const companies = pgTable("companies", {
   lastProjectedUsageWarningSent: text("last_projected_usage_warning_sent"),
   hubspotCompanyId: text("hubspot_company_id"),
   bonusCredits: real("bonus_credits").notNull().default(0),
+  saasTier: text("saas_tier").default("internal"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeSubscriptionStatus: text("stripe_subscription_status"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -38,10 +42,35 @@ export const insertCompanySchema = createInsertSchema(companies).omit({
   isPaused: true,
   pausedAt: true,
   creditsLastReset: true,
+  stripeCustomerId: true,
+  stripeSubscriptionId: true,
+  stripeSubscriptionStatus: true,
 });
 
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
+
+export const pendingSignups = pgTable("pending_signups", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name").notNull(),
+  ownerFirstName: text("owner_first_name").notNull(),
+  ownerLastName: text("owner_last_name").notNull(),
+  email: text("email").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  saasTier: text("saas_tier").notNull().default("starter"),
+  stripeSessionId: text("stripe_session_id"),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertPendingSignupSchema = createInsertSchema(pendingSignups).omit({
+  id: true,
+  createdAt: true,
+  status: true,
+});
+
+export type InsertPendingSignup = z.infer<typeof insertPendingSignupSchema>;
+export type PendingSignup = typeof pendingSignups.$inferSelect;
 
 export const companyMembers = pgTable("company_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

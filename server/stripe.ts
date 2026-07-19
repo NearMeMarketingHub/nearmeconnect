@@ -20,6 +20,8 @@ export function isStripeConfigured(): boolean {
   return !!process.env.STRIPE_SECRET_KEY;
 }
 
+// ── One-time credit purchase ─────────────────────────────────────────────────
+
 export interface CreateCheckoutSessionParams {
   companyId: string;
   companyName: string;
@@ -47,7 +49,7 @@ export async function createCheckoutSession(params: CreateCheckoutSessionParams)
             name: params.packageName,
             description: `${params.creditAmount} credits for ${params.companyName}`,
           },
-          unit_amount: Math.round(params.price * 100), // Convert to cents
+          unit_amount: Math.round(params.price * 100),
         },
         quantity: 1,
       },
@@ -65,6 +67,80 @@ export async function createCheckoutSession(params: CreateCheckoutSessionParams)
 
   return session;
 }
+
+// ── SaaS subscription checkout ───────────────────────────────────────────────
+
+const PLAN_DETAILS: Record<string, { name: string; price: number }> = {
+  starter: { name: "Near Me Connect – Starter", price: 6900 },
+  growth:  { name: "Near Me Connect – Growth",  price: 8900 },
+  pro:     { name: "Near Me Connect – Pro",      price: 9900 },
+};
+
+export interface CreateSubscriptionCheckoutParams {
+  pendingSignupId: string;
+  saasTier: "starter" | "growth" | "pro";
+  email: string;
+  companyName: string;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export async function createSubscriptionCheckoutSession(
+  params: CreateSubscriptionCheckoutParams
+): Promise<Stripe.Checkout.Session> {
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe is not configured");
+
+  const plan = PLAN_DETAILS[params.saasTier];
+  if (!plan) throw new Error(`Unknown plan: ${params.saasTier}`);
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: plan.name,
+            description: `${params.companyName} – monthly subscription`,
+          },
+          unit_amount: plan.price,
+          recurring: { interval: "month" },
+        },
+        quantity: 1,
+      },
+    ],
+    mode: "subscription",
+    customer_email: params.email,
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    allow_promotion_codes: true,
+    metadata: {
+      signupType: "saas_subscription",
+      pendingSignupId: params.pendingSignupId,
+      saasTier: params.saasTier,
+    },
+  });
+
+  return session;
+}
+
+// ── Stripe Billing Portal ────────────────────────────────────────────────────
+
+export async function createBillingPortalSession(
+  customerId: string,
+  returnUrl: string
+): Promise<Stripe.BillingPortal.Session> {
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe is not configured");
+
+  return stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: returnUrl,
+  });
+}
+
+// ── Webhook event construction ───────────────────────────────────────────────
 
 export async function constructWebhookEvent(
   payload: string | Buffer,
