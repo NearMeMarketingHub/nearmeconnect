@@ -41,6 +41,7 @@ const coreItems = [
 
 const servicesItems = [
   { title: "Campaigns", href: "/admin/campaigns", icon: Megaphone },
+  { title: "Campaign Types", href: "/admin/campaign-types", icon: Briefcase },
   { title: "Meetings", href: "/admin/meetings", icon: Video },
   { title: "Training", href: "/admin/training", icon: GraduationCap },
   { title: "Media Profiles", href: "/admin/media-profiles", icon: FileImage },

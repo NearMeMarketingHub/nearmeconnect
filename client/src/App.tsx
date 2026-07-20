@@ -16,6 +16,7 @@ import AdminAddCompany from "@/pages/admin/add-company";
 import AdminDeliverableTypes from "@/pages/admin/deliverable-types";
 import AdminTaskCategories from "@/pages/admin/task-categories";
 import AdminCampaigns from "@/pages/admin/campaigns";
+import AdminCampaignTypes from "@/pages/admin/campaign-types";
 import AdminMeetings from "@/pages/admin/meetings";
 import AdminTraining from "@/pages/admin/training";
 import AdminMediaProfiles from "@/pages/admin/media-profiles";
@@ -189,6 +190,7 @@ function AppContent() {
         <Route path="/admin/task-categories" component={AdminTaskCategories} />
         <Route path="/admin/checklist-templates" component={AdminChecklistTemplates} />
         <Route path="/admin/campaigns" component={AdminCampaigns} />
+        <Route path="/admin/campaign-types" component={AdminCampaignTypes} />
         <Route path="/admin/meetings" component={AdminMeetings} />
         <Route path="/admin/training" component={AdminTraining} />
         <Route path="/admin/media-profiles" component={AdminMediaProfiles} />
