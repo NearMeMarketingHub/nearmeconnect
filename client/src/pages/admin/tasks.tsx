@@ -83,15 +83,16 @@ export default function AdminTasks() {
     enabled: bulkCreateOpen,
   });
 
-  const { data: adminUsers = [] } = useQuery<{ id: string; firstName: string | null; lastName: string | null; email: string }[]>({
-    queryKey: ["/api/admin-users"],
+  const { data: adminUsersData } = useQuery<{ admins: { userId: string; firstName: string | null; lastName: string | null; email: string }[] }>({
+    queryKey: ["/api/admin/users"],
     queryFn: async () => {
-      const r = await fetch("/api/admin-users");
-      if (!r.ok) return [];
+      const r = await fetch("/api/admin/users");
+      if (!r.ok) return { admins: [] };
       return r.json();
     },
     enabled: bulkCreateOpen,
   });
+  const adminUsers = adminUsersData?.admins ?? [];
 
   const { data: companyCategories = [] } = useQuery<TaskCategory[]>({
     queryKey: ["/api/companies", selectedCompany, "task-categories"],
@@ -488,7 +489,7 @@ export default function AdminTasks() {
                     <SelectContent>
                       <SelectItem value="none">Unassigned</SelectItem>
                       {adminUsers.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
+                        <SelectItem key={u.userId} value={u.userId}>
                           {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
                         </SelectItem>
                       ))}
@@ -504,7 +505,7 @@ export default function AdminTasks() {
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
                       {adminUsers.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
+                        <SelectItem key={u.userId} value={u.userId}>
                           {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
                         </SelectItem>
                       ))}
