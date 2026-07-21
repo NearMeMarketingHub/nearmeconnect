@@ -282,6 +282,7 @@ export interface IStorage {
   deleteTaskLink(id: string): Promise<void>;
 
   getTaskAssignees(taskId: string): Promise<TaskAssignee[]>;
+  getTaskAssigneesByTaskIds(taskIds: string[]): Promise<TaskAssignee[]>;
   addTaskAssignee(data: InsertTaskAssignee): Promise<TaskAssignee>;
   removeTaskAssignee(taskId: string, userId: string): Promise<void>;
   getTasksByAssignee(userId: string): Promise<TaskAssignee[]>;
@@ -1122,6 +1123,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(taskAssignees)
       .where(eq(taskAssignees.taskId, taskId));
+  }
+
+  async getTaskAssigneesByTaskIds(taskIds: string[]): Promise<TaskAssignee[]> {
+    if (taskIds.length === 0) return [];
+    return await db
+      .select()
+      .from(taskAssignees)
+      .where(inArray(taskAssignees.taskId, taskIds));
   }
 
   async addTaskAssignee(data: InsertTaskAssignee): Promise<TaskAssignee> {

@@ -1643,6 +1643,44 @@ export function TaskDetailPanel({ task: initialTask, open, onClose, isAdmin, com
 
           <div className="space-y-2">
             <Label className="text-muted-foreground text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Reviewer
+            </Label>
+            {isAdmin ? (
+              <Select
+                value={(task as any).reviewerId || "none"}
+                onValueChange={(val) => {
+                  updateTaskMutation.mutate({ reviewerId: val === "none" ? null : val } as any);
+                }}
+              >
+                <SelectTrigger data-testid="select-task-reviewer">
+                  <SelectValue placeholder="No reviewer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No reviewer</SelectItem>
+                  {assignableUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      <span className="flex items-center gap-2">
+                        {u.name}
+                        {u.roleLabel && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{u.roleLabel}</Badge>}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex items-center gap-2 h-9 px-3 border rounded-md text-sm">
+                {(task as any).reviewerId ? (
+                  <span data-testid="text-task-reviewer">{(task as any).reviewerName || "Loading..."}</span>
+                ) : (
+                  <span className="text-muted-foreground" data-testid="text-task-reviewer-none">No reviewer assigned</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-muted-foreground text-xs flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               Task Ownership
             </Label>

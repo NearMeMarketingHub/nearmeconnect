@@ -54,6 +54,7 @@ export default function AdminTasks() {
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [bulkQuantity, setBulkQuantity] = useState("1");
   const [bulkAssignedTo, setBulkAssignedTo] = useState("none");
+  const [bulkReviewerId, setBulkReviewerId] = useState("none");
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const { data: companies, isLoading: companiesLoading } = useQuery<Company[]>({
@@ -123,7 +124,7 @@ export default function AdminTasks() {
       tasks = tasks.filter((t) => t.companyId === selectedCompany);
     }
     if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter((t) => t.assignedTo === user.id);
+      tasks = tasks.filter((t) => t.assignedTo === user.id || (t as any).assigneeIds?.includes(user.id));
     }
     return tasks;
   }, [allTasks, selectedCompany, assignmentFilter, user]);
@@ -161,6 +162,7 @@ export default function AdminTasks() {
     setBulkNoCredit(false);
     setBulkIsRecurring(false);
     setBulkAssignedTo("none");
+    setBulkReviewerId("none");
     setBulkRecurrencePattern("monthly");
     setBulkRecurrenceDay("1");
     setBulkRecurrenceWeekday("1");
@@ -208,6 +210,7 @@ export default function AdminTasks() {
       recurrencePattern: bulkIsRecurring ? bulkRecurrencePattern : null,
       categoryId: bulkCategoryId && bulkCategoryId !== "none" ? bulkCategoryId : null,
       assignedTo: bulkAssignedTo && bulkAssignedTo !== "none" ? bulkAssignedTo : null,
+      reviewerId: bulkReviewerId && bulkReviewerId !== "none" ? bulkReviewerId : null,
       bulkQuantity: qty > 1 ? qty : null,
       ...recurringFields,
     };
@@ -474,22 +477,40 @@ export default function AdminTasks() {
                 <p className="text-xs text-muted-foreground">Global categories only</p>
               </div>
 
-              {/* Assignee */}
-              <div className="space-y-1">
-                <Label>Assignee</Label>
-                <Select value={bulkAssignedTo} onValueChange={setBulkAssignedTo}>
-                  <SelectTrigger data-testid="select-bulk-assignee">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Unassigned</SelectItem>
-                    {adminUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Assignee + Reviewer row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Assignee</Label>
+                  <Select value={bulkAssignedTo} onValueChange={setBulkAssignedTo}>
+                    <SelectTrigger data-testid="select-bulk-assignee">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {adminUsers.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Reviewer</Label>
+                  <Select value={bulkReviewerId} onValueChange={setBulkReviewerId}>
+                    <SelectTrigger data-testid="select-bulk-reviewer">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {adminUsers.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Recurring toggle */}

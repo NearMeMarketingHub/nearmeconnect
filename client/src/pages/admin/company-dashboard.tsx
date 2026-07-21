@@ -1831,7 +1831,7 @@ export default function CompanyDashboard() {
     if (!tasks) return [];
     let filtered = tasks.filter(t => t.status !== "cadence_parent");
     if (assignedToMeFilter && user?.id) {
-      filtered = filtered.filter(t => t.assignedTo === user.id);
+      filtered = filtered.filter(t => t.assignedTo === user.id || (t.assigneeIds as string[] | undefined)?.includes(user.id));
     }
     if (companyTaskFilter === "rejected") {
       filtered = filtered.filter(t => t.approvalStatus === "rejected");
@@ -1896,7 +1896,7 @@ export default function CompanyDashboard() {
       return dateStr >= selectedMonthStart && dateStr < selectedMonthEnd;
     });
     if (assignedToMeFilter && user?.id) {
-      normalTasks = normalTasks.filter(t => t.assignedTo === user.id);
+      normalTasks = normalTasks.filter(t => t.assignedTo === user.id || (t.assigneeIds as string[] | undefined)?.includes(user.id));
     }
     const nonRejected = normalTasks.filter(t => t.approvalStatus !== "rejected");
     return {

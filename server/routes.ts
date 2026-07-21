@@ -777,13 +777,36 @@ export async function registerRoutes(
 
       const enrichWithCreatorName = async (tasks: any[]) => {
         const creatorCache = new Map<string, string>();
+        const taskIds = tasks.map((t) => t.id);
+        const allAssignees = await storage.getTaskAssigneesByTaskIds(taskIds);
+        const assigneesByTask = new Map<string, string[]>();
+        for (const a of allAssignees) {
+          if (!assigneesByTask.has(a.taskId)) assigneesByTask.set(a.taskId, []);
+          assigneesByTask.get(a.taskId)!.push(a.userId);
+        }
         return Promise.all(tasks.map(async (t) => {
-          if (!t.assignedBy) return { ...t, assignedByName: null };
-          if (creatorCache.has(t.assignedBy)) return { ...t, assignedByName: creatorCache.get(t.assignedBy) };
-          const creator = await storage.getUser(t.assignedBy);
-          const name = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email || "Unknown" : "Unknown";
-          creatorCache.set(t.assignedBy, name);
-          return { ...t, assignedByName: name };
+          let assignedByName: string | null = null;
+          if (t.assignedBy) {
+            if (creatorCache.has(t.assignedBy)) {
+              assignedByName = creatorCache.get(t.assignedBy)!;
+            } else {
+              const creator = await storage.getUser(t.assignedBy);
+              assignedByName = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email || "Unknown" : "Unknown";
+              creatorCache.set(t.assignedBy, assignedByName);
+            }
+          }
+          let reviewerName: string | null = null;
+          if (t.reviewerId) {
+            if (creatorCache.has(t.reviewerId)) {
+              reviewerName = creatorCache.get(t.reviewerId)!;
+            } else {
+              const reviewer = await storage.getUser(t.reviewerId);
+              reviewerName = reviewer ? `${reviewer.firstName || ""} ${reviewer.lastName || ""}`.trim() || reviewer.email || "Unknown" : "Unknown";
+              creatorCache.set(t.reviewerId, reviewerName);
+            }
+          }
+          const assigneeIds = assigneesByTask.get(t.id) || [];
+          return { ...t, assignedByName, reviewerName, assigneeIds };
         }));
       };
       
@@ -3566,7 +3589,13 @@ export async function registerRoutes(
         assignedByName = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email || "Unknown" : "Unknown";
       }
 
-      res.json({ ...task, assignedByName });
+      let reviewerName: string | null = null;
+      if ((task as any).reviewerId) {
+        const reviewer = await storage.getUser((task as any).reviewerId);
+        reviewerName = reviewer ? `${reviewer.firstName || ""} ${reviewer.lastName || ""}`.trim() || reviewer.email || "Unknown" : "Unknown";
+      }
+
+      res.json({ ...task, assignedByName, reviewerName });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch task" });
     }
