@@ -2867,6 +2867,108 @@ export default function CompanyDashboard() {
               </Card>
             </div>
 
+            {/* Admin Settings Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-muted-foreground" />
+                  Company Settings
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Admin-only settings for this company</p>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-5 md:grid-cols-3">
+                  {/* Client Type */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Business Type</Label>
+                    <Select
+                      value={company.clientType}
+                      onValueChange={(val) => {
+                        editCompanyMutation.mutate({
+                          name: company.name,
+                          industry: company.industry || "",
+                          clientType: val,
+                          subscriptionTier: company.subscriptionTier,
+                          monthlyCredits: company.monthlyCredits,
+                        });
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-inline-client-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="marketing">Marketing</SelectItem>
+                        <SelectItem value="government">Government</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {company.clientType === "government" ? "Government portal view with docs & forms" : "Standard marketing agency view"}
+                    </p>
+                  </div>
+
+                  {/* Subscription Tier */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Retainer Tier</Label>
+                    <Select
+                      value={company.subscriptionTier}
+                      onValueChange={(val) => {
+                        const tierCredits: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
+                        editCompanyMutation.mutate({
+                          name: company.name,
+                          industry: company.industry || "",
+                          clientType: company.clientType,
+                          subscriptionTier: val,
+                          monthlyCredits: tierCredits[val] ?? company.monthlyCredits,
+                        });
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-inline-retainer-tier">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="essentials">Essentials — $2,500/mo</SelectItem>
+                        <SelectItem value="growth">Growth — $5,000/mo</SelectItem>
+                        <SelectItem value="accelerator">Accelerator — $7,000/mo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Current: <span className="font-medium text-orange-600 dark:text-orange-400">{TIER_PRICES[company.subscriptionTier] || "Custom"}</span>
+                    </p>
+                  </div>
+
+                  {/* Monthly Credits */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Monthly Credits</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        defaultValue={company.monthlyCredits}
+                        key={company.monthlyCredits}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val !== company.monthlyCredits) {
+                            editCompanyMutation.mutate({
+                              name: company.name,
+                              industry: company.industry || "",
+                              clientType: company.clientType,
+                              subscriptionTier: company.subscriptionTier,
+                              monthlyCredits: val,
+                            });
+                          }
+                        }}
+                        data-testid="input-inline-monthly-credits"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Credits allocated each billing cycle</p>
+                  </div>
+                </div>
+                {editCompanyMutation.isPending && (
+                  <p className="text-xs text-muted-foreground animate-pulse">Saving changes...</p>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Pause/Resume Section */}
             <Card>
               <CardHeader>
