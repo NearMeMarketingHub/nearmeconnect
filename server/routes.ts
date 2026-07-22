@@ -353,7 +353,7 @@ export async function registerRoutes(
             placeholderContent,
             "text/plain",
             undefined,
-            req.body.clientType as "marketing" | "government"
+            req.body.clientType as "marketing" | "government" | "implementation"
           );
           console.log(`Created new SharePoint folder for ${company.name} under ${req.body.clientType} type`);
         } catch (folderError) {
@@ -5797,6 +5797,7 @@ export async function registerRoutes(
                 deliverableType: del.key,
                 dueDate: request.dueDate,
                 assignedBy: userId,
+                assignedTo: req.body.taskAssigneeId || null,
                 creditsDeducted: false,
                 billingPeriodStart: period.startStr,
                 billingPeriodEnd: period.endStr,

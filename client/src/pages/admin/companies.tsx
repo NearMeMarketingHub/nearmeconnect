@@ -24,7 +24,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Company } from "@shared/schema";
 
 export default function AdminCompanies() {
-  const [clientTypeFilter, setClientTypeFilter] = useState<"all" | "marketing" | "government">("all");
+  const [clientTypeFilter, setClientTypeFilter] = useState<"all" | "marketing" | "government" | "implementation">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
   const { toast } = useToast();
@@ -120,6 +120,14 @@ export default function AdminCompanies() {
             data-testid="filter-government"
           >
             Government
+          </Button>
+          <Button
+            variant={clientTypeFilter === "implementation" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setClientTypeFilter("implementation")}
+            data-testid="filter-implementation"
+          >
+            Implementation
           </Button>
         </div>
 

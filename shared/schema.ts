@@ -11,7 +11,7 @@ export const companies = pgTable("companies", {
   name: text("name").notNull(),
   industry: text("industry"),
   logoUrl: text("logo_url"),
-  clientType: text("client_type").notNull().default("marketing"), // 'government' or 'marketing'
+  clientType: text("client_type").notNull().default("marketing"), // 'government', 'marketing', or 'implementation'
   subscriptionTier: text("subscription_tier").notNull().default("essentials"),
   credits: real("credits").notNull().default(0),
   monthlyCredits: real("monthly_credits").notNull().default(20),
@@ -21,6 +21,7 @@ export const companies = pgTable("companies", {
   isPaused: boolean("is_paused").notNull().default(false),
   pausedAt: text("paused_at"),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+  bypassOnboarding: boolean("bypass_onboarding").notNull().default(false),
   lastOnboardingReminderSent: text("last_onboarding_reminder_sent"),
   lastProjectedUsageWarningSent: text("last_projected_usage_warning_sent"),
   hubspotCompanyId: text("hubspot_company_id"),
@@ -29,6 +30,11 @@ export const companies = pgTable("companies", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripeSubscriptionStatus: text("stripe_subscription_status"),
+  website: text("website"),
+  primaryContactName: text("primary_contact_name"),
+  primaryContactEmail: text("primary_contact_email"),
+  primaryContactPhone: text("primary_contact_phone"),
+  notes: text("notes"),
   createdAt: text("created_at").notNull(),
 });
 

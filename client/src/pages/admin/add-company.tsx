@@ -454,12 +454,10 @@ export default function AddCompany() {
                       <SelectContent>
                         <SelectItem value="marketing">Marketing</SelectItem>
                         <SelectItem value="government">Government</SelectItem>
+                        <SelectItem value="implementation">Implementation</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="tier">Subscription Tier *</Label>
                     <Select value={tier} onValueChange={setTier}>
@@ -467,9 +465,9 @@ export default function AddCompany() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="essentials">Essentials - 20 credits ($2,500/mo)</SelectItem>
-                        <SelectItem value="growth">Growth - 40 credits ($5,000/mo)</SelectItem>
-                        <SelectItem value="accelerator">Accelerator - 60 credits ($7,000/mo)</SelectItem>
+                        <SelectItem value="essentials">Essentials — 20 credits ($2,500/mo)</SelectItem>
+                        <SelectItem value="growth">Growth — 40 credits ($5,000/mo)</SelectItem>
+                        <SelectItem value="accelerator">Accelerator — 60 credits ($7,000/mo)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -65,6 +65,7 @@ export function CampaignDetailPanel({
   const { toast } = useToast();
   const [adminNotes, setAdminNotes] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [taskAssigneeId, setTaskAssigneeId] = useState("none");
   const [editDeliverableIds, setEditDeliverableIds] = useState<string[]>([]);
   const [editDelQuantities, setEditDelQuantities] = useState<Record<string, number>>({});
   const [editMtgQuantities, setEditMtgQuantities] = useState<Record<string, number>>({});
@@ -121,9 +122,24 @@ export function CampaignDetailPanel({
     enabled: open && (hasMeetingTypes || isAdmin),
   });
 
+  const { data: adminUsersData } = useQuery<{ admins: { userId: string; firstName: string | null; lastName: string | null; email: string }[] }>({
+    queryKey: ["/api/admin/users"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/users");
+      if (!r.ok) return { admins: [] };
+      return r.json();
+    },
+    enabled: open && isAdmin,
+  });
+  const adminUsers = adminUsersData?.admins ?? [];
+
   const updateStatusMutation = useMutation({
     mutationFn: async (status: string) => {
-      return apiRequest("PATCH", `/api/campaign-requests/${campaign?.id}`, { status });
+      const body: Record<string, any> = { status };
+      if (status === "approved" && taskAssigneeId && taskAssigneeId !== "none") {
+        body.taskAssigneeId = taskAssigneeId;
+      }
+      return apiRequest("PATCH", `/api/campaign-requests/${campaign?.id}`, body);
     },
     onSuccess: () => {
       const cid = companyId || campaign?.companyId;
@@ -815,6 +831,23 @@ export function CampaignDetailPanel({
             {isAdmin && (
               <>
                 <Separator />
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Assign Tasks To</Label>
+                  <Select value={taskAssigneeId} onValueChange={setTaskAssigneeId}>
+                    <SelectTrigger data-testid="select-campaign-task-assignee">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {adminUsers.map((u) => (
+                        <SelectItem key={u.userId} value={u.userId}>
+                          {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Team member assigned to all tasks created when this campaign is approved</p>
+                </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Status</Label>
                   <Select

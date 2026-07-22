@@ -682,6 +682,11 @@ export default function CompanyDashboard() {
   const [editClientType, setEditClientType] = useState("");
   const [editTier, setEditTier] = useState("");
   const [editMonthlyCredits, setEditMonthlyCredits] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editPrimaryContactName, setEditPrimaryContactName] = useState("");
+  const [editPrimaryContactEmail, setEditPrimaryContactEmail] = useState("");
+  const [editPrimaryContactPhone, setEditPrimaryContactPhone] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   // Company data
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -1478,6 +1483,11 @@ export default function CompanyDashboard() {
       setEditClientType(company.clientType);
       setEditTier(company.subscriptionTier);
       setEditMonthlyCredits(String(company.monthlyCredits));
+      setEditWebsite((company as any).website || "");
+      setEditPrimaryContactName((company as any).primaryContactName || "");
+      setEditPrimaryContactEmail((company as any).primaryContactEmail || "");
+      setEditPrimaryContactPhone((company as any).primaryContactPhone || "");
+      setEditNotes((company as any).notes || "");
       setEditCompanyOpen(true);
     }
   };
@@ -1485,14 +1495,19 @@ export default function CompanyDashboard() {
   const handleEditCompanySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editName.trim()) return;
-    const tierCredits: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
-    const monthlyCredits = parseInt(editMonthlyCredits) || tierCredits[editTier] || 20;
+    const tierCreditsMap: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
+    const monthlyCredits = parseInt(editMonthlyCredits) || tierCreditsMap[editTier] || 20;
     editCompanyMutation.mutate({
       name: editName.trim(),
       industry: editIndustry.trim(),
       clientType: editClientType,
       subscriptionTier: editTier,
       monthlyCredits,
+      website: editWebsite.trim() || null,
+      primaryContactName: editPrimaryContactName.trim() || null,
+      primaryContactEmail: editPrimaryContactEmail.trim() || null,
+      primaryContactPhone: editPrimaryContactPhone.trim() || null,
+      notes: editNotes.trim() || null,
     });
   };
 
@@ -2211,11 +2226,11 @@ export default function CompanyDashboard() {
               <Button variant="ghost" size="icon" onClick={handleEditCompanyOpen} data-testid="button-edit-company">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle>Edit Company Details</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleEditCompanySubmit} className="space-y-4">
+                <form onSubmit={handleEditCompanySubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
                   <div className="space-y-2">
                     <Label htmlFor="editName">Company Name</Label>
                     <Input
@@ -2245,6 +2260,7 @@ export default function CompanyDashboard() {
                       <SelectContent>
                         <SelectItem value="marketing">Marketing</SelectItem>
                         <SelectItem value="government">Government</SelectItem>
+                        <SelectItem value="implementation">Implementation</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2252,16 +2268,16 @@ export default function CompanyDashboard() {
                     <Label>Subscription Tier</Label>
                     <Select value={editTier} onValueChange={(val) => {
                       setEditTier(val);
-                      const tierCredits: Record<string, string> = { essentials: "20", growth: "40", accelerator: "60" };
-                      setEditMonthlyCredits(tierCredits[val] || editMonthlyCredits);
+                      const tierCreditsMap: Record<string, string> = { essentials: "20", growth: "40", accelerator: "60" };
+                      setEditMonthlyCredits(tierCreditsMap[val] || editMonthlyCredits);
                     }}>
                       <SelectTrigger data-testid="select-edit-tier">
                         <SelectValue placeholder="Select tier" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="essentials">Essentials - $2,500/mo</SelectItem>
-                        <SelectItem value="growth">Growth - $5,000/mo</SelectItem>
-                        <SelectItem value="accelerator">Accelerator - $7,000/mo</SelectItem>
+                        <SelectItem value="essentials">Essentials — $2,500/mo</SelectItem>
+                        <SelectItem value="growth">Growth — $5,000/mo</SelectItem>
+                        <SelectItem value="accelerator">Accelerator — $7,000/mo</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2274,6 +2290,61 @@ export default function CompanyDashboard() {
                       onChange={(e) => setEditMonthlyCredits(e.target.value)}
                       placeholder="Credits per month"
                       data-testid="input-edit-monthly-credits"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editWebsite">Website</Label>
+                    <Input
+                      id="editWebsite"
+                      value={editWebsite}
+                      onChange={(e) => setEditWebsite(e.target.value)}
+                      placeholder="https://example.com"
+                      data-testid="input-edit-website"
+                    />
+                  </div>
+                  <div className="border-t pt-3 space-y-3">
+                    <p className="text-sm font-medium text-muted-foreground">Primary Contact</p>
+                    <div className="space-y-2">
+                      <Label htmlFor="editContactName">Contact Name</Label>
+                      <Input
+                        id="editContactName"
+                        value={editPrimaryContactName}
+                        onChange={(e) => setEditPrimaryContactName(e.target.value)}
+                        placeholder="John Smith"
+                        data-testid="input-edit-contact-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editContactEmail">Contact Email</Label>
+                      <Input
+                        id="editContactEmail"
+                        type="email"
+                        value={editPrimaryContactEmail}
+                        onChange={(e) => setEditPrimaryContactEmail(e.target.value)}
+                        placeholder="john@example.com"
+                        data-testid="input-edit-contact-email"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editContactPhone">Contact Phone</Label>
+                      <Input
+                        id="editContactPhone"
+                        value={editPrimaryContactPhone}
+                        onChange={(e) => setEditPrimaryContactPhone(e.target.value)}
+                        placeholder="(555) 123-4567"
+                        data-testid="input-edit-contact-phone"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editNotes">Notes</Label>
+                    <Textarea
+                      id="editNotes"
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="Additional information..."
+                      className="min-h-[80px]"
+                      data-testid="input-edit-notes"
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={editCompanyMutation.isPending} data-testid="button-save-company">
@@ -2899,10 +2970,11 @@ export default function CompanyDashboard() {
                       <SelectContent>
                         <SelectItem value="marketing">Marketing</SelectItem>
                         <SelectItem value="government">Government</SelectItem>
+                        <SelectItem value="implementation">Implementation</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      {company.clientType === "government" ? "Government portal view with docs & forms" : "Standard marketing agency view"}
+                      {company.clientType === "government" ? "Government portal view with docs & forms" : company.clientType === "implementation" ? "Implementation project view" : "Standard marketing agency view"}
                     </p>
                   </div>
 
@@ -2961,6 +3033,49 @@ export default function CompanyDashboard() {
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">Credits allocated each billing cycle</p>
+                  </div>
+                </div>
+                {/* Onboarding Controls */}
+                <div className="border-t pt-4 space-y-3">
+                  <Label className="text-sm font-medium">Onboarding</Label>
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <p className="text-sm font-medium">Onboarding Complete</p>
+                      <p className="text-xs text-muted-foreground">Mark this company's onboarding as finished</p>
+                    </div>
+                    <Switch
+                      checked={!!company.onboardingComplete}
+                      onCheckedChange={async (checked) => {
+                        try {
+                          await apiRequest("POST", `/api/companies/${companyId}/onboarding-override`, { complete: checked });
+                          queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+                          toast({ title: checked ? "Onboarding marked complete" : "Onboarding marked incomplete" });
+                        } catch {
+                          toast({ title: "Failed to update onboarding status", variant: "destructive" });
+                        }
+                      }}
+                      data-testid="switch-onboarding-complete"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <p className="text-sm font-medium">Bypass Onboarding</p>
+                      <p className="text-xs text-muted-foreground">Allow clients to skip the onboarding flow entirely</p>
+                    </div>
+                    <Switch
+                      checked={!!(company as any).bypassOnboarding}
+                      onCheckedChange={(checked) => {
+                        editCompanyMutation.mutate({
+                          name: company.name,
+                          industry: company.industry || "",
+                          clientType: company.clientType,
+                          subscriptionTier: company.subscriptionTier,
+                          monthlyCredits: company.monthlyCredits,
+                          bypassOnboarding: checked,
+                        });
+                      }}
+                      data-testid="switch-bypass-onboarding"
+                    />
                   </div>
                 </div>
                 {editCompanyMutation.isPending && (
