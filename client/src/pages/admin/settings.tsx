@@ -11,10 +11,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight, Mail, CheckCircle2, AlertCircle, Send } from "lucide-react";
+import { Plus, Trash2, Tag, Settings as SettingsIcon, RefreshCw, Loader2, Coins, Cloud, CloudOff, HardDrive, Upload, Building2, Link2, Users, Search, ArrowRight, Mail, CheckCircle2, AlertCircle, Send, Pencil, Layers, FileText, Image, Video, Share, MapPin, Globe, Zap, BarChart3, CheckCircle, Users as UsersIcon, GripVertical, Wand2, Bot, Play, CalendarClock } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { AdminLayout } from "@/components/admin-layout";
 import { Link } from "wouter";
-import type { Company } from "@shared/schema";
+import type { Company, TaskCategory } from "@shared/schema";
+import { Textarea } from "@/components/ui/textarea";
 
 interface UserTag {
   id: string;
@@ -62,6 +64,22 @@ const getTagDotColor = (color: string) => {
   };
   return colorMap[color] || colorMap.blue;
 };
+
+// Icon map for category icons
+const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  FileText, Image, Video, Search, Share, MapPin, Mail, Globe, Zap, BarChart3, CheckCircle, Users: UsersIcon, Tag,
+};
+
+const ICON_OPTIONS = [
+  "FileText", "Image", "Video", "Search", "Share", "MapPin", "Mail", "Globe",
+  "Zap", "BarChart3", "CheckCircle", "Users", "Tag", "Layers",
+];
+
+function CategoryIcon({ name, className }: { name?: string | null; className?: string }) {
+  if (!name || !CATEGORY_ICONS[name]) return <Layers className={className} />;
+  const Icon = CATEGORY_ICONS[name];
+  return <Icon className={className} />;
+}
 
 export default function AdminSettings() {
   const { toast } = useToast();
@@ -206,6 +224,172 @@ export default function AdminSettings() {
     createTagMutation.mutate({ name: newTagName.trim(), color: newTagColor });
   };
 
+  // ── Global categories state ───────────────────────────────────────────────
+  const [catSubTab, setCatSubTab] = useState("global");
+  const [catFormOpen, setCatFormOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState<TaskCategory | null>(null);
+  const [catName, setCatName] = useState("");
+  const [catColor, setCatColor] = useState("#6366f1");
+  const [catIcon, setCatIcon] = useState("FileText");
+  const [catDescription, setCatDescription] = useState("");
+  const [catCompanyId, setCatCompanyId] = useState<string>("");
+
+  const { data: globalCategories = [], isLoading: globalCatsLoading } = useQuery<TaskCategory[]>({
+    queryKey: ["/api/admin/task-categories"],
+  });
+
+  const { data: companyCatsData = [], isLoading: companyCatsLoading } = useQuery<TaskCategory[]>({
+    queryKey: ["/api/companies", catCompanyId, "task-categories"],
+    enabled: !!catCompanyId,
+  });
+  const companyOnlyCategories = companyCatsData.filter(c => !c.isGlobal);
+
+  const seedCatsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/task-categories/seed", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/task-categories"] });
+      toast({ title: "Default categories seeded" });
+    },
+    onError: () => toast({ title: "Seed failed", variant: "destructive" }),
+  });
+
+  const createCatMutation = useMutation({
+    mutationFn: async (data: object) => {
+      const res = await apiRequest("POST", "/api/admin/task-categories", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/task-categories"] });
+      toast({ title: "Category created" });
+      resetCatForm();
+    },
+    onError: () => toast({ title: "Failed to create category", variant: "destructive" }),
+  });
+
+  const createCompanyCatMutation = useMutation({
+    mutationFn: async (data: object) => {
+      const res = await apiRequest("POST", `/api/companies/${catCompanyId}/task-categories`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", catCompanyId, "task-categories"] });
+      toast({ title: "Company category created" });
+      resetCatForm();
+    },
+    onError: () => toast({ title: "Failed to create category", variant: "destructive" }),
+  });
+
+  const updateCatMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: object }) => {
+      const res = await apiRequest("PATCH", `/api/admin/task-categories/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/task-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", catCompanyId, "task-categories"] });
+      toast({ title: "Category updated" });
+      resetCatForm();
+    },
+    onError: () => toast({ title: "Failed to update category", variant: "destructive" }),
+  });
+
+  const deleteCatMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/admin/task-categories/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/task-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", catCompanyId, "task-categories"] });
+      toast({ title: "Category deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete category", variant: "destructive" }),
+  });
+
+  // ── Retainer Settings ────────────────────────────────────────────────────
+  const { data: retainerSettings, isLoading: retainerSettingsLoading } = useQuery<{
+    autoGenerationEnabled: boolean;
+    dryRun: boolean;
+    generationWindowDays: number;
+  }>({
+    queryKey: ["/api/admin/retainer-settings"],
+  });
+
+  const saveRetainerSettingsMutation = useMutation({
+    mutationFn: async (data: { autoGenerationEnabled?: boolean; dryRun?: boolean; generationWindowDays?: number }) => {
+      await apiRequest("POST", "/api/admin/retainer-settings", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/retainer-settings"] });
+      toast({ title: "Retainer settings saved" });
+    },
+    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+  });
+
+  const runGenerationMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await apiRequest("POST", "/api/admin/retainer-auto-generate", { dryRun });
+      return res.json();
+    },
+    onSuccess: (data: { companiesProcessed: number; tasksCreated: number; tasksSkipped: number; status: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/retainer-generation-logs"] });
+      toast({
+        title: data.status === "dry_run" ? "Dry-run complete" : "Generation complete",
+        description: `${data.companiesProcessed} companies · ${data.tasksCreated} tasks created · ${data.tasksSkipped} skipped`,
+      });
+    },
+    onError: () => toast({ title: "Generation failed", variant: "destructive" }),
+  });
+
+  const { data: retainerLogs = [], isLoading: retainerLogsLoading } = useQuery<Array<{
+    id: string;
+    runType: string;
+    status: string;
+    companiesProcessed: number;
+    tasksCreated: number;
+    tasksSkipped: number;
+    dryRun: boolean;
+    errorMessage: string | null;
+    details: string | null;
+    triggeredBy: string | null;
+    createdAt: string;
+  }>>({
+    queryKey: ["/api/admin/retainer-generation-logs"],
+  });
+
+  const resetCatForm = () => {
+    setCatFormOpen(false);
+    setEditingCat(null);
+    setCatName("");
+    setCatColor("#6366f1");
+    setCatIcon("FileText");
+    setCatDescription("");
+  };
+
+  const openEditCat = (cat: TaskCategory) => {
+    setEditingCat(cat);
+    setCatName(cat.name);
+    setCatColor(cat.color || "#6366f1");
+    setCatIcon(cat.icon || "FileText");
+    setCatDescription(cat.description || "");
+    setCatFormOpen(true);
+  };
+
+  const handleSaveCat = () => {
+    if (!catName.trim()) return toast({ title: "Name is required", variant: "destructive" });
+    const payload = { name: catName.trim(), color: catColor, icon: catIcon, description: catDescription };
+    if (editingCat) {
+      updateCatMutation.mutate({ id: editingCat.id, data: payload });
+    } else if (catSubTab === "global") {
+      createCatMutation.mutate(payload);
+    } else {
+      if (!catCompanyId) return toast({ title: "Select a company first", variant: "destructive" });
+      createCompanyCatMutation.mutate({ ...payload, isGlobal: false });
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -223,8 +407,10 @@ export default function AdminSettings() {
           <MobileTabMenu
             tabs={[
               { value: "tags", label: "User Tags" },
+              { value: "categories", label: "Categories" },
               { value: "maintenance", label: "Maintenance" },
               { value: "hubspot", label: "HubSpot" },
+              { value: "retainer", label: "Retainer" },
             ]}
             activeTab={settingsTab}
             onTabChange={setSettingsTab}
@@ -235,6 +421,10 @@ export default function AdminSettings() {
               <Tag className="h-4 w-4 mr-2" />
               User Tags
             </TabsTrigger>
+            <TabsTrigger value="categories" data-testid="tab-categories">
+              <Layers className="h-4 w-4 mr-2" />
+              Categories
+            </TabsTrigger>
             <TabsTrigger value="maintenance" data-testid="tab-maintenance">
               <RefreshCw className="h-4 w-4 mr-2" />
               Maintenance
@@ -242,6 +432,10 @@ export default function AdminSettings() {
             <TabsTrigger value="hubspot" data-testid="tab-hubspot">
               <Cloud className="h-4 w-4 mr-2" />
               HubSpot
+            </TabsTrigger>
+            <TabsTrigger value="retainer" data-testid="tab-retainer">
+              <Bot className="h-4 w-4 mr-2" />
+              Retainer
             </TabsTrigger>
           </TabsList>
 
@@ -765,6 +959,348 @@ export default function AdminSettings() {
                 )}
               </>
             )}
+          </TabsContent>
+
+          {/* ── Categories Tab ─────────────────────────────────────────── */}
+          <TabsContent value="categories" className="mt-6 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Task &amp; Board Categories</h2>
+                <p className="text-sm text-muted-foreground">Global categories apply to all companies. Add company-specific overrides per company.</p>
+              </div>
+              <div className="flex gap-2">
+                {globalCategories.length === 0 && !globalCatsLoading && (
+                  <Button variant="outline" onClick={() => seedCatsMutation.mutate()} disabled={seedCatsMutation.isPending} data-testid="button-seed-categories">
+                    {seedCatsMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                    Seed Defaults
+                  </Button>
+                )}
+                <Button onClick={() => { resetCatForm(); setCatFormOpen(true); }} data-testid="button-add-category">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Category
+                </Button>
+              </div>
+            </div>
+
+            {/* Add / Edit dialog */}
+            <Dialog open={catFormOpen} onOpenChange={(o) => { if (!o) resetCatForm(); }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{editingCat ? "Edit Category" : catSubTab === "global" ? "New Global Category" : "New Company Category"}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-1">
+                    <Label>Name</Label>
+                    <Input value={catName} onChange={e => setCatName(e.target.value)} placeholder="e.g. Content Writing" data-testid="input-cat-name" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Color</Label>
+                    <div className="flex items-center gap-3">
+                      <input type="color" value={catColor} onChange={e => setCatColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer border" data-testid="input-cat-color" />
+                      <span className="text-sm font-mono text-muted-foreground">{catColor}</span>
+                      <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: catColor }} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Icon</Label>
+                    <div className="grid grid-cols-7 gap-1">
+                      {ICON_OPTIONS.map(icon => (
+                        <button
+                          key={icon}
+                          type="button"
+                          onClick={() => setCatIcon(icon)}
+                          className={`p-2 rounded border flex items-center justify-center transition-colors ${catIcon === icon ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}
+                          title={icon}
+                          data-testid={`icon-option-${icon}`}
+                        >
+                          <CategoryIcon name={icon} className="h-4 w-4" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Description <span className="text-muted-foreground">(optional)</span></Label>
+                    <Textarea value={catDescription} onChange={e => setCatDescription(e.target.value)} placeholder="Short description" rows={2} data-testid="input-cat-description" />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={resetCatForm}>Cancel</Button>
+                    <Button onClick={handleSaveCat} disabled={createCatMutation.isPending || updateCatMutation.isPending || createCompanyCatMutation.isPending} data-testid="button-save-category">
+                      {(createCatMutation.isPending || updateCatMutation.isPending || createCompanyCatMutation.isPending) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                      {editingCat ? "Save Changes" : "Create Category"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Sub-tabs */}
+            <Tabs value={catSubTab} onValueChange={v => { setCatSubTab(v); resetCatForm(); }} className="w-full">
+              <TabsList>
+                <TabsTrigger value="global" data-testid="cat-subtab-global">Global Categories</TabsTrigger>
+                <TabsTrigger value="company" data-testid="cat-subtab-company">Per-Company Overrides</TabsTrigger>
+              </TabsList>
+
+              {/* Global categories list */}
+              <TabsContent value="global" className="mt-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    {globalCatsLoading ? (
+                      <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}</div>
+                    ) : globalCategories.length === 0 ? (
+                      <div className="text-center py-10 text-muted-foreground">
+                        <Layers className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                        <p className="font-medium">No global categories yet</p>
+                        <p className="text-sm mt-1">Click "Seed Defaults" to add the standard set, or "Add Category" to create your own.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y">
+                        {globalCategories.map(cat => (
+                          <div key={cat.id} className="flex items-center gap-3 py-3" data-testid={`cat-row-${cat.id}`}>
+                            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#94a3b8" }} />
+                            <div className="flex items-center gap-1.5 shrink-0 text-muted-foreground">
+                              <CategoryIcon name={cat.icon} className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{cat.name}</p>
+                              {cat.description && <p className="text-xs text-muted-foreground truncate">{cat.description}</p>}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button variant="ghost" size="icon" onClick={() => openEditCat(cat)} data-testid={`button-edit-cat-${cat.id}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => deleteCatMutation.mutate(cat.id)} disabled={deleteCatMutation.isPending} data-testid={`button-delete-cat-${cat.id}`}>
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Per-company categories */}
+              <TabsContent value="company" className="mt-4 space-y-4">
+                <div className="flex items-center gap-3">
+                  <Select value={catCompanyId} onValueChange={setCatCompanyId}>
+                    <SelectTrigger className="max-w-xs" data-testid="select-cat-company">
+                      <SelectValue placeholder="Select a company…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(companies || []).map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {catCompanyId && (
+                    <Button size="sm" onClick={() => { setCatSubTab("company"); setCatFormOpen(true); }} data-testid="button-add-company-cat">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Override
+                    </Button>
+                  )}
+                </div>
+
+                {catCompanyId && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Company-Specific Categories</CardTitle>
+                      <CardDescription className="text-xs">These categories are only available to this company. Global categories are always available.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {companyCatsLoading ? (
+                        <div className="space-y-2">{[1,2].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}</div>
+                      ) : companyOnlyCategories.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No company-specific categories. Global categories apply by default.</p>
+                      ) : (
+                        <div className="divide-y">
+                          {companyOnlyCategories.map(cat => (
+                            <div key={cat.id} className="flex items-center gap-3 py-3" data-testid={`company-cat-row-${cat.id}`}>
+                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color || "#94a3b8" }} />
+                              <CategoryIcon name={cat.icon} className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{cat.name}</p>
+                                {cat.description && <p className="text-xs text-muted-foreground truncate">{cat.description}</p>}
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button variant="ghost" size="icon" onClick={() => openEditCat(cat)} data-testid={`button-edit-company-cat-${cat.id}`}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => deleteCatMutation.mutate(cat.id)} disabled={deleteCatMutation.isPending} data-testid={`button-delete-company-cat-${cat.id}`}>
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+
+          {/* ── Retainer Auto-Generation ─────────────────────────────── */}
+          <TabsContent value="retainer" className="mt-6 space-y-6">
+            {/* Global settings card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5" />
+                  Auto-Generation Settings
+                </CardTitle>
+                <CardDescription>
+                  Control the daily scheduler that generates retainer tasks for all active clients.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {retainerSettingsLoading ? (
+                  <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}</div>
+                ) : (
+                  <>
+                    {/* Global enable */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Enable auto-generation</p>
+                        <p className="text-xs text-muted-foreground">Runs daily at 7:00 AM ET for all active retainer clients</p>
+                      </div>
+                      <Switch
+                        checked={retainerSettings?.autoGenerationEnabled ?? true}
+                        onCheckedChange={v => saveRetainerSettingsMutation.mutate({ autoGenerationEnabled: v })}
+                        disabled={saveRetainerSettingsMutation.isPending}
+                        data-testid="switch-retainer-autogen"
+                      />
+                    </div>
+
+                    {/* Dry-run mode */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Dry-run mode</p>
+                        <p className="text-xs text-muted-foreground">Preview what would be generated without actually creating tasks</p>
+                      </div>
+                      <Switch
+                        checked={retainerSettings?.dryRun ?? false}
+                        onCheckedChange={v => saveRetainerSettingsMutation.mutate({ dryRun: v })}
+                        disabled={saveRetainerSettingsMutation.isPending}
+                        data-testid="switch-retainer-dryrun"
+                      />
+                    </div>
+
+                    {/* Generation window */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-medium text-sm">Default generation window</p>
+                        <p className="text-xs text-muted-foreground">How far ahead to schedule tasks (per-client override applies)</p>
+                      </div>
+                      <Select
+                        value={String(retainerSettings?.generationWindowDays ?? 30)}
+                        onValueChange={v => saveRetainerSettingsMutation.mutate({ generationWindowDays: parseInt(v) })}
+                      >
+                        <SelectTrigger className="w-28" data-testid="select-retainer-window">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="14">14 days</SelectItem>
+                          <SelectItem value="30">30 days</SelectItem>
+                          <SelectItem value="60">60 days</SelectItem>
+                          <SelectItem value="90">90 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Manual run buttons */}
+                    <div className="flex items-center gap-3 pt-2 border-t">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => runGenerationMutation.mutate(false)}
+                        disabled={runGenerationMutation.isPending}
+                        data-testid="button-run-generation"
+                      >
+                        {runGenerationMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                        Run Now
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => runGenerationMutation.mutate(true)}
+                        disabled={runGenerationMutation.isPending}
+                        data-testid="button-dry-run-generation"
+                      >
+                        {runGenerationMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CalendarClock className="h-4 w-4 mr-2" />}
+                        Dry Run
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Generation logs */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarClock className="h-4 w-4" />
+                  Generation History
+                </CardTitle>
+                <CardDescription>Last 50 scheduler runs</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {retainerLogsLoading ? (
+                  <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}</div>
+                ) : retainerLogs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No generation runs yet. Click "Run Now" to trigger the first one.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-muted-foreground border-b">
+                          <th className="text-left pb-2 pr-4 font-medium">When</th>
+                          <th className="text-left pb-2 pr-4 font-medium">Type</th>
+                          <th className="text-left pb-2 pr-4 font-medium">Status</th>
+                          <th className="text-right pb-2 pr-4 font-medium">Companies</th>
+                          <th className="text-right pb-2 pr-4 font-medium">Created</th>
+                          <th className="text-right pb-2 font-medium">Skipped</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {retainerLogs.map(log => (
+                          <tr key={log.id} className="text-xs" data-testid={`row-retainer-log-${log.id}`}>
+                            <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">
+                              {new Date(log.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}
+                            </td>
+                            <td className="py-2.5 pr-4">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${log.runType === "manual" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>
+                                {log.runType}
+                              </span>
+                            </td>
+                            <td className="py-2.5 pr-4">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                log.status === "success" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" :
+                                log.status === "dry_run" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" :
+                                log.status === "skipped" ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" :
+                                log.status === "partial" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300" :
+                                "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                              }`}>
+                                {log.status}
+                              </span>
+                              {log.dryRun && log.status !== "dry_run" && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">dry</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 pr-4 text-right font-mono">{log.companiesProcessed}</td>
+                            <td className="py-2.5 pr-4 text-right font-mono text-green-600 dark:text-green-400">{log.tasksCreated}</td>
+                            <td className="py-2.5 text-right font-mono text-muted-foreground">{log.tasksSkipped}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

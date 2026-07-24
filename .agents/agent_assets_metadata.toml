@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "KjJoJZFyrr4GMJYk94fAO"
+uri = "file://schema_export.zip"
+type = "unspecified"
+title = "schema.sql (download)"

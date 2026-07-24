@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { ChevronLeft, ChevronRight, Repeat, Calendar as CalendarIcon, Clock, Check, Circle, Video } from "lucide-react";
 import type { Company, Task, MeetingRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod } from "@shared/billing";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface CalendarMeeting {
@@ -263,6 +263,7 @@ export default function ClientCalendar({ companyId }: ClientCalendarProps) {
   };
 
   const toggleTaskCompletionMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: { taskId: string; isCompleted: boolean }) => {
       return apiRequest("PUT", `/api/tasks/${data.taskId}/completion`, data);
     },

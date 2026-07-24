@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BarChart3, Users, CheckCircle, Sparkles } from "lucide-react";
-import logoImage from "@assets/near-me-connect-logo-nobg.png";
+import logoImage from "@assets/near-me-connect-logo.png";
 
 export default function LandingPage() {
   return (
@@ -10,9 +10,8 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 border-b bg-background/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16 gap-4">
-            <div className="flex items-center gap-2">
-              <img src={logoImage} alt="Near Me Connect" className="h-10 w-auto dark:brightness-0 dark:invert" />
-              <span className="text-lg font-bold tracking-tight">Near Me Connect</span>
+            <div className="flex items-center">
+              <img src={logoImage} alt="Near Me Connect" className="w-[100px] h-auto dark:brightness-0 dark:invert" />
             </div>
             <div className="flex items-center gap-3">
               <ThemeToggle />
@@ -27,7 +26,7 @@ export default function LandingPage() {
       <main className="pt-16">
         <section className="py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-4xl sm:text-5xl font-serif font-bold tracking-tight mb-6">
+            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-6">
               Your Marketing Partner Portal
             </h1>
             <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">

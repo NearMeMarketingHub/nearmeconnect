@@ -194,6 +194,25 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* tldraw owns its own styling — keep our global border/color resets out */
+  .tl-container,
+  .tl-container * {
+    border-color: revert;
+  }
+  .tl-container svg {
+    color: inherit;
+  }
+}
+
+/* Make sure tldraw's floating UI (toolbar, panels, popovers) stays on top
+   and isn't clipped by surrounding flex/overflow containers. */
+.tl-container { position: absolute; inset: 0; z-index: 1; }
+.tlui-layout, .tlui-layout__top, .tlui-layout__bottom,
+.tlui-toolbar, .tlui-menu, .tlui-popover,
+.tlui-style-panel__wrapper {
+  z-index: 50 !important;
+  pointer-events: auto;
 }
 
 /**

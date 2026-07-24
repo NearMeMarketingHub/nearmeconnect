@@ -41,14 +41,23 @@ export const getQueryFn: <T>(options: {
     return await res.json();
   };
 
+/**
+ * Spread into useMutation options for idempotent mutations (PATCH/PUT/DELETE)
+ * to get one automatic retry on transient server errors (5xx).
+ * Do NOT use on POST mutations that create records or trigger side-effects.
+ */
+export const retryTransient = {
+  retry: (count: number, error: Error) => count < 1 && !error.message.startsWith('4'),
+} as const;
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: true,
-      staleTime: 0,
-      retry: false,
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+      retry: (count, error) => count < 1 && !error.message.startsWith('4'),
     },
     mutations: {
       retry: false,

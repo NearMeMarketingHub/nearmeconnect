@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Notification } from "@shared/schema";
 
@@ -50,10 +50,6 @@ export function NotificationBell() {
     queryKey: ["/api/notifications"],
   });
 
-  const { data: userInfo } = useQuery<{ isAdmin: boolean }>({
-    queryKey: ["/api/auth/user"],
-  });
-
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
   });
@@ -61,6 +57,7 @@ export function NotificationBell() {
   const unreadCount = unreadData?.count ?? 0;
 
   const markReadMutation = useMutation({
+    ...retryTransient,
     mutationFn: (id: string) => apiRequest("PATCH", `/api/notifications/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -77,6 +74,7 @@ export function NotificationBell() {
   });
 
   const clearReadMutation = useMutation({
+    ...retryTransient,
     mutationFn: () => apiRequest("DELETE", "/api/notifications/clear-read"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
@@ -86,35 +84,12 @@ export function NotificationBell() {
 
   const readCount = notifications.filter((n) => n.isRead).length;
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const handleNotificationClick = (notification: Notification) => {
     if (!notification.isRead) {
       markReadMutation.mutate(notification.id);
     }
     if (notification.link) {
-      let link = notification.link;
-
-      // Admin users should not navigate to client-only URLs
-      if (userInfo?.isAdmin && link.startsWith("/client/tasks")) {
-        const taskId =
-          notification.relatedTaskId ||
-          new URLSearchParams(link.split("?")[1] || "").get("taskId");
-        if (taskId) {
-          try {
-            const res = await fetch(`/api/tasks/${taskId}`);
-            if (res.ok) {
-              const task = await res.json();
-              link = `/admin/companies/${task.companyId}?taskId=${task.id}`;
-            } else {
-              link = "/admin/dashboard";
-            }
-          } catch {
-            link = "/admin/dashboard";
-          }
-        } else {
-          link = "/admin/dashboard";
-        }
-      }
-
+      const link = notification.link;
       setOpen(false);
       setTimeout(() => navigate(link), 0);
     }

@@ -1,0 +1,153 @@
+Build a full marketing content calendar. Reference: CoSchedule, Planable, 
+Sprout Social, Buffer, Hootsuite for UX patterns.
+
+=== ROUTES ===
+/content-calendar  — all companies (admin view)
+/company/:companyId/content-calendar  — single company view
+
+=== FOUR VIEW MODES (toggle in header) ===
+
+MODE 1: MONTH CALENDAR (default)
+  Standard 7-column month grid.
+  
+  Each day cell shows:
+    Content items as platform-colored chips:
+      Google Business = blue (#4285F4)
+      Facebook = indigo (#1877F2)
+      Instagram = pink/purple gradient chip
+      LinkedIn = sky (#0A66C2)
+      Email = amber (#F59E0B)
+      Blog = emerald (#10B981)
+      Other = gray
+    Chips show: platform icon + first 25 chars of title
+    Day cells show client name badge if in all-companies view
+  
+  Click chip → opens Content Item Modal (see below)
+  Click empty day → opens Content Item Modal pre-filled with that date
+  
+  Month navigation: prev/next arrows + month/year picker
+  
+  Platform filter pills above calendar (click to show/hide each platform)
+  Status filter (All | Draft | Approved | Scheduled | Published)
+  Company filter (all-companies view only)
+
+MODE 2: WEEK VIEW
+  7-column week grid with time slots (8am–8pm)
+  Drag content items to reschedule (updates scheduled_date + scheduled_time)
+  Items with scheduled_time appear in the correct time slot
+  Items without scheduled_time appear at top of day in "Any Time" zone
+
+MODE 3: LIST VIEW  
+  Table: Date | Company | Platform | Type | Title | Pillar | Assigned To | Status | Actions
+  Sort by any column
+  Inline status change (click badge → dropdown)
+  Bulk select + bulk status change
+  Export button → CSV of filtered results
+
+MODE 4: QUEUE VIEW (Buffer-style)
+  Shows upcoming scheduled items in chronological order as a flat list
+  Grouped by "Today", "Tomorrow", "This Week", "Next Week", "Later"
+  Each item: platform icon + company + title + time + status badge
+  Drag to reorder within a day (updates scheduled_time)
+  "Push to HubSpot" button on each item → pushes to HubSpot Social API
+
+=== CONTENT ITEM MODAL ===
+Universal create/edit modal for content_calendar_items.
+
+TABS within the modal:
+  [Content] [Schedule] [Media] [HubSpot] [Activity]
+
+CONTENT TAB:
+  Company (dropdown — required)
+  Platform (dropdown with icons — required)
+  Content Type: post | story | reel | article | newsletter | ad | event | offer | product
+  Content Pillar (dropdown — loads from content_pillars for selected company)
+  Assigned To (dropdown — loads from company_members for selected company)
+  Title (internal reference name — not published)
+  Body Copy / Caption (textarea):
+    Live character counter with platform limits:
+      Google Business: 1,500 | Facebook: 63,206 | Instagram: 2,200
+      LinkedIn: 3,000 | Email: unlimited | Blog: unlimited
+    Counter turns orange at 90% limit, red at 100%
+  Hashtags (tag input — shows character count toward limit)
+  Call to Action text + CTA URL
+
+  GBP EXTENDED FIELDS (show only when platform = google_business):
+    Post Type: What's New | Event | Offer | Product
+    Event: event title, start datetime, end datetime
+    Offer: offer title, start date, end date, coupon code, terms, redeem URL  
+    Product: product name, price/range, description
+
+SCHEDULE TAB:
+  Scheduled Date (date picker)
+  Scheduled Time (time picker, optional)
+  Status: Draft | Approved | Scheduled | Published | Archived
+  If status set to "Approved": records approved_by = current user, approved_at = now
+  If status set to "Published": records published_at = now
+  "Push to HubSpot Social" toggle (when scheduled, auto-push via HubSpot Social API)
+  "Create Task" toggle (creates a linked task in tasks table for team to execute)
+
+MEDIA TAB:
+  "Attach from Asset Library" → opens content_assets picker for this company
+    Shows thumbnail grid of assets filtered by this company + optional pillar filter
+    Multi-select → saves file URLs to content_calendar_items.media_urls (JSON array)
+  "Upload New Asset" → triggers upload flow → saves to content_assets first → 
+    then attaches to this calendar item
+  Shows currently attached assets with remove button
+
+HUBSPOT TAB (shows only if company has HubSpot connected):
+  Toggle: "Sync to HubSpot"
+  Shows hubspot_post_id if already pushed
+  "Push to HubSpot Social Now" button
+  HubSpot Campaign association dropdown (pulls from HubSpot campaigns API)
+  "View in HubSpot" link (if hubspot_post_id is set)
+
+ACTIVITY TAB:
+  Audit log of all changes to this item:
+  - Created by X at time
+  - Status changed from X to Y by Z at time
+  - Approved by X at time
+
+=== APPROVAL WORKFLOW ===
+Status flow: Draft → In Review → Approved → Scheduled → Published
+  
+  Draft: creator can edit freely
+  In Review: notify assigned reviewer (via notifications table)
+  Approved: approved_by + approved_at recorded, can now be scheduled/pushed
+  Scheduled: locked from editing unless reverted to Draft
+  Published: archive-only, no edits
+
+"Request Approval" button → changes status to In Review + 
+  creates notification for company admin + account manager
+
+=== BULK SCHEDULE GENERATOR ===
+"Build [Month] Schedule" wizard button (inspired by CoSchedule's ReQueue):
+  Step 1: Company + Month selection
+  Step 2: Platform selection (which platforms to populate)
+  Step 3: Frequency per platform 
+    (e.g., GBP: 3x/week Mon/Wed/Fri, Facebook: 5x/week, Instagram: 4x/week)
+  Step 4: Pillar rotation 
+    (distribute content evenly across active pillars — e.g., 4 pillars, 
+    each gets ~25% of posts)
+  Step 5: Preview — shows a table of all slots to be created:
+    Date | Platform | Day | Assigned Pillar
+  Step 6: Confirm → bulk INSERT to content_calendar_items as drafts
+  Result: full month of draft placeholders ready to fill with copy + media
+
+=== PLATFORM PREVIEW (Planable-inspired) ===
+In the Content Item Modal, a "Preview" panel on the right side shows:
+  A live mockup of how the post will look on the selected platform:
+    Facebook: post card with profile pic, page name, body copy, image placeholder
+    Instagram: square image placeholder with caption below
+    LinkedIn: post card format with company logo
+    Google Business: GBP post card format
+    Email: email-style preview with subject line + body
+  Updates live as user types body copy
+  Character count shown in platform context
+
+=== MONTHLY EXPORT ===
+"Export Month" button → generates formatted PDF or DOCX:
+  Cover page: company logo + month + year
+  Table of all posts: date, platform, type, title, body copy, CTA, media filename
+  Formatted for client review and sign-off
+  Also generates a "Copy-Paste Ready" version for manual GBP posting

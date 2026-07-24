@@ -34,7 +34,7 @@ export default function Dashboard({ client, onRequestTask }: DashboardProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">
-            Welcome back, {client.contactName.split(" ")[0]}
+            Welcome back, {((client as any).contactName || client.name || "").split(" ")[0]}
           </h1>
           <p className="text-muted-foreground">
             Here's an overview of your account

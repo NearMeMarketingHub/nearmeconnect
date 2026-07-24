@@ -1,61 +1,89 @@
 import { useState, useMemo } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { parseLocalDate } from "@/lib/utils";
 import { AdminLayout } from "@/components/admin-layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Building2, ListTodo, User, Plus, Repeat, CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
-import { useLocation } from "wouter";
-import type { Company, Task, TaskCategory, CampaignRequest, DeliverableType } from "@shared/schema";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  ListTodo, 
+  Calendar, 
+  Building2, 
+  Clock, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Circle,
+  XCircle,
+  Repeat,
+  ChevronRight,
+  ChevronLeft,
+  Tag,
+  User,
+  Users,
+  FolderOpen,
+  Loader2,
+  List,
+  LayoutGrid,
+  Kanban,
+  ArrowRight,
+  X,
+} from "lucide-react";
+
+const QUICK_FILTER_LABELS: Record<string, string> = {
+  overdue:         "Overdue Tasks",
+  due_today:       "Due Today",
+  due_this_week:   "Due This Week",
+  stale:           "Stale Tasks (7d+)",
+  awaiting_client: "Awaiting Client",
+  pending_approval:"Pending Approval",
+  no_category:     "No Category",
+  pending:         "Pending Tasks",
+  in_progress:     "In Progress Tasks",
+  urgent:          "Urgent Tasks",
+};
+import { TaskBoardView } from "@/components/task-board-view";
+import { TaskGroupedView } from "@/components/task-grouped-view";
+import { Link, useLocation, useSearch } from "wouter";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Company, Task, CampaignRequest } from "@shared/schema";
+import { apiRequest, queryClient, retryTransient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
+import { BulkTaskDialog } from "@/components/bulk-task-dialog";
+import { Layers } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { ProjectBoard } from "@/components/project-board";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Target } from "lucide-react";
+
+type StatusFilter = "all" | "pending" | "in_progress" | "review" | "approved" | "completed" | "rejected";
 
 type AssignmentFilter = "all_tasks" | "assigned_to_me";
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
 export default function AdminTasks() {
+  const [viewMode, setViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage">("list");
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("all_tasks");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignRequest | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const TASKS_PER_PAGE = 10;
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const activeQuickFilter = (() => {
+    const p = new URLSearchParams(searchString).get("filter");
+    return p && p in QUICK_FILTER_LABELS ? p : null;
+  })();
   const { toast } = useToast();
   const { user } = useAuth();
-
-  // Bulk create dialog state
-  const [bulkCreateOpen, setBulkCreateOpen] = useState(false);
-  const [bulkTitle, setBulkTitle] = useState("");
-  const [bulkDescription, setBulkDescription] = useState("");
-  const [bulkTopic, setBulkTopic] = useState("");
-  const [bulkPriority, setBulkPriority] = useState("medium");
-  const [bulkDeliverableType, setBulkDeliverableType] = useState("");
-  const [bulkCategoryId, setBulkCategoryId] = useState("none");
-  const [bulkDueDate, setBulkDueDate] = useState("");
-  const [bulkTaskOwnership, setBulkTaskOwnership] = useState<"agency" | "client">("agency");
-  const [bulkNoCredit, setBulkNoCredit] = useState(false);
-  const [bulkIsRecurring, setBulkIsRecurring] = useState(false);
-  const [bulkRecurrencePattern, setBulkRecurrencePattern] = useState("monthly");
-  const [bulkRecurrenceDay, setBulkRecurrenceDay] = useState("1");
-  const [bulkRecurrenceWeekday, setBulkRecurrenceWeekday] = useState("1");
-  const [bulkRecurrenceWeekOrdinal, setBulkRecurrenceWeekOrdinal] = useState("1");
-  const [bulkCalendarDate, setBulkCalendarDate] = useState(new Date());
-  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
-  const [bulkQuantity, setBulkQuantity] = useState("1");
-  const [bulkAssignedTo, setBulkAssignedTo] = useState("none");
-  const [bulkReviewerId, setBulkReviewerId] = useState("none");
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const { data: companies, isLoading: companiesLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
@@ -65,225 +93,639 @@ export default function AdminTasks() {
     queryKey: ["/api/tasks"],
   });
 
+  const { data: mySecondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids"],
+    queryFn: async () => {
+      const res = await fetch("/api/tasks/my-secondary-task-ids");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!user?.id,
+  });
+  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
+
   const { data: campaignRequests } = useQuery<CampaignRequest[]>({
     queryKey: ["/api/admin/campaign-requests"],
   });
 
-  const { data: deliverableTypes = [] } = useQuery<DeliverableType[]>({
-    queryKey: ["/api/deliverable-types"],
-  });
-
-  const { data: globalCategories = [] } = useQuery<TaskCategory[]>({
-    queryKey: ["/api/task-categories/global"],
+  const { data: allCategories } = useQuery<any[]>({
+    queryKey: ["/api/all-task-categories"],
     queryFn: async () => {
-      const r = await fetch("/api/task-categories/global");
-      if (!r.ok) return [];
-      return r.json();
+      if (!companies) return [];
+      const results = await Promise.all(
+        companies.map(c =>
+          fetch(`/api/companies/${c.id}/task-categories`)
+            .then(r => r.ok ? r.json() : [])
+        )
+      );
+      return results.flat();
     },
-    enabled: bulkCreateOpen,
+    enabled: !!companies && companies.length > 0,
   });
 
-  const { data: adminUsersData } = useQuery<{ admins: { userId: string; firstName: string | null; lastName: string | null; email: string }[] }>({
+  const [assigneeTypeFilter, setAssigneeTypeFilter] = useState<"all" | "agency" | "company">("all");
+
+  const { data: adminUsersRaw } = useQuery<any>({
     queryKey: ["/api/admin/users"],
     queryFn: async () => {
-      const r = await fetch("/api/admin/users");
-      if (!r.ok) return { admins: [] };
-      return r.json();
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.admins || []);
     },
-    enabled: bulkCreateOpen,
   });
-  const adminUsers = adminUsersData?.admins ?? [];
+  const adminUsers: { id: string; userId: string; firstName: string; lastName: string; email: string }[] = useMemo(
+    () => Array.isArray(adminUsersRaw) ? adminUsersRaw : (adminUsersRaw?.admins || []),
+    [adminUsersRaw]
+  );
 
-  const { data: companyCategories = [] } = useQuery<TaskCategory[]>({
-    queryKey: ["/api/companies", selectedCompany, "task-categories"],
+  const { data: companyUsersRaw } = useQuery<any>({
+    queryKey: ["/api/admin/companies", selectedCompany, "users"],
     queryFn: async () => {
       if (selectedCompany === "all") return [];
-      const r = await fetch(`/api/companies/${selectedCompany}/task-categories`);
-      if (!r.ok) return [];
-      return r.json();
+      const res = await fetch(`/api/admin/companies/${selectedCompany}/users`);
+      if (!res.ok) return [];
+      const d = await res.json();
+      return Array.isArray(d) ? d : [];
     },
     enabled: selectedCompany !== "all",
   });
+  const companyUsers: { id: string; firstName: string; lastName: string; email: string }[] =
+    Array.isArray(companyUsersRaw) ? companyUsersRaw : [];
 
-  const { data: allCategories = [] } = useQuery<TaskCategory[]>({
-    queryKey: ["/api/task-categories/all"],
-    queryFn: async () => {
-      const r = await fetch("/api/task-categories/all");
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: selectedCompany === "all",
-  });
+  const agencyUserIds = useMemo(() => new Set(adminUsers.map(u => u.userId)), [adminUsers]);
 
-  const handleCompanyChange = (company: string) => setSelectedCompany(company);
-  const handleAssignmentFilterChange = (filter: AssignmentFilter) => setAssignmentFilter(filter);
-
-  const boardTasks = useMemo(() => {
-    if (!allTasks) return [];
-    let tasks = allTasks.filter((t) => t.status !== "cadence_parent");
-    if (selectedCompany !== "all") {
-      tasks = tasks.filter((t) => t.companyId === selectedCompany);
+  const userMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const u of adminUsers) {
+      map[u.userId] = `${u.firstName} ${u.lastName}`.trim() || u.email;
     }
-    if (assignmentFilter === "assigned_to_me" && user) {
-      tasks = tasks.filter((t) => t.assignedTo === user.id || (t as any).assigneeIds?.includes(user.id));
+    for (const u of companyUsers) {
+      map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
     }
-    return tasks;
-  }, [allTasks, selectedCompany, assignmentFilter, user]);
+    return map;
+  }, [adminUsers, companyUsers]);
 
-  const isLoading = companiesLoading || tasksLoading;
-
-  const activeDeliverables = deliverableTypes.filter((d: DeliverableType) => d.isActive !== false);
-
-  const allCompanyIds = companies?.map((c) => c.id) ?? [];
-  const allSelected = allCompanyIds.length > 0 && allCompanyIds.every((id) => selectedCompanyIds.includes(id));
-
-  const toggleAllCompanies = () => {
-    if (allSelected) {
-      setSelectedCompanyIds([]);
-    } else {
-      setSelectedCompanyIds(allCompanyIds);
-    }
-  };
-
-  const toggleCompany = (id: string) => {
-    setSelectedCompanyIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
-
-  const resetBulkForm = () => {
-    setBulkTitle("");
-    setBulkDescription("");
-    setBulkTopic("");
-    setBulkPriority("medium");
-    setBulkDeliverableType("");
-    setBulkCategoryId("none");
-    setBulkDueDate("");
-    setBulkTaskOwnership("agency");
-    setBulkNoCredit(false);
-    setBulkIsRecurring(false);
-    setBulkAssignedTo("none");
-    setBulkReviewerId("none");
-    setBulkRecurrencePattern("monthly");
-    setBulkRecurrenceDay("1");
-    setBulkRecurrenceWeekday("1");
-    setBulkRecurrenceWeekOrdinal("1");
-    setBulkQuantity("1");
-    setSelectedCompanyIds([]);
-  };
-
-  const handleBulkCreate = async () => {
-    if (!bulkTitle.trim()) {
-      toast({ title: "Please enter a task title", variant: "destructive" });
-      return;
-    }
-    if (!bulkDeliverableType) {
-      toast({ title: "Please select a deliverable type", variant: "destructive" });
-      return;
-    }
-    if (selectedCompanyIds.length === 0) {
-      toast({ title: "Please select at least one company", variant: "destructive" });
-      return;
-    }
-
-    const selectedDel = activeDeliverables.find((d: DeliverableType) => d.key === bulkDeliverableType);
-    const creditCost = bulkNoCredit || bulkTaskOwnership === "client" ? "0" : (selectedDel?.credits ?? "1");
-
-    const recurringFields = bulkIsRecurring ? {
-      recurrenceDay: ["monthly", "day_of_month", "quarterly", "semi_annually", "annually"].includes(bulkRecurrencePattern) ? parseInt(bulkRecurrenceDay) : null,
-      recurrenceWeekday: ["day_of_week", "biweekly", "weekly", "annually"].includes(bulkRecurrencePattern) ? parseInt(bulkRecurrenceWeekday) : null,
-      recurrenceWeekOrdinal: bulkRecurrencePattern === "day_of_week" ? parseInt(bulkRecurrenceWeekOrdinal) : null,
-    } : { recurrenceDay: null, recurrenceWeekday: null, recurrenceWeekOrdinal: null };
-
-    const qty = parseInt(bulkQuantity) || 1;
-    const payload = {
-      title: bulkTitle.trim(),
-      description: bulkDescription.trim() || null,
-      topic: bulkTopic.trim() || null,
-      priority: bulkPriority,
-      deliverableType: bulkDeliverableType,
-      creditCost,
-      status: "pending",
-      type: "assigned",
-      dueDate: bulkDueDate || null,
-      taskOwnership: bulkTaskOwnership,
-      isRecurring: bulkIsRecurring,
-      recurrencePattern: bulkIsRecurring ? bulkRecurrencePattern : null,
-      categoryId: bulkCategoryId && bulkCategoryId !== "none" ? bulkCategoryId : null,
-      assignedTo: bulkAssignedTo && bulkAssignedTo !== "none" ? bulkAssignedTo : null,
-      reviewerId: bulkReviewerId && bulkReviewerId !== "none" ? bulkReviewerId : null,
-      bulkQuantity: qty > 1 ? qty : null,
-      ...recurringFields,
-    };
-
-    setBulkSubmitting(true);
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const companyId of selectedCompanyIds) {
-      try {
-        await apiRequest("POST", "/api/tasks", { ...payload, companyId });
-        successCount++;
-      } catch {
-        errorCount++;
-      }
-    }
-
-    await queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-    setBulkSubmitting(false);
-
-    if (successCount > 0) {
-      toast({
-        title: `Created ${successCount} task${successCount !== 1 ? "s" : ""} successfully${errorCount > 0 ? ` (${errorCount} failed)` : ""}`,
-      });
-      setBulkCreateOpen(false);
-      resetBulkForm();
-    } else {
-      toast({ title: "Failed to create tasks", variant: "destructive" });
-    }
+  const getCampaignName = (campaignRequestId: string | null) => {
+    if (!campaignRequestId || !campaignRequests) return null;
+    const campaign = campaignRequests.find(c => c.id === campaignRequestId);
+    return campaign?.name || "Campaign";
   };
 
   const getCampaignForTask = (campaignRequestId: string | null) => {
     if (!campaignRequestId || !campaignRequests) return null;
-    return campaignRequests.find((c) => c.id === campaignRequestId) || null;
+    return campaignRequests.find(c => c.id === campaignRequestId) || null;
+  };
+
+  const updateTaskMutation = useMutation({
+    ...retryTransient,
+    mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
+      return res.json() as Promise<Task>;
+    },
+    onMutate: async ({ taskId, updates }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks"] });
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", taskId] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks"]);
+      const previousTask = queryClient.getQueryData<Task>(["/api/tasks", taskId]);
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks"], previousTasks.map(t =>
+          t.id === taskId ? { ...t, ...updates } : t
+        ));
+      }
+      if (previousTask) {
+        queryClient.setQueryData<Task>(["/api/tasks", taskId], { ...previousTask, ...updates });
+      }
+      return { previousTasks, previousTask };
+    },
+    onSuccess: (
+      updatedTask: Task,
+      { updates }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
+    ) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks"], (old) =>
+        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+      );
+      queryClient.setQueryData<Task>(["/api/tasks", updatedTask.id], updatedTask);
+      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+      const prevStatus = context?.previousTask?.status;
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== prevStatus) {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", updatedTask.companyId, "credits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
+      }
+      toast({ title: "Task updated successfully" });
+      setSelectedTask(null);
+    },
+    onError: (
+      _err: Error,
+      { taskId }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[]; previousTask?: Task } | undefined
+    ) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["/api/tasks"], context.previousTasks);
+      }
+      if (context?.previousTask) {
+        queryClient.setQueryData(["/api/tasks", taskId], context.previousTask);
+      }
+      toast({ title: "Failed to update task", variant: "destructive" });
+    },
+  });
+
+  const bulkActionMutation = useMutation({
+    mutationFn: async ({ taskIds, action }: { taskIds: string[]; action: "approve" | "reject" }) => {
+      return apiRequest("POST", "/api/admin/tasks/bulk-action", { taskIds, action });
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      setSelectedTaskIds(new Set());
+      toast({
+        title: `Bulk action completed`,
+        description: `${data.succeeded} succeeded, ${data.failed} failed out of ${data.total} tasks`,
+      });
+    },
+    onError: () => {
+      toast({ title: "Failed to process bulk action", variant: "destructive" });
+    },
+  });
+
+  const filteredTasks = useMemo(() => {
+    if (!allTasks) return [];
+
+    // Quick filter from dashboard KPI cards — bypasses month window, shows all matching tasks
+    if (activeQuickFilter) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      let tasks = allTasks.filter(t => {
+        if (t.status === "cadence_parent") return false;
+        if (activeQuickFilter === "overdue") {
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+          return d < today;
+        }
+        if (activeQuickFilter === "due_today") {
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+          return d.getTime() === today.getTime();
+        }
+        if (activeQuickFilter === "due_this_week") {
+          // Include all incomplete tasks with a due date so we can bucket them
+          // (this week / prior week / this month / last month / older)
+          if (!t.dueDate || ["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          return true;
+        }
+        if (activeQuickFilter === "stale") {
+          if (["completed", "rejected", "cancelled"].includes(t.status)) return false;
+          const lastIso = (t as any).updatedAt || (t as any).createdAt;
+          if (!lastIso) return false;
+          const ageDays = (Date.now() - new Date(lastIso).getTime()) / 86400000;
+          return ageDays >= 7;
+        }
+        if (activeQuickFilter === "awaiting_client") return t.status === "review";
+        if (activeQuickFilter === "pending_approval") return t.approvalStatus === "pending_approval" || t.status === "approved";
+        if (activeQuickFilter === "no_category") return !(t as any).categoryId && !["completed", "rejected", "cancelled"].includes(t.status);
+        if (activeQuickFilter === "pending") return t.status === "pending";
+        if (activeQuickFilter === "in_progress") return t.status === "in_progress";
+        if (activeQuickFilter === "urgent") return (t.priority === "urgent" || t.priority === "high") && t.status !== "completed";
+        return true;
+      });
+      if (assignmentFilter === "assigned_to_me" && user) tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+      if (selectedCompany !== "all") tasks = tasks.filter(t => t.companyId === selectedCompany);
+      tasks.sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
+      });
+      return tasks;
+    }
+
+    // Normal filtering (with month window)
+    let tasks = allTasks.filter(t => t.status !== "cadence_parent");
+    
+    if (assignmentFilter === "assigned_to_me" && user) {
+      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+    }
+    
+    if (selectedCompany !== "all") {
+      tasks = tasks.filter(t => t.companyId === selectedCompany);
+    }
+    
+    if (statusFilter === "rejected") {
+      tasks = tasks.filter(t => t.approvalStatus === "rejected");
+    } else if (statusFilter === "all") {
+      tasks = tasks.filter(t => t.status !== "completed" && t.approvalStatus !== "rejected");
+    } else if (statusFilter === "completed") {
+      tasks = tasks.filter(t => t.status === "completed" && t.approvalStatus !== "rejected");
+    } else {
+      tasks = tasks.filter(t => t.status === statusFilter && t.approvalStatus !== "rejected");
+    }
+
+    const year = taskMonthDate.getFullYear();
+    const month = taskMonthDate.getMonth() + 1;
+    tasks = tasks.filter(t => {
+      if (!t.dueDate) {
+        if (t.status === "completed" && t.completedAt) {
+          const cd = new Date(t.completedAt);
+          return cd.getFullYear() === year && cd.getMonth() + 1 === month;
+        }
+        return true;
+      }
+      const d = parseLocalDate(t.dueDate);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    });
+    
+    tasks.sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
+    });
+    
+    return tasks;
+  }, [allTasks, selectedCompany, statusFilter, taskMonthDate, assignmentFilter, user, activeQuickFilter]);
+
+  // Reset page when filters change
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PER_PAGE));
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * TASKS_PER_PAGE, currentPage * TASKS_PER_PAGE);
+
+  // Week/month buckets — used when activeQuickFilter === "due_this_week"
+  const weekBuckets = useMemo(() => {
+    if (activeQuickFilter !== "due_this_week") return null;
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const dayOfWeek = now.getDay(); // 0=Sun..6=Sat
+    const daysFromMonday = (dayOfWeek + 6) % 7;
+    const startOfThisWeek = new Date(now); startOfThisWeek.setDate(now.getDate() - daysFromMonday);
+    const startOfNextWeek = new Date(startOfThisWeek); startOfNextWeek.setDate(startOfThisWeek.getDate() + 7);
+    const startOfLastWeek = new Date(startOfThisWeek); startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const buckets: Array<{ id: string; label: string; tasks: Task[] }> = [
+      { id: "this_week",    label: "This Week",     tasks: [] },
+      { id: "prior_week",   label: "Prior Week",    tasks: [] },
+      { id: "this_month",   label: "Earlier This Month", tasks: [] },
+      { id: "last_month",   label: "Last Month",    tasks: [] },
+      { id: "older",        label: "Older",         tasks: [] },
+    ];
+
+    for (const t of filteredTasks) {
+      if (!t.dueDate) continue;
+      const d = parseLocalDate(t.dueDate); d.setHours(0, 0, 0, 0);
+      if (d >= startOfThisWeek && d < startOfNextWeek) buckets[0].tasks.push(t);
+      else if (d >= startOfLastWeek && d < startOfThisWeek) buckets[1].tasks.push(t);
+      else if (d >= startOfThisMonth && d < startOfLastWeek) buckets[2].tasks.push(t);
+      else if (d >= startOfLastMonth && d < startOfThisMonth) buckets[3].tasks.push(t);
+      else buckets[4].tasks.push(t);
+    }
+    return buckets.filter(b => b.tasks.length > 0);
+  }, [filteredTasks, activeQuickFilter]);
+
+  const reviewableOnPage = useMemo(() => {
+    return paginatedTasks.filter(t => t.status === "review" || t.approvalStatus === "pending_approval");
+  }, [paginatedTasks]);
+
+  const allPageReviewableSelected = reviewableOnPage.length > 0 &&
+    reviewableOnPage.every(t => selectedTaskIds.has(t.id));
+
+  const somePageReviewableSelected = reviewableOnPage.some(t => selectedTaskIds.has(t.id));
+
+  const toggleSelectAll = () => {
+    if (allPageReviewableSelected) {
+      const newSet = new Set(selectedTaskIds);
+      reviewableOnPage.forEach(t => newSet.delete(t.id));
+      setSelectedTaskIds(newSet);
+    } else {
+      const newSet = new Set(selectedTaskIds);
+      reviewableOnPage.forEach(t => newSet.add(t.id));
+      setSelectedTaskIds(newSet);
+    }
+  };
+
+  const toggleTaskSelection = (taskId: string) => {
+    const newSet = new Set(selectedTaskIds);
+    if (newSet.has(taskId)) {
+      newSet.delete(taskId);
+    } else {
+      newSet.add(taskId);
+    }
+    setSelectedTaskIds(newSet);
+  };
+
+  // Reset to page 1 when filters change
+  const handleStatusFilterChange = (filter: StatusFilter) => {
+    setStatusFilter(filter);
+    setCurrentPage(1);
+    setSelectedTaskIds(new Set());
+  };
+  const handleCompanyChange = (company: string) => {
+    setSelectedCompany(company);
+    setCurrentPage(1);
+    setSelectedTaskIds(new Set());
+  };
+
+  const getCompanyName = (companyId: string) => {
+    return companies?.find(c => c.id === companyId)?.name || "Unknown";
+  };
+
+  const formatDueDate = (dueDate: string | null, status?: string) => {
+    if (!dueDate) return "No due date";
+    const date = parseLocalDate(dueDate);
+    
+    if (status === "completed" || status === "rejected") {
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const taskDate = new Date(date);
+    taskDate.setHours(0, 0, 0, 0);
+    
+    const diffDays = Math.ceil((taskDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) !== 1 ? 's' : ''}`;
+    } else if (diffDays === 0) {
+      return "Due today";
+    } else if (diffDays === 1) {
+      return "Due tomorrow";
+    } else if (diffDays <= 7) {
+      return `Due in ${diffDays} days`;
+    } else {
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+  };
+
+  const getDueDateColor = (dueDate: string | null, status: string) => {
+    if (status === "completed" || status === "rejected") return "text-muted-foreground";
+    if (!dueDate) return "text-muted-foreground";
+    
+    const date = parseLocalDate(dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const taskDate = new Date(date);
+    taskDate.setHours(0, 0, 0, 0);
+    
+    const diffDays = Math.ceil((taskDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return "text-destructive font-medium";
+    if (diffDays === 0) return "text-orange-600 dark:text-orange-400 font-medium";
+    if (diffDays <= 3) return "text-yellow-600 dark:text-yellow-400";
+    return "text-muted-foreground";
+  };
+
+  const getStatusIcon = (status: string, approvalStatus?: string | null) => {
+    if (approvalStatus === "rejected") {
+      return <XCircle className="w-4 h-4 text-destructive" />;
+    }
+    switch (status) {
+      case "completed":
+        return <CheckCircle2 className="w-4 h-4 text-green-600" />;
+      case "approved":
+        return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+      case "in_progress":
+        return <Clock className="w-4 h-4 text-blue-600" />;
+      case "review":
+        return <AlertTriangle className="w-4 h-4 text-yellow-600" />;
+      default:
+        return <Circle className="w-4 h-4 text-muted-foreground" />;
+    }
+  };
+
+  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case "completed": return "default";
+      case "in_progress": return "secondary";
+      case "review": return "outline";
+      default: return "secondary";
+    }
+  };
+
+  const getPriorityBadgeVariant = (priority: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (priority) {
+      case "urgent": return "destructive";
+      case "high": return "default";
+      default: return "secondary";
+    }
+  };
+
+  const handleAssignmentFilterChange = (filter: AssignmentFilter) => {
+    setAssignmentFilter(filter);
+    setCurrentPage(1);
+  };
+
+  const taskCounts = useMemo(() => {
+    if (!allTasks) return { all: 0, pending: 0, in_progress: 0, completed: 0, review: 0, approved: 0, rejected: 0 };
+    
+    let tasks = allTasks.filter(t => t.status !== "cadence_parent");
+    
+    if (assignmentFilter === "assigned_to_me" && user) {
+      tasks = tasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+    }
+    
+    if (selectedCompany !== "all") {
+      tasks = tasks.filter(t => t.companyId === selectedCompany);
+    }
+
+    const year = taskMonthDate.getFullYear();
+    const month = taskMonthDate.getMonth() + 1;
+    tasks = tasks.filter(t => {
+      if (!t.dueDate) {
+        if (t.status === "completed" && t.completedAt) {
+          const cd = new Date(t.completedAt);
+          return cd.getFullYear() === year && cd.getMonth() + 1 === month;
+        }
+        return true;
+      }
+      const d = parseLocalDate(t.dueDate);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    });
+    
+    return {
+      all: tasks.filter(t => t.status !== "completed" && t.approvalStatus !== "rejected").length,
+      pending: tasks.filter(t => t.status === "pending").length,
+      in_progress: tasks.filter(t => t.status === "in_progress").length,
+      completed: tasks.filter(t => t.status === "completed" && t.approvalStatus !== "rejected").length,
+      review: tasks.filter(t => t.status === "review").length,
+      approved: tasks.filter(t => t.status === "approved").length,
+      rejected: tasks.filter(t => t.approvalStatus === "rejected").length,
+    };
+  }, [allTasks, selectedCompany, assignmentFilter, user, taskMonthDate]);
+
+  const isLoading = companiesLoading || tasksLoading;
+
+  const renderTaskRow = (task: Task) => {
+    const isReviewable = task.status === "review" || task.approvalStatus === "pending_approval";
+    return (
+      <div
+        key={task.id}
+        className="flex items-center justify-between p-4 rounded-lg border hover-elevate cursor-pointer"
+        onClick={() => setSelectedTask(task)}
+        data-testid={`task-row-${task.id}`}
+      >
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          {isReviewable ? (
+            <Checkbox
+              checked={selectedTaskIds.has(task.id)}
+              onCheckedChange={() => toggleTaskSelection(task.id)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 flex-shrink-0"
+              data-testid={`checkbox-task-${task.id}`}
+            />
+          ) : (
+            <button
+              className="mt-0.5 flex-shrink-0 hover:scale-110 transition-transform"
+              data-testid={`button-complete-task-${task.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                const newStatus = task.status === "completed" ? "pending" : "completed";
+                updateTaskMutation.mutate({ taskId: task.id, updates: { status: newStatus } });
+              }}
+              title={task.status === "completed" ? "Mark as pending" : "Mark as completed"}
+            >
+              {getStatusIcon(task.status, task.approvalStatus)}
+            </button>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium truncate">{task.title}</p>
+              {task.isRecurring && (
+                <Repeat className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+              )}
+              {task.deliverableType && (
+                <Badge variant="outline" className="text-xs capitalize">
+                  {task.deliverableType.replace(/_/g, " ")}
+                </Badge>
+              )}
+              {(() => {
+                if (task.parentTaskId) return null;
+                const subs = allTasks?.filter(t => t.parentTaskId === task.id) ?? [];
+                if (subs.length === 0) return null;
+                const done = subs.filter(s => s.status === "completed").length;
+                return (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-muted-foreground" data-testid={`badge-subtasks-${task.id}`}>
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h4" /></svg>
+                    {done}/{subs.length}
+                  </Badge>
+                );
+              })()}
+            </div>
+            {task.description && (
+              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+            )}
+            <div className="flex items-center gap-2 text-sm mt-1 flex-wrap">
+              <Link
+                href={`/admin/companies/${task.companyId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="font-bold text-foreground dark:text-white hover:text-primary hover:underline"
+              >
+                {getCompanyName(task.companyId)}
+              </Link>
+              <span className="text-muted-foreground">•</span>
+              <span className={getDueDateColor(task.dueDate, task.status)}>
+                <Calendar className="w-3 h-3 inline mr-1" />
+                {formatDueDate(task.dueDate, task.status)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <TaskAssigneeAvatars taskId={task.id} />
+          <Badge variant={getPriorityBadgeVariant(task.priority)}>
+            {task.priority}
+          </Badge>
+          <Badge variant={getStatusBadgeVariant(task.status)}>
+            {task.status.replace("_", " ")}
+          </Badge>
+          {task.categoryId && (() => {
+            const cat = (allCategories || []).find((c: any) => c.id === task.categoryId);
+            if (!cat) return null;
+            return (
+              <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
+                {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                {cat.name}
+              </Badge>
+            );
+          })()}
+          {task.campaignRequestId && getCampaignName(task.campaignRequestId) && (
+            <Badge
+              variant="outline"
+              className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                const campaign = getCampaignForTask(task.campaignRequestId);
+                if (campaign) setSelectedCampaign(campaign);
+              }}
+              data-testid={`badge-campaign-${task.id}`}
+            >
+              <Target className="w-3 h-3 mr-1" />
+              {getCampaignName(task.campaignRequestId)}
+            </Badge>
+          )}
+          {task.taskOwnership === "client" && (
+            <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/30 text-xs">
+              Client
+            </Badge>
+          )}
+          {task.creditCost && parseFloat(task.creditCost.toString()) > 0 && (
+            <Badge variant="outline" className="font-mono">
+              {task.creditCost} cr
+            </Badge>
+          )}
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </div>
+      </div>
+    );
   };
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-4">
-        {/* Header */}
+      <div className="p-6 space-y-6">
+        {/* Quick-filter banner */}
+        {activeQuickFilter && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-lg text-sm" data-testid="filter-banner">
+            <span className="font-medium text-primary">{QUICK_FILTER_LABELS[activeQuickFilter]}</span>
+            <span className="text-muted-foreground">— {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}</span>
+            <Link
+              href="/admin/tasks"
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-clear-filter"
+            >
+              <X className="h-3 w-3" />
+              Clear filter
+            </Link>
+          </div>
+        )}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">All Tasks</h1>
-            <p className="text-muted-foreground">Manage and track all tasks across companies</p>
+            <h1 className="text-2xl font-semibold">
+              {activeQuickFilter ? QUICK_FILTER_LABELS[activeQuickFilter] : "All Tasks"}
+            </h1>
+            <p className="text-muted-foreground">
+              {activeQuickFilter ? `${filteredTasks.length} task${filteredTasks.length !== 1 ? "s" : ""} matched` : "Manage and track all tasks across companies"}
+            </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button
-              size="sm"
-              onClick={() => setBulkCreateOpen(true)}
-              data-testid="button-create-task"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              Create Task
-            </Button>
-            <div className="flex gap-1">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Button
-                variant={assignmentFilter === "all_tasks" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleAssignmentFilterChange("all_tasks")}
-                data-testid="filter-all-tasks"
+                variant="outline"
+                size="icon"
+                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCurrentPage(1); }}
+                data-testid="button-task-month-prev"
               >
-                <ListTodo className="w-3 h-3 mr-1" />
-                All Tasks
+                <ChevronLeft className="h-4 w-4" />
               </Button>
+              <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
+                {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </span>
               <Button
-                variant={assignmentFilter === "assigned_to_me" ? "default" : "outline"}
-                size="sm"
-                onClick={() => handleAssignmentFilterChange("assigned_to_me")}
-                data-testid="filter-assigned-to-me"
+                variant="outline"
+                size="icon"
+                onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCurrentPage(1); }}
+                data-testid="button-task-month-next"
               >
-                <User className="w-3 h-3 mr-1" />
-                Assigned to Me
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
             <Select value={selectedCompany} onValueChange={handleCompanyChange}>
@@ -300,468 +742,362 @@ export default function AdminTasks() {
                 ))}
               </SelectContent>
             </Select>
+            <Button onClick={() => setBulkOpen(true)} data-testid="button-open-bulk-task">
+              <Layers className="w-4 h-4 mr-2" />
+              Create for Multiple
+            </Button>
+          </div>
+        </div>
+        <BulkTaskDialog open={bulkOpen} onOpenChange={setBulkOpen} />
+
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex gap-1">
+            <Button
+              variant={assignmentFilter === "all_tasks" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleAssignmentFilterChange("all_tasks")}
+              data-testid="filter-all-tasks"
+            >
+              <ListTodo className="w-3 h-3 mr-1" />
+              All Tasks
+            </Button>
+            <Button
+              variant={assignmentFilter === "assigned_to_me" ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleAssignmentFilterChange("assigned_to_me")}
+              data-testid="filter-assigned-to-me"
+            >
+              <User className="w-3 h-3 mr-1" />
+              Assigned to Me
+            </Button>
+          </div>
+          <div className="h-6 w-px bg-border" />
+          <div className="flex gap-2 flex-wrap">
+          <Button 
+            variant={statusFilter === "all" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("all")}
+            data-testid="filter-all"
+          >
+            All ({taskCounts.all})
+          </Button>
+          <Button 
+            variant={statusFilter === "pending" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("pending")}
+            data-testid="filter-pending"
+          >
+            <Circle className="w-3 h-3 mr-1" />
+            Pending ({taskCounts.pending})
+          </Button>
+          <Button 
+            variant={statusFilter === "in_progress" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("in_progress")}
+            data-testid="filter-in-progress"
+          >
+            <Clock className="w-3 h-3 mr-1" />
+            In Progress ({taskCounts.in_progress})
+          </Button>
+          <Button 
+            variant={statusFilter === "review" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("review")}
+            data-testid="filter-review"
+          >
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Review ({taskCounts.review})
+          </Button>
+          <Button 
+            variant={statusFilter === "approved" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("approved")}
+            data-testid="filter-approved"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Approved ({taskCounts.approved})
+          </Button>
+          <Button 
+            variant={statusFilter === "completed" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => handleStatusFilterChange("completed")}
+            data-testid="filter-completed"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Completed ({taskCounts.completed})
+          </Button>
+          {taskCounts.rejected > 0 && (
+            <Button 
+              variant={statusFilter === "rejected" ? "default" : "outline"} 
+              size="sm"
+              onClick={() => handleStatusFilterChange("rejected")}
+              data-testid="filter-rejected"
+            >
+              Rejected ({taskCounts.rejected})
+            </Button>
+          )}
           </div>
         </div>
 
-        {/* Project Board */}
-        <ProjectBoard
-          companyId={selectedCompany}
-          tasks={boardTasks}
-          categories={selectedCompany === "all" ? allCategories : companyCategories}
-          tasksLoading={isLoading}
-          onTaskClick={setSelectedTask}
-          showCompanyLabel={selectedCompany === "all"}
-          companies={companies?.map((c) => ({ id: c.id, name: c.name }))}
-          disableDnD={selectedCompany === "all"}
-        />
-      </div>
+        <div className="flex items-center justify-end gap-1 flex-wrap" data-testid="view-mode-toggle">
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            data-testid="view-toggle-list"
+          >
+            <List className="w-4 h-4 mr-1" />
+            List
+          </Button>
+          <Button
+            variant={viewMode === "by-assignee" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("by-assignee")}
+            data-testid="view-toggle-by-assignee"
+          >
+            <Users className="w-4 h-4 mr-1" />
+            By Assignee
+          </Button>
+          <Button
+            variant={viewMode === "by-category" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("by-category")}
+            data-testid="view-toggle-by-category"
+          >
+            <FolderOpen className="w-4 h-4 mr-1" />
+            By Category
+          </Button>
+          <Button
+            variant={viewMode === "category" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("category")}
+            data-testid="view-toggle-category"
+          >
+            <LayoutGrid className="w-4 h-4 mr-1" />
+            Category Board
+          </Button>
+          <Button
+            variant={viewMode === "stage" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("stage")}
+            data-testid="view-toggle-stage"
+          >
+            <Kanban className="w-4 h-4 mr-1" />
+            Stage Board
+          </Button>
+        </div>
 
-      {/* Bulk Create Task Dialog */}
-      <Dialog open={bulkCreateOpen} onOpenChange={(open) => { setBulkCreateOpen(open); if (!open) resetBulkForm(); }}>
-        <DialogContent className="max-w-2xl flex flex-col" style={{ maxHeight: "90vh" }} data-testid="dialog-bulk-create-task">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Create Task</DialogTitle>
-            <p className="text-sm text-muted-foreground">Create a task for one or more companies at once.</p>
-          </DialogHeader>
+        {viewMode === "by-assignee" && (
+          <div className="flex items-center gap-2" data-testid="assignee-type-filter">
+            <span className="text-sm text-muted-foreground">Show:</span>
+            <Select value={assigneeTypeFilter} onValueChange={(v) => setAssigneeTypeFilter(v as typeof assigneeTypeFilter)}>
+              <SelectTrigger className="w-44 h-8 text-sm" data-testid="select-assignee-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Assignees</SelectItem>
+                <SelectItem value="agency">Agency Staff</SelectItem>
+                <SelectItem value="company">Company Members</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-            <div className="space-y-5 py-1">
+        {(viewMode === "by-assignee" || viewMode === "by-category") && isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : viewMode === "by-assignee" || viewMode === "by-category" ? (
+          <TaskGroupedView
+            tasks={
+              viewMode === "by-assignee" && assigneeTypeFilter !== "all"
+                ? filteredTasks.filter(t =>
+                    assigneeTypeFilter === "agency"
+                      ? (t.assignedTo ? agencyUserIds.has(t.assignedTo) : false)
+                      : (t.assignedTo ? !agencyUserIds.has(t.assignedTo) : false)
+                  )
+                : filteredTasks
+            }
+            groupBy={viewMode === "by-assignee" ? "assignee" : "category"}
+            categories={allCategories || []}
+            userMap={userMap}
+            onTaskClick={setSelectedTask}
+            getCompanyName={getCompanyName}
+          />
+        ) : viewMode !== "list" ? (
+          <TaskBoardView
+            tasks={filteredTasks}
+            categories={allCategories || []}
+            mode={viewMode === "category" ? "category" : "stage"}
+            onTaskClick={setSelectedTask}
+            onStatusChange={(taskId, newStatus) =>
+              updateTaskMutation.mutate({ taskId, updates: { status: newStatus } })
+            }
+            allowDrag={viewMode === "stage"}
+            getCompanyName={getCompanyName}
+          />
+        ) : (
 
-              {/* Company Selection */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Companies <span className="text-destructive">*</span></Label>
-                <div className="border rounded-md p-3 space-y-2 max-h-44 overflow-y-auto">
-                  <div className="flex items-center gap-2 pb-1 border-b">
-                    <Checkbox
-                      id="bulk-select-all"
-                      checked={allSelected}
-                      onCheckedChange={toggleAllCompanies}
-                      data-testid="checkbox-select-all-companies"
-                    />
-                    <Label htmlFor="bulk-select-all" className="text-sm font-medium cursor-pointer">
-                      Select All Companies
-                    </Label>
-                    {selectedCompanyIds.length > 0 && (
-                      <Badge variant="secondary" className="ml-auto text-xs">
-                        {selectedCompanyIds.length} selected
-                      </Badge>
-                    )}
-                  </div>
-                  {companies?.map((company) => (
-                    <div key={company.id} className="flex items-center gap-2">
-                      <Checkbox
-                        id={`company-${company.id}`}
-                        checked={selectedCompanyIds.includes(company.id)}
-                        onCheckedChange={() => toggleCompany(company.id)}
-                        data-testid={`checkbox-company-${company.id}`}
-                      />
-                      <Label htmlFor={`company-${company.id}`} className="text-sm cursor-pointer">
-                        {company.name}
-                      </Label>
-                    </div>
-                  ))}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ListTodo className="w-5 h-5" />
+                Tasks ({filteredTasks.length})
+              </CardTitle>
+              {selectedTaskIds.size > 0 && (
+                <div className="flex items-center gap-2" data-testid="bulk-action-bar">
+                  <span className="text-sm text-muted-foreground">{selectedTaskIds.size} selected</span>
+                  <Button
+                    size="sm"
+                    onClick={() => bulkActionMutation.mutate({ taskIds: Array.from(selectedTaskIds), action: "approve" })}
+                    disabled={bulkActionMutation.isPending}
+                    data-testid="button-bulk-approve"
+                  >
+                    {bulkActionMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                    Approve All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => bulkActionMutation.mutate({ taskIds: Array.from(selectedTaskIds), action: "reject" })}
+                    disabled={bulkActionMutation.isPending}
+                    data-testid="button-bulk-reject"
+                  >
+                    {bulkActionMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <XCircle className="w-3 h-3 mr-1" />}
+                    Reject All
+                  </Button>
                 </div>
-              </div>
-
-              {/* Task Title */}
-              <div className="space-y-1">
-                <Label htmlFor="bulk-title">Title <span className="text-destructive">*</span></Label>
-                <Input
-                  id="bulk-title"
-                  value={bulkTitle}
-                  onChange={(e) => setBulkTitle(e.target.value)}
-                  placeholder="Task title"
-                  data-testid="input-bulk-title"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <Label htmlFor="bulk-description">Description</Label>
-                <Textarea
-                  id="bulk-description"
-                  value={bulkDescription}
-                  onChange={(e) => setBulkDescription(e.target.value)}
-                  placeholder="Optional description"
-                  rows={2}
-                  data-testid="input-bulk-description"
-                />
-              </div>
-
-              {/* Topic */}
-              <div className="space-y-1">
-                <Label htmlFor="bulk-topic">Topic <span className="text-muted-foreground font-normal">(per-instance, not copied to next recurrence)</span></Label>
-                <Input
-                  id="bulk-topic"
-                  value={bulkTopic}
-                  onChange={(e) => setBulkTopic(e.target.value)}
-                  placeholder="e.g. Q3 blog, July social content"
-                  data-testid="input-bulk-topic"
-                />
-              </div>
-
-              {/* Deliverable Type + Priority row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Deliverable Type <span className="text-destructive">*</span></Label>
-                  <Select value={bulkDeliverableType} onValueChange={setBulkDeliverableType}>
-                    <SelectTrigger data-testid="select-bulk-deliverable">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeDeliverables.map((d: DeliverableType) => (
-                        <SelectItem key={d.key} value={d.key}>{d.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Priority</Label>
-                  <Select value={bulkPriority} onValueChange={setBulkPriority}>
-                    <SelectTrigger data-testid="select-bulk-priority">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="urgent">Urgent</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Bulk Quantity + Due Date row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="bulk-quantity">Quantity</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="bulk-quantity"
-                      type="number"
-                      min="1"
-                      value={bulkQuantity}
-                      onChange={(e) => setBulkQuantity(e.target.value)}
-                      className="w-24"
-                      data-testid="input-bulk-quantity"
-                    />
-                    <span className="text-sm text-muted-foreground">deliverables</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Set &gt; 1 for bulk (e.g. 30 posts)</p>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="bulk-due-date">Due Date</Label>
-                  <Input
-                    id="bulk-due-date"
-                    type="date"
-                    value={bulkDueDate}
-                    onChange={(e) => setBulkDueDate(e.target.value)}
-                    data-testid="input-bulk-due-date"
-                  />
-                </div>
-              </div>
-
-              {/* Category row */}
-              <div className="space-y-1">
-                <Label>Category</Label>
-                <Select value={bulkCategoryId} onValueChange={setBulkCategoryId}>
-                  <SelectTrigger data-testid="select-bulk-category">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {globalCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Global categories only</p>
-              </div>
-
-              {/* Assignee + Reviewer row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Assignee</Label>
-                  <Select value={bulkAssignedTo} onValueChange={setBulkAssignedTo}>
-                    <SelectTrigger data-testid="select-bulk-assignee">
-                      <SelectValue placeholder="Unassigned" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Unassigned</SelectItem>
-                      {adminUsers.map((u) => (
-                        <SelectItem key={u.userId} value={u.userId}>
-                          {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Reviewer</Label>
-                  <Select value={bulkReviewerId} onValueChange={setBulkReviewerId}>
-                    <SelectTrigger data-testid="select-bulk-reviewer">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {adminUsers.map((u) => (
-                        <SelectItem key={u.userId} value={u.userId}>
-                          {[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Recurring toggle */}
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="bulk-recurring"
-                    checked={bulkIsRecurring}
-                    onCheckedChange={(c) => setBulkIsRecurring(!!c)}
-                    data-testid="checkbox-bulk-recurring"
-                  />
-                  <Label htmlFor="bulk-recurring" className="flex items-center gap-1 cursor-pointer">
-                    <Repeat className="h-3 w-3" />
-                    Recurring task
-                  </Label>
-                </div>
-
-                {bulkIsRecurring && (
-                  <div className="space-y-3 p-3 border rounded-md bg-muted/30">
-                    <div className="space-y-1">
-                      <Label>Frequency</Label>
-                      <Select value={bulkRecurrencePattern} onValueChange={setBulkRecurrencePattern}>
-                        <SelectTrigger data-testid="select-bulk-recurrence-pattern">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
-                          <SelectItem value="biweekly">Bi-weekly (every other week)</SelectItem>
-                          <SelectItem value="monthly">Monthly (same date each month)</SelectItem>
-                          <SelectItem value="day_of_week">Monthly (specific weekday, e.g. 2nd Tuesday)</SelectItem>
-                          <SelectItem value="quarterly">Quarterly</SelectItem>
-                          <SelectItem value="semi_annually">Semi-annually</SelectItem>
-                          <SelectItem value="annually">Annually</SelectItem>
-                        </SelectContent>
-                      </Select>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : filteredTasks.length > 0 ? (
+              <div className="space-y-2">
+                {weekBuckets && weekBuckets.length > 0 ? (
+                  weekBuckets.map(bucket => (
+                    <div key={bucket.id} className="space-y-2" data-testid={`bucket-${bucket.id}`}>
+                      <div className="flex items-center gap-2 pt-3 pb-1.5 sticky top-0 bg-card z-10">
+                        <h3 className="text-sm font-semibold text-foreground">{bucket.label}</h3>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
+                          {bucket.tasks.length}
+                        </Badge>
+                        {bucket.id === "prior_week" || bucket.id === "this_month" || bucket.id === "last_month" || bucket.id === "older" ? (
+                          <span className="text-xs text-destructive/80 ml-1">overdue</span>
+                        ) : null}
+                      </div>
+                      {bucket.tasks.map(task => renderTaskRow(task))}
                     </div>
-
-                    {bulkRecurrencePattern === "daily" && (
-                      <p className="text-xs text-muted-foreground">Task repeats every day. Set the first due date above.</p>
-                    )}
-
-                    {(bulkRecurrencePattern === "weekly" || bulkRecurrencePattern === "biweekly") && (
-                      <div className="space-y-1">
-                        <Label>Day of Week</Label>
-                        <Select value={bulkRecurrenceWeekday} onValueChange={setBulkRecurrenceWeekday}>
-                          <SelectTrigger data-testid="select-bulk-recurrence-weekday">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {WEEKDAYS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {bulkRecurrencePattern === "weekly" ? "Every" : "Every other"} {WEEKDAYS[parseInt(bulkRecurrenceWeekday)]}
-                        </p>
-                      </div>
-                    )}
-
-                    {(bulkRecurrencePattern === "monthly" || bulkRecurrencePattern === "day_of_month" || bulkRecurrencePattern === "quarterly" || bulkRecurrencePattern === "semi_annually") && (
-                      <div className="space-y-1">
-                        <Label>Day of Month</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start text-left font-normal" data-testid="button-bulk-recurrence-day">
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              Day {bulkRecurrenceDay} of each {bulkRecurrencePattern === "quarterly" ? "quarter" : bulkRecurrencePattern === "semi_annually" ? "half-year" : "month"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-4" align="start">
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <Button variant="ghost" size="icon" onClick={() => setBulkCalendarDate(new Date(bulkCalendarDate.getFullYear(), bulkCalendarDate.getMonth() - 1, 1))}>
-                                  <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <span className="text-sm font-medium">
-                                  {bulkCalendarDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                                </span>
-                                <Button variant="ghost" size="icon" onClick={() => setBulkCalendarDate(new Date(bulkCalendarDate.getFullYear(), bulkCalendarDate.getMonth() + 1, 1))}>
-                                  <ChevronRight className="h-4 w-4" />
-                                </Button>
-                              </div>
-                              <div className="grid grid-cols-7 gap-1 text-center">
-                                {["Su","Mo","Tu","We","Th","Fr","Sa"].map((d) => (
-                                  <div key={d} className="text-xs font-medium text-muted-foreground py-1">{d}</div>
-                                ))}
-                                {(() => {
-                                  const year = bulkCalendarDate.getFullYear();
-                                  const month = bulkCalendarDate.getMonth();
-                                  const firstDay = new Date(year, month, 1).getDay();
-                                  const daysInMonth = new Date(year, month + 1, 0).getDate();
-                                  const cells = [];
-                                  for (let i = 0; i < firstDay; i++) cells.push(<div key={`e-${i}`} className="min-h-8 min-w-8" />);
-                                  for (let day = 1; day <= daysInMonth; day++) {
-                                    const isSelected = bulkRecurrenceDay === String(day);
-                                    cells.push(
-                                      <Button key={day} variant={isSelected ? "default" : "ghost"} size="icon" onClick={() => setBulkRecurrenceDay(String(day))}>
-                                        {day}
-                                      </Button>
-                                    );
-                                  }
-                                  return cells;
-                                })()}
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    )}
-
-                    {bulkRecurrencePattern === "day_of_week" && (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label>Which occurrence</Label>
-                            <Select value={bulkRecurrenceWeekOrdinal} onValueChange={setBulkRecurrenceWeekOrdinal}>
-                              <SelectTrigger data-testid="select-bulk-week-ordinal">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1st</SelectItem>
-                                <SelectItem value="2">2nd</SelectItem>
-                                <SelectItem value="3">3rd</SelectItem>
-                                <SelectItem value="4">4th</SelectItem>
-                                <SelectItem value="-1">Last</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label>Day of week</Label>
-                            <Select value={bulkRecurrenceWeekday} onValueChange={setBulkRecurrenceWeekday}>
-                              <SelectTrigger data-testid="select-bulk-weekday">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {WEEKDAYS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          e.g., the {bulkRecurrenceWeekOrdinal === "-1" ? "last" : bulkRecurrenceWeekOrdinal === "1" ? "1st" : bulkRecurrenceWeekOrdinal === "2" ? "2nd" : bulkRecurrenceWeekOrdinal === "3" ? "3rd" : "4th"} {WEEKDAYS[parseInt(bulkRecurrenceWeekday)]} of each month
-                        </p>
-                      </div>
-                    )}
-
-                    {bulkRecurrencePattern === "annually" && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label>Month</Label>
-                          <Select value={bulkRecurrenceWeekday} onValueChange={setBulkRecurrenceWeekday}>
-                            <SelectTrigger data-testid="select-bulk-annual-month">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {MONTHS.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Day</Label>
-                          <Select value={bulkRecurrenceDay} onValueChange={setBulkRecurrenceDay}>
-                            <SelectTrigger data-testid="select-bulk-annual-day">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                                <SelectItem key={d} value={String(d)}>{d}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    )}
+                  ))
+                ) : null}
+                {!weekBuckets && reviewableOnPage.length > 0 && (
+                  <div className="flex items-center gap-3 px-4 py-2 border-b">
+                    <Checkbox
+                      checked={allPageReviewableSelected}
+                      onCheckedChange={toggleSelectAll}
+                      data-testid="checkbox-select-all"
+                      className={somePageReviewableSelected && !allPageReviewableSelected ? "opacity-50" : ""}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      Select all reviewable tasks on this page ({reviewableOnPage.length})
+                    </span>
+                  </div>
+                )}
+                {!weekBuckets && paginatedTasks.map((task) => renderTaskRow(task))}
+                {!weekBuckets && totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {(currentPage - 1) * TASKS_PER_PAGE + 1}-{Math.min(currentPage * TASKS_PER_PAGE, filteredTasks.length)} of {filteredTasks.length} tasks
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        data-testid="button-prev-page"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                        Previous
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        data-testid="button-next-page"
+                      >
+                        Next
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Task Ownership */}
-              <div className="space-y-1">
-                <Label>Task Ownership</Label>
-                <Select value={bulkTaskOwnership} onValueChange={(v) => setBulkTaskOwnership(v as "agency" | "client")}>
-                  <SelectTrigger data-testid="select-bulk-task-ownership">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agency">Agency Managed</SelectItem>
-                    <SelectItem value="client">Client Managed</SelectItem>
-                  </SelectContent>
-                </Select>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <ListTodo className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>No tasks found matching your filters</p>
+                {statusFilter !== "all" && (
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => handleStatusFilterChange("all")}
+                    className="mt-2"
+                  >
+                    Clear filters
+                  </Button>
+                )}
               </div>
+            )}
+          </CardContent>
+        </Card>
+        )}
+      </div>
 
-              {/* No Credit */}
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="bulk-no-credit"
-                  checked={bulkNoCredit || bulkTaskOwnership === "client"}
-                  onCheckedChange={(c) => setBulkNoCredit(!!c)}
-                  disabled={bulkTaskOwnership === "client"}
-                  data-testid="checkbox-bulk-no-credit"
-                />
-                <Label htmlFor="bulk-no-credit" className="cursor-pointer">No credit cost (bonus task)</Label>
-              </div>
-
-              {bulkDeliverableType && !bulkNoCredit && bulkTaskOwnership !== "client" && (() => {
-                const sel = activeDeliverables.find((d: DeliverableType) => d.key === bulkDeliverableType);
-                return sel ? (
-                  <p className="text-sm text-muted-foreground">
-                    Credit cost: <span className="font-mono font-medium text-foreground">{sel.credits}</span> per company
-                  </p>
-                ) : null;
-              })()}
-
-            </div>
-          </div>
-
-          <DialogFooter className="shrink-0 pt-3 border-t">
-            <Button variant="outline" onClick={() => { setBulkCreateOpen(false); resetBulkForm(); }} disabled={bulkSubmitting}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleBulkCreate}
-              disabled={bulkSubmitting || !bulkTitle.trim() || !bulkDeliverableType || selectedCompanyIds.length === 0}
-              data-testid="button-bulk-create-submit"
+      <ErrorBoundary
+        key={selectedTask?.id ?? "none"}
+        fallback={
+          <div className="fixed inset-y-0 right-0 w-full md:w-[480px] bg-background border-l shadow-xl flex flex-col items-center justify-center gap-4 p-6 z-50">
+            <p className="text-sm text-muted-foreground text-center">Something went wrong loading this task.</p>
+            <button
+              className="text-sm underline text-primary"
+              onClick={() => setSelectedTask(null)}
             >
-              {bulkSubmitting
-                ? `Creating (${selectedCompanyIds.length})...`
-                : `Create for ${selectedCompanyIds.length} ${selectedCompanyIds.length === 1 ? "Company" : "Companies"}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <TaskDetailPanel
-        task={selectedTask}
-        open={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
-        isAdmin={true}
-        companyId={selectedTask?.companyId || ""}
-        onNavigateToChat={(threadId, companyId) => {
-          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
-        }}
-        onViewCampaign={(campaignRequestId) => {
-          const campaign = getCampaignForTask(campaignRequestId);
-          if (campaign) {
-            setSelectedTask(null);
-            setSelectedCampaign(campaign);
-          }
-        }}
-      />
+              Close
+            </button>
+          </div>
+        }
+      >
+        <TaskDetailPanel
+          task={selectedTask}
+          open={!!selectedTask}
+          onClose={() => setSelectedTask(null)}
+          isAdmin={true}
+          companyId={selectedTask?.companyId || ""}
+          onNavigateToChat={(threadId, companyId) => {
+            setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
+          }}
+          onViewCampaign={(campaignRequestId) => {
+            const campaign = getCampaignForTask(campaignRequestId);
+            if (campaign) {
+              setSelectedTask(null);
+              setSelectedCampaign(campaign);
+            }
+          }}
+          onOpenTask={(t) => setSelectedTask(t)}
+        />
+      </ErrorBoundary>
 
       <CampaignDetailPanel
         campaign={selectedCampaign}
@@ -774,5 +1110,50 @@ export default function AdminTasks() {
         }}
       />
     </AdminLayout>
+  );
+}
+
+function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
+  const { data: assignees } = useQuery<any[]>({
+    queryKey: ["/api/tasks", taskId, "assignees"],
+    queryFn: async () => {
+      const response = await fetch(`/api/tasks/${taskId}/assignees`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  if (!assignees || assignees.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid={`text-unassigned-${taskId}`}>Unassigned</span>
+    );
+  }
+
+  const visible = assignees.slice(0, 3);
+  const overflow = assignees.length - 3;
+
+  return (
+    <div className="flex items-center -space-x-1.5" data-testid={`assignee-avatars-${taskId}`}>
+      {visible.map((a: any) => (
+        <Tooltip key={a.userId}>
+          <TooltipTrigger asChild>
+            <Avatar className="h-6 w-6 border-2 border-background">
+              <AvatarFallback className="text-[9px]">
+                {(a.userName || "?").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {a.userName || a.userEmail}
+          </TooltipContent>
+        </Tooltip>
+      ))}
+      {overflow > 0 && (
+        <Avatar className="h-6 w-6 border-2 border-background">
+          <AvatarFallback className="text-[9px]">+{overflow}</AvatarFallback>
+        </Avatar>
+      )}
+    </div>
   );
 }

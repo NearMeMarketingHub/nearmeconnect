@@ -65,6 +65,19 @@ interface EnrichedCampaignRequest {
   companyName?: string;
   campaignTypeName?: string;
   requestedByName?: string;
+  purpose: string | null;
+  offer: string | null;
+  objective: string | null;
+  targetServices: string | null;
+  ownerName: string | null;
+  launchDate: string | null;
+  clientVisible: boolean;
+  sharepointFolderUrl: string | null;
+  assetLinks: string | null;
+  approvalFlow: string | null;
+  campaignNotes: string | null;
+  reportingIncluded: boolean;
+  publishedUrls: string | null;
 }
 
 export default function AdminCampaigns() {
@@ -72,7 +85,9 @@ export default function AdminCampaigns() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
-  const urlTab = params.get("tab") || "requests";
+  const VALID_TABS = ["requests", "approved", "completed", "types"];
+  const rawTab = params.get("tab") || "requests";
+  const urlTab = VALID_TABS.includes(rawTab) ? rawTab : "requests";
   const [activeTab, setActiveTab] = useState(urlTab);
   const [campaignPages, setCampaignPages] = useState<Record<string, number>>({});
   const [campaignMonthDate, setCampaignMonthDate] = useState(() => new Date());
@@ -543,6 +558,14 @@ export default function AdminCampaigns() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {rejectedRequests.length > 0 && (
+              <Link href="/admin/rejections">
+                <Button variant="ghost" size="sm" data-testid="link-view-rejections">
+                  <XCircle className="w-4 h-4 mr-2 text-destructive" />
+                  View rejections ({rejectedRequests.length})
+                </Button>
+              </Link>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -644,7 +667,7 @@ export default function AdminCampaigns() {
                                         <Video className="w-3 h-3 mr-1" />
                                         {qty > 1 ? `${qty}x ` : ""}{mt.name}
                                       </Badge>
-                                      <span className="text-xs text-muted-foreground">{mt.duration} min</span>
+                                      <span className="text-xs text-muted-foreground">{mt.defaultDuration} min</span>
                                     </div>
                                     <span className="text-xs text-muted-foreground font-mono">
                                       {lineCredits.toFixed(1)} credits
@@ -747,7 +770,6 @@ export default function AdminCampaigns() {
               { value: "requests", label: "Requests", count: pendingRequests.length },
               { value: "approved", label: "Approved", count: approvedRequests.length },
               { value: "completed", label: "Completed", count: completedRequests.length },
-              { value: "rejected", label: "Rejected", count: rejectedRequests.length },
               { value: "types", label: "Types" },
             ]}
             activeTab={activeTab}
@@ -767,17 +789,13 @@ export default function AdminCampaigns() {
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Completed ({completedRequests.length})
             </TabsTrigger>
-            <TabsTrigger value="rejected" data-testid="tab-campaign-rejected">
-              <XCircle className="w-4 h-4 mr-2" />
-              Rejected ({rejectedRequests.length})
-            </TabsTrigger>
             <TabsTrigger value="types" data-testid="tab-campaign-types">
               <Package className="w-4 h-4 mr-2" />
               Types
             </TabsTrigger>
           </TabsList>
 
-          {["requests", "approved", "completed", "rejected"].map(tab => {
+          {["requests", "approved", "completed"].map(tab => {
             const allItems = tabRequestsMap[tab] || [];
             const currentPage = campaignPages[tab] || 1;
             const totalPages = Math.ceil(allItems.length / CAMPAIGNS_PER_PAGE);

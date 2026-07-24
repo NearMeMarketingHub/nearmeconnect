@@ -1,0 +1,63 @@
+FIX: Replace the HubSpot OAuth scopes array with the exact verified list below.
+The scopes in the code must match exactly what is configured in the HubSpot 
+developer app settings. Remove any scope not in this list (especially "reports").
+
+Find the SCOPES constant in the HubSpot connect/auth route and replace with:
+
+const SCOPES = [
+  'automation',
+  'automation.sequences.enrollments.write',
+  'automation.sequences.read',
+  'content',
+  'conversations.read',
+  'crm.import',
+  'crm.lists.read',
+  'crm.lists.write',
+  'crm.objects.companies.read',
+  'crm.objects.companies.write',
+  'crm.objects.contacts.read',
+  'crm.objects.contacts.write',
+  'crm.objects.deals.read',
+  'crm.objects.deals.write',
+  'crm.objects.goals.read',
+  'crm.objects.goals.write',
+  'crm.objects.invoices.read',
+  'crm.objects.invoices.write',
+  'crm.objects.leads.read',
+  'crm.objects.leads.write',
+  'crm.objects.marketing_events.read',
+  'crm.objects.marketing_events.write',
+  'crm.objects.partner-clients.read',
+  'crm.objects.partner-clients.write',
+  'crm.objects.products.read',
+  'crm.objects.products.write',
+  'crm.objects.projects.read',
+  'crm.objects.projects.write',
+  'crm.objects.quotes.read',
+  'crm.objects.quotes.write',
+  'crm.objects.services.read',
+  'crm.objects.services.write',
+  'crm.objects.subscriptions.read',
+  'crm.objects.subscriptions.write',
+  'crm.schemas.commercepayments.read',
+  'crm.schemas.commercepayments.write',
+  'files',
+  'hubdb',
+  'marketing-email',
+  'marketing.campaigns.read',
+  'marketing.campaigns.revenue.read',
+  'marketing.campaigns.write',
+  'oauth',
+  'social',
+  'tickets'
+].join(' ')
+
+Also search for any other place in the codebase that references HubSpot scopes 
+(could be in a config file, environment setup, or separate auth helper) and 
+update those to match this same list.
+
+After updating, confirm the authorization URL being built looks like:
+https://app.hubspot.com/oauth/authorize
+  ?client_id=XXXX
+  &redirect_uri=https://portal.nearmemarketinghub.com/api/hubspot/callback
+  &scope=automation%20automation.sequences.enrollments.write%20...

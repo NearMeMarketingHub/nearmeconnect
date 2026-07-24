@@ -559,6 +559,55 @@ export async function sendTaskAssignmentEmail(data: TaskAssignmentEmailData): Pr
   }
 }
 
+export interface NextTaskActivatedEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  taskTitle: string;
+  taskDescription?: string;
+  dueDate?: string;
+  previousTaskTitle: string;
+  companyName: string;
+  portalUrl: string;
+}
+
+export async function sendNextTaskActivatedEmail(data: NextTaskActivatedEmailData): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const dueDateSection = data.dueDate ? `<p><strong>Due Date:</strong> ${formatDateET(data.dueDate)}</p>` : '';
+    const descSection = data.taskDescription ? `<p>${data.taskDescription}</p>` : '';
+    const html = `
+      <!DOCTYPE html><html><head><style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #ea580c; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #ffffff; padding: 20px; border: 1px solid #e5e7eb; }
+        .task-details { background-color: #fff7ed; padding: 15px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #ea580c; }
+        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+      </style></head><body><div class="container">
+        <div class="header"><h1>You're Up Next!</h1></div>
+        <div class="content">
+          <p>Hi ${data.recipientName},</p>
+          <p>The task <strong>"${data.previousTaskTitle}"</strong> has just been completed for ${data.companyName}, which means your task is now ready to start.</p>
+          <div class="task-details">
+            <h3 style="margin-top: 0;">${data.taskTitle}</h3>
+            ${descSection}
+            ${dueDateSection}
+          </div>
+          <p>Head to the portal to begin:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 10px 0;"><tr><td style="border-radius: 5px; background-color: #ea580c;" align="center"><a href="${data.portalUrl}" target="_blank" style="background-color: #ea580c; border: 8px solid #ea580c; border-radius: 5px; color: #ffffff; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; text-decoration: none;">Open Task</a></td></tr></table>
+        </div>
+        <div class="footer"><p>Near Me Marketing Hub</p><p>This is an automated notification from your client portal.</p></div>
+      </div></body></html>
+    `;
+    await client.emails.send({ from: fromEmail, to: data.recipientEmail, subject: `You're up next: ${data.taskTitle}`, html });
+    console.log(`Next-task activation email sent to ${data.recipientEmail}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send next-task activation email:', error);
+    return false;
+  }
+}
+
 export interface TaskStatusChangeEmailData {
   recipientEmail: string;
   recipientName: string;
@@ -1833,6 +1882,87 @@ export interface OnboardingReminderEmailData {
   daysSinceCreation: number;
 }
 
+export interface AdminOnboardingAlertEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  companyName: string;
+  companyDashboardUrl: string;
+  daysSinceCreation: number;
+}
+
+export async function sendAdminOnboardingAlertEmail(data: AdminOnboardingAlertEmailData): Promise<boolean> {
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #1e293b; padding: 24px 30px; border-radius: 10px 10px 0 0; display: flex; align-items: center;">
+          <h1 style="color: #f1f5f9; margin: 0; font-size: 18px; font-weight: 600;">⚠️ Onboarding Incomplete — Action Needed</h1>
+        </div>
+
+        <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px;">
+          <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); border-left: 4px solid #f59e0b;">
+            <p style="margin-top: 0;">Hi ${data.recipientName},</p>
+            <p>This is an internal alert — <strong>${data.companyName}</strong> has not completed their onboarding checklist.</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr style="background: #f1f5f9;">
+                <td style="padding: 10px 14px; font-weight: 600; width: 50%; border-radius: 4px 0 0 4px;">Company</td>
+                <td style="padding: 10px 14px; border-radius: 0 4px 4px 0;">${data.companyName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 14px; font-weight: 600; background: #f8fafc;">Days since creation</td>
+                <td style="padding: 10px 14px; background: #f8fafc;">${data.daysSinceCreation} day${data.daysSinceCreation !== 1 ? 's' : ''}</td>
+              </tr>
+              <tr style="background: #f1f5f9;">
+                <td style="padding: 10px 14px; font-weight: 600; border-radius: 4px 0 0 4px;">Status</td>
+                <td style="padding: 10px 14px; border-radius: 0 4px 4px 0;"><span style="color: #b45309; font-weight: 600;">Onboarding incomplete</span></td>
+              </tr>
+            </table>
+
+            <p>You may want to follow up with this client to help them get started.</p>
+
+            <div style="text-align: center; margin: 25px 0;">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto;">
+                <tr>
+                  <td style="border-radius: 5px; background-color: #1e293b;" align="center">
+                    <a href="${data.companyDashboardUrl}" target="_blank" style="background-color: #1e293b; border: 10px solid #1e293b; border-radius: 5px; color: #ffffff; display: inline-block; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; text-align: center; text-decoration: none; -webkit-text-size-adjust: none;">View Company Dashboard →</a>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <p style="color: #666; font-size: 13px; margin-bottom: 0;">You will receive this alert weekly until the company completes onboarding.</p>
+          </div>
+
+          <div style="text-align: center; margin-top: 20px; color: #999; font-size: 12px;">
+            <p>Near Me Marketing Hub — Internal Alert</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await client.emails.send({
+      from: fromEmail,
+      to: data.recipientEmail,
+      subject: `Action needed: ${data.companyName} hasn't completed onboarding (${data.daysSinceCreation} days)`,
+      html,
+    });
+
+    console.log(`Admin onboarding alert sent to ${data.recipientEmail} for company ${data.companyName}`);
+    return true;
+  } catch (error) {
+    console.error('Failed to send admin onboarding alert email:', error);
+    return false;
+  }
+}
+
 export async function sendOnboardingReminderEmail(data: OnboardingReminderEmailData): Promise<boolean> {
   try {
     const { client, fromEmail } = await getUncachableResendClient();
@@ -1896,70 +2026,269 @@ export async function sendOnboardingReminderEmail(data: OnboardingReminderEmailD
   }
 }
 
-export interface GovernmentFormEmailData {
-  recipientEmail: string;
-  recipientName: string;
-  companyName: string;
-  formType: string;
-  formUrl: string;
-}
-
-export async function sendGovernmentFormEmail(data: GovernmentFormEmailData): Promise<boolean> {
+export async function sendEmail(data: { to: string; subject: string; html: string }): Promise<boolean> {
   try {
     const { client, fromEmail } = await getUncachableResendClient();
-    const formLabel = data.formType === 'wosb'
-      ? 'Women-Owned Small Business (WOSB) Certification'
-      : data.formType === 'edwosb'
-      ? 'Economically Disadvantaged Women-Owned Small Business (EDWOSB) Certification'
-      : data.formType.toUpperCase();
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; margin: 0; padding: 40px 20px;">
-        <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-          <div style="background: #f97316; padding: 32px 40px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">Near Me Connect</h1>
-            <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">Client Portal</p>
-          </div>
-          <div style="padding: 40px;">
-            <h2 style="margin: 0 0 8px; color: #111827; font-size: 20px;">Action Required: Government Form</h2>
-            <p style="color: #6b7280; margin: 0 0 24px; font-size: 14px;">Hi ${data.recipientName},</p>
-            <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-              Your team at Near Me Connect has sent you a form to complete for <strong>${data.companyName}</strong>:
-            </p>
-            <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 0 0 24px;">
-              <p style="margin: 0; font-size: 15px; font-weight: 600; color: #111827;">${formLabel}</p>
-              <p style="margin: 6px 0 0; font-size: 13px; color: #6b7280;">Please complete this form at your earliest convenience.</p>
-            </div>
-            <div style="text-align: center; margin: 32px 0;">
-              <a href="${data.formUrl}" style="display: inline-block; background: #f97316; color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                Complete Form
-              </a>
-            </div>
-            <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
-              If the button above doesn't work, copy and paste this link into your browser:<br>
-              <a href="${data.formUrl}" style="color: #f97316; word-break: break-all;">${data.formUrl}</a>
-            </p>
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0;">
-            <p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-              Near Me Connect · This email was sent on behalf of ${data.companyName}
-            </p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
     await client.emails.send({
       from: fromEmail,
-      to: data.recipientEmail,
-      subject: `Action Required: ${formLabel} for ${data.companyName}`,
-      html,
+      to: data.to,
+      subject: data.subject,
+      html: data.html,
     });
-    console.log(`Government form email sent to ${data.recipientEmail}`);
     return true;
   } catch (error) {
-    console.error('Failed to send government form email:', error);
+    console.error('Failed to send email:', error);
     return false;
+  }
+}
+
+// ── Workflow Email Template Builders ──────────────────────────────────────────
+// Each builder returns { subject, html } so emails can be previewed before send.
+// Actual dispatch is done by sendWorkflowEmail() below.
+
+const EMAIL_BRAND = {
+  primary: '#f97316',
+  dark: '#1f2937',
+  light: '#f9fafb',
+  border: '#e5e7eb',
+  text: '#374151',
+  muted: '#6b7280',
+};
+
+function baseLayout(title: string, body: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>
+  body{margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:${EMAIL_BRAND.text}}
+  .wrap{max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid ${EMAIL_BRAND.border}}
+  .hdr{background:${EMAIL_BRAND.dark};padding:24px 32px;display:flex;align-items:center;gap:12px}
+  .hdr-title{color:#fff;font-size:20px;font-weight:700;margin:0}
+  .hdr-badge{background:${EMAIL_BRAND.primary};color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px}
+  .body{padding:32px}
+  .greeting{font-size:16px;margin:0 0 16px}
+  .box{background:${EMAIL_BRAND.light};border:1px solid ${EMAIL_BRAND.border};border-radius:6px;padding:16px 20px;margin:16px 0}
+  .box-title{font-size:13px;font-weight:700;color:${EMAIL_BRAND.muted};text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px}
+  .label{font-size:12px;color:${EMAIL_BRAND.muted};margin:0 0 2px}
+  .value{font-size:15px;color:${EMAIL_BRAND.dark};margin:0 0 12px;font-weight:600}
+  .btn{display:inline-block;background:${EMAIL_BRAND.primary};color:#fff!important;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:700;font-size:14px;margin:8px 0}
+  .list-item{padding:8px 0;border-bottom:1px solid ${EMAIL_BRAND.border};font-size:14px}
+  .list-item:last-child{border-bottom:none}
+  .tag{display:inline-block;background:#fff3ed;color:${EMAIL_BRAND.primary};border:1px solid #fed7aa;border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;margin:0 4px 4px 0}
+  .ftr{background:${EMAIL_BRAND.light};border-top:1px solid ${EMAIL_BRAND.border};padding:16px 32px;text-align:center;font-size:12px;color:${EMAIL_BRAND.muted}}
+  .alert-warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .alert-err{background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:12px 16px;margin:16px 0;font-size:14px}
+</style></head><body>
+<div class="wrap">
+  ${body}
+  <div class="ftr"><p style="margin:0">Near Me Connect &bull; <a href="https://nearmemarketinghub.com" style="color:${EMAIL_BRAND.primary}">Client Portal</a></p><p style="margin:4px 0 0">This is an automated message. Do not reply directly to this email.</p></div>
+</div>
+</body></html>`;
+}
+
+// 1. Approval Request
+export interface ApprovalRequestEmailData {
+  recipientName: string;
+  companyName: string;
+  deliverableTitle: string;
+  deliverableType: 'task' | 'campaign' | 'content';
+  deliverableDescription?: string;
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildApprovalRequestEmail(data: ApprovalRequestEmailData): { subject: string; html: string } {
+  const subject = `Action Required: Please Review "${data.deliverableTitle}"`;
+  const typeLabel = data.deliverableType === 'task' ? 'Task' : data.deliverableType === 'campaign' ? 'Campaign' : 'Content';
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Approval Request</span><span class="hdr-badge">${typeLabel}</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>We've completed a deliverable for <strong>${data.companyName}</strong> and need your review and approval before we proceed.</p>
+      <div class="box">
+        <div class="box-title">${typeLabel} Details</div>
+        <p class="label">Title</p><p class="value">${data.deliverableTitle}</p>
+        ${data.deliverableDescription ? `<p class="label">Description</p><p style="font-size:14px;margin:0 0 12px">${data.deliverableDescription}</p>` : ''}
+      </div>
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Notes from Your Team</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <p>Please log in to the portal to review and approve or request revisions.</p>
+      <a href="${data.portalLink}" class="btn">Review &amp; Approve</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 2. Meeting Recap
+export interface MeetingRecapEmailData {
+  recipientName: string;
+  companyName: string;
+  meetingTitle: string;
+  meetingDate: string;
+  decisions?: string[];
+  followUpTasks?: Array<{ title: string; owner?: string; dueDate?: string }>;
+  blockers?: string[];
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildMeetingRecapEmail(data: MeetingRecapEmailData): { subject: string; html: string } {
+  const subject = `Meeting Recap: ${data.meetingTitle} — ${data.meetingDate}`;
+  const decisionsHtml = (data.decisions && data.decisions.length > 0)
+    ? `<div class="box"><div class="box-title">Decisions Made</div>${data.decisions.map(d => `<div class="list-item">✓ ${d}</div>`).join('')}</div>` : '';
+  const followUpsHtml = (data.followUpTasks && data.followUpTasks.length > 0)
+    ? `<div class="box"><div class="box-title">Follow-Up Tasks</div>${data.followUpTasks.map(t => `<div class="list-item"><strong>${t.title}</strong>${t.owner ? ` &mdash; <span style="color:${EMAIL_BRAND.muted}">${t.owner}</span>` : ''}${t.dueDate ? ` <span class="tag">Due ${t.dueDate}</span>` : ''}</div>`).join('')}</div>` : '';
+  const blockersHtml = (data.blockers && data.blockers.length > 0)
+    ? `<div class="alert-warn">⚠️ <strong>Blockers / Next Steps:</strong><ul style="margin:8px 0 0;padding-left:20px">${data.blockers.map(b => `<li>${b}</li>`).join('')}</ul></div>` : '';
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Meeting Recap</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>Here's a summary of your recent meeting with the Near Me Connect team.</p>
+      <div class="box">
+        <div class="box-title">Meeting Details</div>
+        <p class="label">Meeting</p><p class="value">${data.meetingTitle}</p>
+        <p class="label">Date</p><p class="value">${data.meetingDate}</p>
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+      </div>
+      ${decisionsHtml}${followUpsHtml}${blockersHtml}
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Additional Notes</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <a href="${data.portalLink}" class="btn">View in Portal</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 3. Task Reminder (internal — overdue or due-soon)
+export interface TaskReminderEmailData {
+  recipientName: string;
+  tasks: Array<{ title: string; companyName: string; dueDate?: string; status: string; portalLink: string; assignee?: string; isOverdue?: boolean }>;
+}
+export function buildTaskReminderEmail(data: TaskReminderEmailData): { subject: string; html: string } {
+  const overdue = data.tasks.filter(t => t.isOverdue);
+  const dueSoon = data.tasks.filter(t => !t.isOverdue);
+  const subject = overdue.length > 0
+    ? `⚠️ ${overdue.length} Overdue Task${overdue.length > 1 ? 's' : ''} Need Attention`
+    : `Reminder: ${dueSoon.length} Task${dueSoon.length > 1 ? 's' : ''} Due Soon`;
+
+  const taskRows = (tasks: typeof data.tasks, label: string, colorClass: string) =>
+    tasks.length === 0 ? '' : `<div class="box"><div class="box-title" style="color:${colorClass}">${label}</div>${tasks.map(t => `
+      <div class="list-item">
+        <strong>${t.title}</strong> &mdash; ${t.companyName}
+        ${t.assignee ? `<span style="color:${EMAIL_BRAND.muted}"> · ${t.assignee}</span>` : ''}
+        ${t.dueDate ? `<span class="tag">Due ${t.dueDate}</span>` : ''}
+        <span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">${t.status}</span>
+        &nbsp;<a href="${t.portalLink}" style="font-size:12px;color:${EMAIL_BRAND.primary}">View →</a>
+      </div>`).join('')}</div>`;
+
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Task Reminder</span><span class="hdr-badge">Internal</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>This is an automated reminder about tasks that need attention.</p>
+      ${taskRows(overdue, 'Overdue Tasks', '#dc2626')}
+      ${taskRows(dueSoon, 'Due Soon', '#d97706')}
+      <p style="font-size:13px;color:${EMAIL_BRAND.muted};margin-top:24px">You are receiving this because you are a team member with task responsibilities.</p>
+    </div>`);
+  return { subject, html };
+}
+
+// 4. Monthly Report Ready (internal — admin review notice)
+export interface MonthlyReportReadyEmailData {
+  recipientName: string;
+  companyName: string;
+  reportMonth: string;
+  reportYear: number;
+  hasNotes: boolean;
+  portalLink: string;
+}
+export function buildMonthlyReportReadyEmail(data: MonthlyReportReadyEmailData): { subject: string; html: string } {
+  const subject = `Monthly Report Ready for Review: ${data.companyName} — ${data.reportMonth} ${data.reportYear}`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Report Ready for Review</span><span class="hdr-badge">Admin</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>The monthly performance report for <strong>${data.companyName}</strong> is ready for your review before sending to the client.</p>
+      <div class="box">
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+        <p class="label">Report Period</p><p class="value">${data.reportMonth} ${data.reportYear}</p>
+        <p class="label">Team Notes</p><p class="value">${data.hasNotes ? '✓ Notes added' : '⚠️ No notes yet — consider adding a personal message'}</p>
+      </div>
+      ${!data.hasNotes ? `<div class="alert-warn">You haven't added "Notes from Your Team" for this report yet. Clients appreciate a personal touch!</div>` : ''}
+      <a href="${data.portalLink}" class="btn">Review Report</a>
+    </div>`);
+  return { subject, html };
+}
+
+// 5. Monthly Report Client (client-facing)
+export interface MonthlyReportClientEmailData {
+  recipientName: string;
+  companyName: string;
+  reportMonth: string;
+  reportYear: number;
+  portalLink: string;
+  adminNotes?: string;
+}
+export function buildMonthlyReportClientEmail(data: MonthlyReportClientEmailData): { subject: string; html: string } {
+  const subject = `Your ${data.reportMonth} ${data.reportYear} Report is Ready — ${data.companyName}`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Monthly Report Ready</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <p>Your <strong>${data.reportMonth} ${data.reportYear}</strong> performance report is now available in your portal.</p>
+      ${data.adminNotes ? `<div class="box"><div class="box-title">Notes from Your Team</div><p style="font-size:14px;margin:0">${data.adminNotes}</p></div>` : ''}
+      <p>Log in to view your full report, including task activity, credit usage, campaign performance, and more.</p>
+      <a href="${data.portalLink}" class="btn">View My Report</a>
+      <p style="font-size:13px;color:${EMAIL_BRAND.muted};margin-top:24px">If you have any questions about your report, reach out to your team through the portal chat.</p>
+    </div>`);
+  return { subject, html };
+}
+
+// 6. Planning Gap Alert (internal)
+export interface PlanningGapAlertEmailData {
+  recipientName: string;
+  companyName: string;
+  gapDays: number;
+  lastScheduledDate?: string;
+  tasksScheduledCount: number;
+  portalLink: string;
+}
+export function buildPlanningGapAlertEmail(data: PlanningGapAlertEmailData): { subject: string; html: string } {
+  const urgency = data.gapDays >= 60 ? 'Critical' : 'Warning';
+  const subject = `[${urgency}] Planning Gap: ${data.companyName} has no work scheduled beyond ${data.gapDays} days`;
+  const html = baseLayout(subject, `
+    <div class="hdr"><span class="hdr-title">Planning Gap Alert</span><span class="hdr-badge" style="background:${data.gapDays >= 60 ? '#dc2626' : '#d97706'}">${urgency}</span></div>
+    <div class="body">
+      <p class="greeting">Hi ${data.recipientName},</p>
+      <div class="alert-${data.gapDays >= 60 ? 'err' : 'warn'}">
+        <strong>${data.companyName}</strong> currently has no work scheduled beyond the next <strong>${data.gapDays} days</strong>. Action is recommended to maintain consistent delivery.
+      </div>
+      <div class="box">
+        <p class="label">Company</p><p class="value">${data.companyName}</p>
+        <p class="label">Last Scheduled Work</p><p class="value">${data.lastScheduledDate || 'No upcoming work found'}</p>
+        <p class="label">Tasks in Pipeline</p><p class="value">${data.tasksScheduledCount} active task${data.tasksScheduledCount !== 1 ? 's' : ''}</p>
+        <p class="label">Gap</p><p class="value" style="color:${data.gapDays >= 60 ? '#dc2626' : '#d97706'}">${data.gapDays}+ days with nothing scheduled</p>
+      </div>
+      <p>Visit the portal to review the current task pipeline and schedule new work for this client.</p>
+      <a href="${data.portalLink}" class="btn">View ${data.companyName}'s Tasks</a>
+    </div>`);
+  return { subject, html };
+}
+
+// Unified send — dispatches to Resend and returns the Resend message ID
+export async function sendWorkflowEmail(opts: {
+  to: string[];
+  subject: string;
+  html: string;
+  idempotencyKey?: string;
+}): Promise<{ success: boolean; resendId?: string; error?: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    const creds = await getCredentials().catch(() => null);
+    if (!creds) return { success: false, error: 'RESEND_API_KEY is not configured' };
+  }
+  try {
+    const { client, fromEmail } = await getUncachableResendClient();
+    const result = await client.emails.send({
+      from: fromEmail,
+      to: opts.to,
+      subject: opts.subject,
+      html: opts.html,
+    });
+    return { success: true, resendId: (result as any)?.id };
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) };
   }
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, decimal, real, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, decimal, real, serial, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -11,7 +11,7 @@ export const companies = pgTable("companies", {
   name: text("name").notNull(),
   industry: text("industry"),
   logoUrl: text("logo_url"),
-  clientType: text("client_type").notNull().default("marketing"), // 'government', 'marketing', or 'implementation'
+  clientType: text("client_type").notNull().default("marketing"), // 'government' or 'marketing'
   subscriptionTier: text("subscription_tier").notNull().default("essentials"),
   credits: real("credits").notNull().default(0),
   monthlyCredits: real("monthly_credits").notNull().default(20),
@@ -21,21 +21,20 @@ export const companies = pgTable("companies", {
   isPaused: boolean("is_paused").notNull().default(false),
   pausedAt: text("paused_at"),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),
-  bypassOnboarding: boolean("bypass_onboarding").notNull().default(false),
   lastOnboardingReminderSent: text("last_onboarding_reminder_sent"),
   lastProjectedUsageWarningSent: text("last_projected_usage_warning_sent"),
   hubspotCompanyId: text("hubspot_company_id"),
   bonusCredits: real("bonus_credits").notNull().default(0),
-  saasTier: text("saas_tier").default("internal"),
-  stripeCustomerId: text("stripe_customer_id"),
-  stripeSubscriptionId: text("stripe_subscription_id"),
-  stripeSubscriptionStatus: text("stripe_subscription_status"),
-  website: text("website"),
-  primaryContactName: text("primary_contact_name"),
-  primaryContactEmail: text("primary_contact_email"),
-  primaryContactPhone: text("primary_contact_phone"),
-  notes: text("notes"),
   createdAt: text("created_at").notNull(),
+  // GBP Connection Tracking
+  gbpAccountId: text("gbp_account_id"),
+  gbpLocationId: text("gbp_location_id"),
+  gbpLocationName: text("gbp_location_name"),
+  gbpConnectedStatus: text("gbp_connected_status"),
+  gbpPermissionStatus: text("gbp_permission_status"),
+  gbpLastSyncTime: text("gbp_last_sync_time"),
+  gbpLastPublishStatus: text("gbp_last_publish_status"),
+  gbpConnectionNotes: text("gbp_connection_notes"),
 });
 
 export const insertCompanySchema = createInsertSchema(companies).omit({
@@ -48,35 +47,12 @@ export const insertCompanySchema = createInsertSchema(companies).omit({
   isPaused: true,
   pausedAt: true,
   creditsLastReset: true,
-  stripeCustomerId: true,
-  stripeSubscriptionId: true,
-  stripeSubscriptionStatus: true,
 });
 
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
-
-export const pendingSignups = pgTable("pending_signups", {
-  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyName: text("company_name").notNull(),
-  ownerFirstName: text("owner_first_name").notNull(),
-  ownerLastName: text("owner_last_name").notNull(),
-  email: text("email").notNull(),
-  passwordHash: text("password_hash").notNull(),
-  saasTier: text("saas_tier").notNull().default("starter"),
-  stripeSessionId: text("stripe_session_id"),
-  status: text("status").notNull().default("pending"),
-  createdAt: text("created_at").notNull(),
-});
-
-export const insertPendingSignupSchema = createInsertSchema(pendingSignups).omit({
-  id: true,
-  createdAt: true,
-  status: true,
-});
-
-export type InsertPendingSignup = z.infer<typeof insertPendingSignupSchema>;
-export type PendingSignup = typeof pendingSignups.$inferSelect;
+export type Client = Company;
+export type InsertClient = InsertCompany & { onboardingComplete?: boolean };
 
 export const companyMembers = pgTable("company_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -144,8 +120,10 @@ export const taskCategories = pgTable("task_categories", {
   companyId: varchar("company_id"),
   name: text("name").notNull(),
   color: text("color"),
+  icon: text("icon"),
+  description: text("description"),
+  isGlobal: boolean("is_global").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
-  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
 });
 
@@ -174,6 +152,7 @@ export const tasks = pgTable("tasks", {
   billingPeriodStart: text("billing_period_start"),
   billingPeriodEnd: text("billing_period_end"),
   parentTaskId: varchar("parent_task_id"),
+  sortOrder: integer("sort_order").notNull().default(0),
   approvalStatus: text("approval_status").notNull().default("approved"),
   noCredit: boolean("no_credit").notNull().default(false),
   timerStartedAt: text("timer_started_at"),
@@ -193,9 +172,40 @@ export const tasks = pgTable("tasks", {
   completedByName: text("completed_by_name"),
   cadenceId: varchar("cadence_id"),
   categoryId: varchar("category_id").references(() => taskCategories.id, { onDelete: "set null" }),
-  topic: text("topic"),
-  reviewerId: varchar("reviewer_id"),
+  source: text("source"),
+  taskTemplateId: varchar("task_template_id"),
+  retainerTemplateId: varchar("retainer_template_id"),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id"),
+  serviceTrackId: varchar("service_track_id"),
+  clientVisible: boolean("client_visible").notNull().default(true),
+  nextTaskId: varchar("next_task_id"),
+  targetMonth: text("target_month"), // "YYYY-MM" bucket for monthly grouping / 60-90 day projection
+  isInternal: boolean("is_internal").notNull().default(false), // true = internal agency task (SOPs, admin), false = client deliverable
+  resourceLinkId: varchar("resource_link_id").references(() => clientResources.id, { onDelete: "set null" }),
+  checklist: jsonb("checklist").$type<TaskChecklistEntry[]>().notNull().default(sql`'[]'::jsonb`),
 });
+
+export type TaskChecklistEntry = {
+  title: string;
+  isCompleted: boolean;
+};
+
+export const strategyBoards = pgTable("strategy_boards", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  snapshot: jsonb("snapshot"),
+  notes: text("notes"),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: varchar("updated_by"),
+});
+
+export const insertStrategyBoardSchema = createInsertSchema(strategyBoards).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertStrategyBoard = z.infer<typeof insertStrategyBoardSchema>;
+export type StrategyBoard = typeof strategyBoards.$inferSelect;
 
 export const taskChecklistItems = pgTable("task_checklist_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -291,14 +301,21 @@ export type TaskAssignee = typeof taskAssignees.$inferSelect;
 export const insertTaskCategorySchema = createInsertSchema(taskCategories).omit({
   id: true,
   createdAt: true,
-});
+}).partial({ companyId: true });
 
 export type InsertTaskCategory = z.infer<typeof insertTaskCategorySchema>;
 export type TaskCategory = typeof taskCategories.$inferSelect;
 
+export const insertTaskChecklistEntrySchema = z.object({
+  title: z.string(),
+  isCompleted: z.boolean(),
+});
+
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
   createdAt: true,
+}).extend({
+  checklist: z.array(insertTaskChecklistEntrySchema).optional(),
 });
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -321,6 +338,7 @@ export const deliverableTypes = pgTable("deliverable_types", {
   name: text("name").notNull(),
   credits: decimal("credits", { precision: 10, scale: 2 }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  contentPlatform: text("content_platform"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -494,7 +512,17 @@ export const clientOnboarding = pgTable("client_onboarding", {
   gbpContactEmail: text("gbp_contact_email"),
   gbpContactPhone: text("gbp_contact_phone"),
   gbpAdditionalContext: text("gbp_additional_context"),
-  
+
+  // GBP Connection Tracking
+  gbpAccountId: text("gbp_account_id"),
+  gbpLocationId: text("gbp_location_id"),
+  gbpLocationName: text("gbp_location_name"),
+  gbpConnectedStatus: text("gbp_connected_status"), // connected | disconnected | pending
+  gbpPermissionStatus: text("gbp_permission_status"), // owner | manager | site_manager | none
+  gbpLastSyncTime: text("gbp_last_sync_time"),
+  gbpLastPublishStatus: text("gbp_last_publish_status"),
+  gbpConnectionNotes: text("gbp_connection_notes"),
+
   // Brand Assets
   brandAssetLinks: text("brand_asset_links"),
   brandAssetFiles: text("brand_asset_files"), // JSON array of { name, objectPath, uploadedAt }
@@ -516,7 +544,11 @@ export const clientOnboarding = pgTable("client_onboarding", {
   authorizationName: text("authorization_name"),
   authorizationDate: text("authorization_date"),
   authorizationSignature: text("authorization_signature"),
-  
+
+  // Completion status — set by admin when onboarding is finalized
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedAt: text("completed_at"),
+
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });
@@ -684,6 +716,19 @@ export const campaignRequests = pgTable("campaign_requests", {
   requestDeliverableIds: text("request_deliverable_ids").array(),
   requestDeliverableQuantities: text("request_deliverable_quantities"),
   requestMeetingQuantities: text("request_meeting_quantities"),
+  purpose: text("purpose"),
+  offer: text("offer"),
+  objective: text("objective"),
+  targetServices: text("target_services"),
+  ownerName: text("owner_name"),
+  launchDate: text("launch_date"),
+  clientVisible: boolean("client_visible").notNull().default(false),
+  sharepointFolderUrl: text("sharepoint_folder_url"),
+  assetLinks: text("asset_links"),
+  approvalFlow: text("approval_flow"),
+  campaignNotes: text("campaign_notes"),
+  reportingIncluded: boolean("reporting_included").notNull().default(false),
+  publishedUrls: text("published_urls"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -745,6 +790,11 @@ export const meetingRequests = pgTable("meeting_requests", {
   creditsDeducted: boolean("credits_deducted").notNull().default(false),
   approvedBy: varchar("approved_by"),
   approvedAt: text("approved_at"),
+  decisions: text("decisions"),
+  blockers: text("blockers"),
+  nextSteps: text("next_steps"),
+  linkedCampaignId: varchar("linked_campaign_id"),
+  linkedTaskId: varchar("linked_task_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -1374,6 +1424,30 @@ export const monthlyReportTracker = pgTable("monthly_report_tracker", {
 });
 
 // Admin-managed credentials per company (separate from client onboarding loginCredentials)
+// ── HubSpot per-company OAuth connection ──────────────────────────────────────
+export const hubspotConnections = pgTable("hubspot_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  portalId: text("portal_id"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: text("token_expires_at"),
+  hubDomain: text("hub_domain"),
+  hubspotCompanyId: text("hubspot_company_id"),
+  scopesGranted: text("scopes_granted"),
+  connectedBy: varchar("connected_by").notNull(),
+  connectedAt: text("connected_at").notNull(),
+  lastSyncedAt: text("last_synced_at"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const insertHubspotConnectionSchema = createInsertSchema(hubspotConnections).omit({
+  id: true,
+  connectedAt: true,
+});
+export type InsertHubspotConnection = z.infer<typeof insertHubspotConnectionSchema>;
+export type HubspotConnection = typeof hubspotConnections.$inferSelect;
+
 export const companyCredentials = pgTable("company_credentials", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
@@ -1383,6 +1457,7 @@ export const companyCredentials = pgTable("company_credentials", {
   url: text("url"),
   notes: text("notes"),
   category: text("category"),
+  lastVerifiedAt: text("last_verified_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });
@@ -1395,22 +1470,11 @@ export const insertCompanyCredentialSchema = createInsertSchema(companyCredentia
 export type InsertCompanyCredential = z.infer<typeof insertCompanyCredentialSchema>;
 export type CompanyCredential = typeof companyCredentials.$inferSelect;
 
-export const knowledgeSectionEnum = ["links", "profile", "ideas", "resources", "icp", "persona", "keywords"] as const;
+export const knowledgeSectionEnum = [
+  "links", "profile", "ideas", "resources",
+  "website", "analytics", "social", "design", "ads", "email", "tools", "docs", "directory", "other",
+] as const;
 export type KnowledgeSection = typeof knowledgeSectionEnum[number];
-
-// ─── Company Profile (branding, social, logos, summary) ───────────────────────
-export const companyProfiles = pgTable("company_profiles", {
-  companyId: varchar("company_id").primaryKey().references(() => companies.id, { onDelete: "cascade" }),
-  summary: text("summary"),
-  brandColors: text("brand_colors"),
-  socialLinks: text("social_links"),
-  primaryLogoUrl: text("primary_logo_url"),
-  secondaryLogoUrl: text("secondary_logo_url"),
-  faviconUrl: text("favicon_url"),
-  updatedAt: text("updated_at"),
-});
-
-export type CompanyProfile = typeof companyProfiles.$inferSelect;
 
 // Admin-managed knowledge hub items per company
 export const companyKnowledgeItems = pgTable("company_knowledge_items", {
@@ -1435,109 +1499,782 @@ export const insertCompanyKnowledgeItemSchema = createInsertSchema(companyKnowle
 export type InsertCompanyKnowledgeItem = z.infer<typeof insertCompanyKnowledgeItemSchema>;
 export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;
 
-// ─── Task Labels (color tags, admin-managed per company) ──────────────────────
-export const taskLabels = pgTable("task_labels", {
+// Brand profile per company (visual identity, voice, positioning)
+export const brandProfiles = pgTable("brand_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull(),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  primaryColor: text("primary_color"),
+  secondaryColor: text("secondary_color"),
+  accentColor: text("accent_color"),
+  primaryFont: text("primary_font"),
+  secondaryFont: text("secondary_font"),
+  tagline: text("tagline"),
+  brandVoiceSummary: text("brand_voice_summary"),
+  targetAudienceDescription: text("target_audience_description"),
+  geographicFocus: text("geographic_focus"),
+  uniqueValueProposition: text("unique_value_proposition"),
+  doNotUsePhrases: text("do_not_use_phrases"),
+  logoPrimaryUrl: text("logo_primary_url"),
+  logoSecondaryUrl: text("logo_secondary_url"),
+  logoWhiteUrl: text("logo_white_url"),
+  brandGuidelinesUrl: text("brand_guidelines_url"),
+  competitorNotes: text("competitor_notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertBrandProfileSchema = createInsertSchema(brandProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBrandProfile = z.infer<typeof insertBrandProfileSchema>;
+export type BrandProfile = typeof brandProfiles.$inferSelect;
+
+// ── Content Calendar ─────────────────────────────────────────────────────────
+
+export const contentPlatformEnum = ["google_business", "facebook", "instagram", "linkedin", "email", "blog", "website_landing_page", "youtube_video", "medium_blog_site", "directory_citation", "other"] as const;
+export type ContentPlatform = typeof contentPlatformEnum[number];
+
+export const contentTypeEnum = ["post", "story", "reel", "article", "newsletter", "ad", "event", "offer", "product"] as const;
+export type ContentType = typeof contentTypeEnum[number];
+
+export const contentStatusEnum = ["placeholder", "drafting", "internal_review", "client_review", "draft", "in_review", "approved", "scheduled", "published", "manually_published", "api_published", "failed", "repurpose_syndicate", "cancelled", "archived"] as const;
+export type ContentStatus = typeof contentStatusEnum[number];
+
+export const gbpPostTypeEnum = ["whats_new", "event", "offer", "product"] as const;
+export type GbpPostType = typeof gbpPostTypeEnum[number];
+
+export const contentPillars = pgTable("content_pillars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  color: text("color").notNull().default("#818cf8"),
+  description: text("description"),
+  color: text("color").notNull().default("#6366f1"),
+  isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
 });
+export const insertContentPillarSchema = createInsertSchema(contentPillars).omit({ id: true, createdAt: true });
+export type InsertContentPillar = z.infer<typeof insertContentPillarSchema>;
+export type ContentPillar = typeof contentPillars.$inferSelect;
 
-export const insertTaskLabelSchema = createInsertSchema(taskLabels).omit({ id: true, createdAt: true });
-export type InsertTaskLabel = z.infer<typeof insertTaskLabelSchema>;
-export type TaskLabel = typeof taskLabels.$inferSelect;
-
-// ─── Government Form Requests ──────────────────────────────────────────────────
-export const governmentFormRequests = pgTable("government_form_requests", {
+export const contentAssets = pgTable("content_assets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
-  formType: text("form_type").notNull().default("wosb"),
-  token: text("token").notNull().unique(),
-  status: text("status").notNull().default("draft"), // 'draft' | 'sent' | 'completed'
-  sentAt: text("sent_at"),
-  completedAt: text("completed_at"),
-  recipientEmail: text("recipient_email"),
-  recipientName: text("recipient_name"),
+  pillarId: varchar("pillar_id"),
+  name: text("name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileType: text("file_type"),
+  thumbnailUrl: text("thumbnail_url"),
   createdBy: varchar("created_by"),
   createdAt: text("created_at").notNull(),
-  formData: text("form_data"), // JSON stringified submission
+});
+export const insertContentAssetSchema = createInsertSchema(contentAssets).omit({ id: true, createdAt: true });
+export type InsertContentAsset = z.infer<typeof insertContentAssetSchema>;
+export type ContentAsset = typeof contentAssets.$inferSelect;
+
+
+// ── HubSpot Onboarding Checklist ──────────────────────────────────────────────
+
+export const hubspotOnboardingChecklist = pgTable("hubspot_onboarding_checklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  section: text("section").notNull(),
+  itemKey: varchar("item_key").notNull(),
+  label: text("label").notNull(),
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedBy: varchar("completed_by"),
+  completedByName: text("completed_by_name"),
+  completedAt: text("completed_at"),
+  notes: text("notes"),
+  assignedTo: varchar("assigned_to"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertHubspotOnboardingItemSchema = createInsertSchema(hubspotOnboardingChecklist).omit({ id: true, createdAt: true });
+export type InsertHubspotOnboardingItem = z.infer<typeof insertHubspotOnboardingItemSchema>;
+export type HubspotOnboardingItem = typeof hubspotOnboardingChecklist.$inferSelect;
+
+// ── Report Presets ────────────────────────────────────────────────────────────
+
+export const reportPresets = pgTable("report_presets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  reportType: text("report_type").notNull(), // 'tasks' | 'content' | 'companies' | 'credits' | 'hubspot'
+  filters: text("filters").notNull(), // JSON-encoded filter config
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  scheduledFrequency: text("scheduled_frequency"), // 'weekly' | 'monthly' | null
+  scheduledEmails: text("scheduled_emails"), // comma-separated email list
+  scheduledNextRun: text("scheduled_next_run"),
+});
+export const insertReportPresetSchema = createInsertSchema(reportPresets).omit({ id: true, createdAt: true });
+export type InsertReportPreset = z.infer<typeof insertReportPresetSchema>;
+export type ReportPreset = typeof reportPresets.$inferSelect;
+
+// ── HubSpot Sync Log ──────────────────────────────────────────────────────────
+
+export const hubspotSyncLog = pgTable("hubspot_sync_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  status: text("status").notNull().default("success"),
+  details: text("details"),
+  createdAt: text("created_at").notNull(),
+});
+export type HubspotSyncLog = typeof hubspotSyncLog.$inferSelect;
+
+// ── AI Brief Templates ────────────────────────────────────────────────────────
+
+export const contentGoalEnum = [
+  "google_business_post", "social_image", "social_video", "email_banner",
+  "blog_feature", "ad_creative", "newsletter_header", "podcast_thumbnail", "case_study_visual",
+] as const;
+export type ContentGoal = typeof contentGoalEnum[number];
+
+export const aiPromptTemplates = pgTable("ai_prompt_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contentGoal: text("content_goal").$type<ContentGoal>().notNull(),
+  name: text("name").notNull(),
+  imagePromptTemplate: text("image_prompt_template"),
+  captionTemplate: text("caption_template"),
+  hashtagTemplate: text("hashtag_template"),
+  ctaTemplate: text("cta_template"),
+  gbpPostTemplate: text("gbp_post_template"),
+  emailSubjectTemplate: text("email_subject_template"),
+  linkedinOutlineTemplate: text("linkedin_outline_template"),
+  isDefault: boolean("is_default").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertAiPromptTemplateSchema = createInsertSchema(aiPromptTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAiPromptTemplate = z.infer<typeof insertAiPromptTemplateSchema>;
+export type AiPromptTemplate = typeof aiPromptTemplates.$inferSelect;
+
+// ── Workflow Library ──────────────────────────────────────────────────────────
+
+export const workflowComplexityEnum = ["easy", "medium", "advanced"] as const;
+export type WorkflowComplexity = typeof workflowComplexityEnum[number];
+
+export const hubspotWorkflowTemplates = pgTable("hubspot_workflow_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  triggerEvent: text("trigger_event").notNull(),
+  hub: text("hub").notNull(),
+  businessImpact: text("business_impact"),
+  complexity: text("complexity").$type<WorkflowComplexity>().notNull().default("medium"),
+  isQuickWin: boolean("is_quick_win").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+export const insertHubspotWorkflowTemplateSchema = createInsertSchema(hubspotWorkflowTemplates).omit({ id: true, createdAt: true });
+export type InsertHubspotWorkflowTemplate = z.infer<typeof insertHubspotWorkflowTemplateSchema>;
+export type HubspotWorkflowTemplate = typeof hubspotWorkflowTemplates.$inferSelect;
+
+export const companyWorkflowStatusEnum = ["planned", "building", "active"] as const;
+export type CompanyWorkflowStatus = typeof companyWorkflowStatusEnum[number];
+
+export const companyWorkflows = pgTable("company_workflows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").notNull().references(() => hubspotWorkflowTemplates.id, { onDelete: "cascade" }),
+  status: text("status").$type<CompanyWorkflowStatus>().notNull().default("planned"),
+  hubspotWorkflowId: text("hubspot_workflow_id"),
+  notes: text("notes"),
+  assignedBy: varchar("assigned_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertCompanyWorkflowSchema = createInsertSchema(companyWorkflows).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCompanyWorkflow = z.infer<typeof insertCompanyWorkflowSchema>;
+export type CompanyWorkflow = typeof companyWorkflows.$inferSelect;
+
+// ── Notepads ──────────────────────────────────────────────────────────────────
+
+export const notepads = pgTable("notepads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull().default("Untitled Note"),
+  content: text("content"),
+  category: text("category").default("general"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  isInternal: boolean("is_internal").notNull().default(false),
+  linkedCampaignId: varchar("linked_campaign_id"),
+  linkedTaskId: varchar("linked_task_id"),
+  linkedContentItemId: varchar("linked_content_item_id"),
+  linkedMeetingId: varchar("linked_meeting_id"),
+  linkedResourceId: varchar("linked_resource_id"),
+  lastEditedBy: varchar("last_edited_by"),
+  lastEditedByName: text("last_edited_by_name"),
+  createdBy: varchar("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertNotepadSchema = createInsertSchema(notepads).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNotepad = z.infer<typeof insertNotepadSchema>;
+export type Notepad = typeof notepads.$inferSelect;
+
+// ── Message Board ─────────────────────────────────────────────────────────────
+
+export const messageBoardPosts = pgTable("message_board_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  category: text("category").default("general"),
+  isPinned: boolean("is_pinned").notNull().default(false),
+  isAnnouncement: boolean("is_announcement").notNull().default(false),
+  replyCount: integer("reply_count").notNull().default(0),
+  isInternal: boolean("is_internal").notNull().default(false),
+  linkedCampaignId: varchar("linked_campaign_id"),
+  linkedTaskId: varchar("linked_task_id"),
+  linkedContentItemId: varchar("linked_content_item_id"),
+  postedBy: varchar("posted_by").notNull(),
+  postedByName: text("posted_by_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertMessageBoardPostSchema = createInsertSchema(messageBoardPosts).omit({ id: true, createdAt: true, updatedAt: true, replyCount: true });
+export type InsertMessageBoardPost = z.infer<typeof insertMessageBoardPostSchema>;
+export type MessageBoardPost = typeof messageBoardPosts.$inferSelect;
+
+export const messageBoardReplies = pgTable("message_board_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  companyId: varchar("company_id").notNull(),
+  body: text("body").notNull(),
+  postedBy: varchar("posted_by").notNull(),
+  postedByName: text("posted_by_name").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertMessageBoardReplySchema = createInsertSchema(messageBoardReplies).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMessageBoardReply = z.infer<typeof insertMessageBoardReplySchema>;
+export type MessageBoardReply = typeof messageBoardReplies.$inferSelect;
+
+// ── Check-in Questions & Responses ────────────────────────────────────────────
+
+export const checkinQuestions = pgTable("checkin_questions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id"),
+  question: text("question").notNull(),
+  frequency: text("frequency").notNull(),
+  scheduledDays: text("scheduled_days").array(),
+  scheduledTime: text("scheduled_time").default("09:00"),
+  recipientIds: text("recipient_ids").array(),
+  recipientType: text("recipient_type").default("all_agency"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  nextSendAt: text("next_send_at"),
+  lastSentAt: text("last_sent_at"),
+  createdAt: text("created_at").notNull(),
+});
+export const insertCheckinQuestionSchema = createInsertSchema(checkinQuestions).omit({ id: true, createdAt: true });
+export type InsertCheckinQuestion = z.infer<typeof insertCheckinQuestionSchema>;
+export type CheckinQuestion = typeof checkinQuestions.$inferSelect;
+
+export const checkinResponses = pgTable("checkin_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull(),
+  companyId: varchar("company_id"),
+  responderId: varchar("responder_id").notNull(),
+  responderName: text("responder_name").notNull(),
+  response: text("response").notNull(),
+  sentAt: text("sent_at").notNull(),
+  respondedAt: text("responded_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+export const insertCheckinResponseSchema = createInsertSchema(checkinResponses).omit({ id: true, createdAt: true });
+export type InsertCheckinResponse = z.infer<typeof insertCheckinResponseSchema>;
+export type CheckinResponse = typeof checkinResponses.$inferSelect;
+
+// ── Hill Charts ───────────────────────────────────────────────────────────────
+
+// ── Client Resource Library ───────────────────────────────────────────────────
+export const resourceTypeEnum = [
+  "sharepoint_main_folder", "brand_kit", "logo_creative_assets", "brand_guidelines",
+  "website_admin", "social_profile", "directory_profile", "google_business_profile",
+  "hubspot_record", "campaign_folder", "reporting_folder", "credentials_reference",
+  "strategy_doc", "meeting_notes_folder", "other",
+] as const;
+export const resourceStatusEnum = ["active", "missing", "needs_update", "archived"] as const;
+export const resourceVisibilityEnum = ["internal_only", "client_visible", "admin_only"] as const;
+
+export const clientResources = pgTable("client_resources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  resourceType: text("resource_type").notNull().$type<typeof resourceTypeEnum[number]>(),
+  url: text("url"),
+  description: text("description"),
+  visibility: text("visibility").notNull().default("internal_only").$type<typeof resourceVisibilityEnum[number]>(),
+  relatedCampaignId: varchar("related_campaign_id"),
+  relatedTaskId: varchar("related_task_id"),
+  relatedContentItemId: varchar("related_content_item_id"),
+  owner: text("owner"),
+  status: text("status").notNull().default("active").$type<typeof resourceStatusEnum[number]>(),
+  lastCheckedDate: text("last_checked_date"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertClientResourceSchema = createInsertSchema(clientResources).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClientResource = z.infer<typeof insertClientResourceSchema>;
+export type ClientResource = typeof clientResources.$inferSelect;
+
+export const hillCharts = pgTable("hill_charts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  items: text("items").notNull().default("[]"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertHillChartSchema = createInsertSchema(hillCharts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertHillChart = z.infer<typeof insertHillChartSchema>;
+export type HillChart = typeof hillCharts.$inferSelect;
+
+// ── SEO / Directory Tracking ──────────────────────────────────────────────────
+export const seoDirectoryTypeEnum = ["directory", "citation", "gbp", "local_landing_page", "public_blog", "blog_post", "backlink_resource", "other"] as const;
+export const seoDirectoryStatusEnum = ["not_started", "assigned", "in_progress", "submitted", "pending_verification", "live", "needs_update", "rejected", "archived"] as const;
+
+export const seoDirectories = pgTable("seo_directories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  campaignId: varchar("campaign_id"),
+  name: text("name").notNull(),
+  type: text("type").notNull().$type<typeof seoDirectoryTypeEnum[number]>().default("directory"),
+  url: text("url"),
+  loginUrl: text("login_url"),
+  targetKeyword: text("target_keyword"),
+  targetCity: text("target_city"),
+  status: text("status").notNull().$type<typeof seoDirectoryStatusEnum[number]>().default("not_started"),
+  owner: text("owner"),
+  dueDate: text("due_date"),
+  submittedDate: text("submitted_date"),
+  liveDate: text("live_date"),
+  publishedUrl: text("published_url"),
+  notes: text("notes"),
+  evidenceUrl: text("evidence_url"),
+  createdBy: varchar("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+export const insertSeoDirectorySchema = createInsertSchema(seoDirectories).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSeoDirectory = z.infer<typeof insertSeoDirectorySchema>;
+export type SeoDirectory = typeof seoDirectories.$inferSelect;
+
+// ── Email Logs ────────────────────────────────────────────────────────────────
+export const emailLogTemplateTypeEnum = ["approval_request", "meeting_recap", "task_reminder", "monthly_report_ready", "monthly_report_client", "planning_gap_alert"] as const;
+export type EmailLogTemplateType = typeof emailLogTemplateTypeEnum[number];
+
+export const emailLogStatusEnum = ["draft", "queued", "sent", "failed", "cancelled"] as const;
+export type EmailLogStatus = typeof emailLogStatusEnum[number];
+
+export const emailLogs = pgTable("email_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  relatedTaskId: varchar("related_task_id"),
+  relatedCampaignId: varchar("related_campaign_id"),
+  relatedMeetingId: varchar("related_meeting_id"),
+  relatedReportId: varchar("related_report_id"),
+  recipients: text("recipients").array().notNull(),
+  subject: text("subject").notNull(),
+  templateType: text("template_type").$type<EmailLogTemplateType>().notNull(),
+  htmlBody: text("html_body").notNull(),
+  resendEmailId: text("resend_email_id"),
+  status: text("status").$type<EmailLogStatus>().notNull().default("draft"),
+  sentAt: text("sent_at"),
+  errorMessage: text("error_message"),
+  triggeredBy: text("triggered_by").$type<"user" | "system">().notNull().default("user"),
+  triggeredById: varchar("triggered_by_id"),
+  idempotencyKey: text("idempotency_key"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertEmailLogSchema = createInsertSchema(emailLogs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
+export type EmailLog = typeof emailLogs.$inferSelect;
+
+// ── Retainer Templates & Service Tracks ──────────────────────────────────────
+
+export const retainerTemplateStatusEnum = ["active", "inactive", "draft"] as const;
+export type RetainerTemplateStatus = typeof retainerTemplateStatusEnum[number];
+
+export const retainerTemplates = pgTable("retainer_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  status: text("status").$type<RetainerTemplateStatus>().notNull().default("draft"),
+  suggestedMonthlyPrice: decimal("suggested_monthly_price", { precision: 10, scale: 2 }),
+  monthlyCreditAllocation: real("monthly_credit_allocation"),
+  recommendedClientType: text("recommended_client_type"),
+  includedScopeSummary: text("included_scope_summary"),
+  excludedScopeSummary: text("excluded_scope_summary"),
+  overageRules: text("overage_rules"),
+  reportingCadence: text("reporting_cadence"),
+  meetingCadence: text("meeting_cadence"),
+  generationWindowDays: integer("generation_window_days").notNull().default(60),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertRetainerTemplateSchema = createInsertSchema(retainerTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRetainerTemplate = z.infer<typeof insertRetainerTemplateSchema>;
+export type RetainerTemplate = typeof retainerTemplates.$inferSelect;
+
+export const serviceTracks = pgTable("service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("active"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertServiceTrackSchema = createInsertSchema(serviceTracks).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertServiceTrack = z.infer<typeof insertServiceTrackSchema>;
+export type ServiceTrack = typeof serviceTracks.$inferSelect;
+
+export const retainerTemplateServiceTracks = pgTable("retainer_template_service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  serviceTrackId: varchar("service_track_id").notNull(),
+  includedByDefault: boolean("included_by_default").notNull().default(true),
+});
+
+export const insertRetainerTemplateServiceTrackSchema = createInsertSchema(retainerTemplateServiceTracks).omit({ id: true });
+export type InsertRetainerTemplateServiceTrack = z.infer<typeof insertRetainerTemplateServiceTrackSchema>;
+export type RetainerTemplateServiceTrack = typeof retainerTemplateServiceTracks.$inferSelect;
+
+// ── Task Templates ────────────────────────────────────────────────────────────
+
+export const taskTemplateRoleOwnerEnum = ["account_manager", "strategist", "content_lead", "designer", "developer", "hubspot_specialist", "ads_manager"] as const;
+export type TaskTemplateRoleOwner = typeof taskTemplateRoleOwnerEnum[number];
+
+export const taskTemplateCadenceEnum = ["once", "daily", "weekly", "biweekly", "monthly", "quarterly", "annual", "custom"] as const;
+export type TaskTemplateCadence = typeof taskTemplateCadenceEnum[number];
+
+export const taskTemplates = pgTable("task_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  defaultInstructions: text("default_instructions"),
+  serviceTrackId: varchar("service_track_id"),
+  deliverableTypeId: varchar("deliverable_type_id"),
+  defaultCreditCost: decimal("default_credit_cost", { precision: 10, scale: 2 }),
+  cadence: text("cadence").$type<TaskTemplateCadence>(),
+  defaultDueOffsetDays: integer("default_due_offset_days"),
+  defaultStartOffsetDays: integer("default_start_offset_days"),
+  defaultRoleOwner: text("default_role_owner").$type<TaskTemplateRoleOwner>(),
+  defaultPriority: text("default_priority").$type<TaskPriority>().default("medium"),
+  requiresClientApproval: boolean("requires_client_approval").notNull().default(false),
+  createsClientVisibleTask: boolean("creates_client_visible_task").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertTaskTemplateSchema = createInsertSchema(taskTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTaskTemplate = z.infer<typeof insertTaskTemplateSchema>;
+export type TaskTemplate = typeof taskTemplates.$inferSelect;
+
+export const retainerTemplateTaskTemplates = pgTable("retainer_template_task_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  taskTemplateId: varchar("task_template_id").notNull(),
+  includedByDefault: boolean("included_by_default").notNull().default(true),
+  monthlyQuantity: integer("monthly_quantity"),
+  quarterlyQuantity: integer("quarterly_quantity"),
+  annualQuantity: integer("annual_quantity"),
+  creditOverride: decimal("credit_override", { precision: 10, scale: 2 }),
+});
+
+export const insertRetainerTemplateTaskTemplateSchema = createInsertSchema(retainerTemplateTaskTemplates).omit({ id: true });
+export type InsertRetainerTemplateTaskTemplate = z.infer<typeof insertRetainerTemplateTaskTemplateSchema>;
+export type RetainerTemplateTaskTemplate = typeof retainerTemplateTaskTemplates.$inferSelect;
+
+// ── Client Retainer Assignments ───────────────────────────────────────────────
+
+export const clientRetainerAssignmentStatusEnum = ["draft", "active", "paused", "cancelled"] as const;
+export type ClientRetainerAssignmentStatus = typeof clientRetainerAssignmentStatusEnum[number];
+
+export const clientRetainerAssignments = pgTable("client_retainer_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  status: text("status").$type<ClientRetainerAssignmentStatus>().notNull().default("draft"),
+  startDate: text("start_date").notNull(),
+  billingDayOfMonth: integer("billing_day_of_month").notNull().default(1),
+  monthlyCreditAllocationOverride: real("monthly_credit_allocation_override"),
+  monthlyPriceOverride: decimal("monthly_price_override", { precision: 10, scale: 2 }),
+  generationWindowDaysOverride: integer("generation_window_days_override"),
+  autoGenerationEnabled: boolean("auto_generation_enabled").notNull().default(true),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertClientRetainerAssignmentSchema = createInsertSchema(clientRetainerAssignments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClientRetainerAssignment = z.infer<typeof insertClientRetainerAssignmentSchema>;
+export type ClientRetainerAssignment = typeof clientRetainerAssignments.$inferSelect;
+
+export const clientRetainerServiceTracks = pgTable("client_retainer_service_tracks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id").notNull(),
+  serviceTrackId: varchar("service_track_id").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
   notes: text("notes"),
 });
 
-export const insertGovernmentFormRequestSchema = createInsertSchema(governmentFormRequests).omit({
-  id: true,
-  createdAt: true,
-  token: true,
-  formData: true,
-  sentAt: true,
-  completedAt: true,
-});
-export type InsertGovernmentFormRequest = z.infer<typeof insertGovernmentFormRequestSchema>;
-export type GovernmentFormRequest = typeof governmentFormRequests.$inferSelect;
+export const insertClientRetainerServiceTrackSchema = createInsertSchema(clientRetainerServiceTracks).omit({ id: true });
+export type InsertClientRetainerServiceTrack = z.infer<typeof insertClientRetainerServiceTrackSchema>;
+export type ClientRetainerServiceTrack = typeof clientRetainerServiceTracks.$inferSelect;
 
-// ─── Checklist Templates (admin-managed reusable templates) ───────────────────
-export const checklistTemplates = pgTable("checklist_templates", {
+// ── Onboarding / Implementation Templates ────────────────────────────────────
+
+export const onboardingTemplateStatusEnum = ["active", "inactive", "draft"] as const;
+export type OnboardingTemplateStatus = typeof onboardingTemplateStatusEnum[number];
+
+export const onboardingTemplates = pgTable("onboarding_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  suggestedPrice: decimal("suggested_price", { precision: 10, scale: 2 }),
+  status: text("status").$type<OnboardingTemplateStatus>().notNull().default("active"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 });
 
-export const insertChecklistTemplateSchema = createInsertSchema(checklistTemplates).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertChecklistTemplate = z.infer<typeof insertChecklistTemplateSchema>;
-export type ChecklistTemplate = typeof checklistTemplates.$inferSelect;
+export const insertOnboardingTemplateSchema = createInsertSchema(onboardingTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOnboardingTemplate = z.infer<typeof insertOnboardingTemplateSchema>;
+export type OnboardingTemplate = typeof onboardingTemplates.$inferSelect;
 
-export const checklistTemplateItems = pgTable("checklist_template_items", {
+export const onboardingTaskTemplates = pgTable("onboarding_task_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id").notNull().references(() => checklistTemplates.id, { onDelete: "cascade" }),
-  text: text("text").notNull(),
+  onboardingTemplateId: varchar("onboarding_template_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  defaultInstructions: text("default_instructions"),
+  defaultCreditCost: decimal("default_credit_cost", { precision: 10, scale: 2 }).notNull().default("0"),
+  defaultDueOffsetDays: integer("default_due_offset_days"),
+  defaultRoleOwner: text("default_role_owner"),
+  requiresClientApproval: boolean("requires_client_approval").notNull().default(false),
+  createsClientVisibleTask: boolean("creates_client_visible_task").notNull().default(false),
+  noCredit: boolean("no_credit").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
 });
 
-export const insertChecklistTemplateItemSchema = createInsertSchema(checklistTemplateItems).omit({ id: true, createdAt: true });
-export type InsertChecklistTemplateItem = z.infer<typeof insertChecklistTemplateItemSchema>;
-export type ChecklistTemplateItem = typeof checklistTemplateItems.$inferSelect;
+export const insertOnboardingTaskTemplateSchema = createInsertSchema(onboardingTaskTemplates).omit({ id: true, createdAt: true });
+export type InsertOnboardingTaskTemplate = z.infer<typeof insertOnboardingTaskTemplateSchema>;
+export type OnboardingTaskTemplate = typeof onboardingTaskTemplates.$inferSelect;
 
-// ─── Company Checklists (per-company checklist instances) ─────────────────────
-export const companyChecklists = pgTable("company_checklists", {
+// ── Retainer Generated Task History (dedup) ──────────────────────────────────
+export const retainerGeneratedTasks = pgTable("retainer_generated_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+  companyId: varchar("company_id").notNull(),
+  taskTemplateId: varchar("task_template_id").notNull(),
+  retainerTemplateId: varchar("retainer_template_id").notNull(),
+  clientRetainerAssignmentId: varchar("client_retainer_assignment_id").notNull(),
+  generatedTaskId: varchar("generated_task_id").notNull(),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertRetainerGeneratedTaskSchema = createInsertSchema(retainerGeneratedTasks).omit({ id: true, createdAt: true });
+export type InsertRetainerGeneratedTask = z.infer<typeof insertRetainerGeneratedTaskSchema>;
+export type RetainerGeneratedTask = typeof retainerGeneratedTasks.$inferSelect;
+
+// ── Credit Reservations (projected credit tracking) ───────────────────────────
+export const creditReservations = pgTable("credit_reservations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  generatedTaskId: varchar("generated_task_id").notNull(),
+  billingPeriodStart: text("billing_period_start").notNull(),
+  billingPeriodEnd: text("billing_period_end").notNull(),
+  reservedCredits: decimal("reserved_credits", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull().default("reserved"), // reserved | consumed | released
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCreditReservationSchema = createInsertSchema(creditReservations).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCreditReservation = z.infer<typeof insertCreditReservationSchema>;
+export type CreditReservation = typeof creditReservations.$inferSelect;
+
+// ── Integration Health ────────────────────────────────────────────────────────
+export const integrationTypeEnum = ["hubspot", "sharepoint", "resend", "google_business_profile", "other"] as const;
+export type IntegrationType = typeof integrationTypeEnum[number];
+
+export const integrationStatusEnum = ["not_configured", "needs_credentials", "connected", "warning", "error", "disabled"] as const;
+export type IntegrationStatusValue = typeof integrationStatusEnum[number];
+
+export const integrationStatuses = pgTable("integration_statuses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  integrationType: text("integration_type").$type<IntegrationType>().notNull(),
+  status: text("status").$type<IntegrationStatusValue>().notNull().default("not_configured"),
+  externalAccountId: text("external_account_id"),
+  externalObjectId: text("external_object_id"),
+  lastSyncTime: text("last_sync_time"),
+  lastError: text("last_error"),
+  setupChecklistStatus: text("setup_checklist_status"),
+  notes: text("notes"),
+  updatedBy: varchar("updated_by").notNull(),
+  updatedByName: text("updated_by_name"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+});
+
+export const insertIntegrationStatusSchema = createInsertSchema(integrationStatuses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertIntegrationStatus = z.infer<typeof insertIntegrationStatusSchema>;
+export type IntegrationStatus = typeof integrationStatuses.$inferSelect;
+
+// ── System Settings (global key-value store) ──────────────────────────────────
+export const systemSettings = pgTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at"),
+});
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// ── Retainer Generation Logs ──────────────────────────────────────────────────
+export const retainerGenerationRunTypeEnum = ["scheduled", "manual"] as const;
+export type RetainerGenerationRunType = typeof retainerGenerationRunTypeEnum[number];
+
+export const retainerGenerationStatusEnum = ["success", "partial", "failed", "dry_run", "skipped"] as const;
+export type RetainerGenerationStatus = typeof retainerGenerationStatusEnum[number];
+
+export const retainerGenerationLogs = pgTable("retainer_generation_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runType: text("run_type").$type<RetainerGenerationRunType>().notNull().default("scheduled"),
+  status: text("status").$type<RetainerGenerationStatus>().notNull().default("success"),
+  companiesProcessed: integer("companies_processed").notNull().default(0),
+  tasksCreated: integer("tasks_created").notNull().default(0),
+  tasksSkipped: integer("tasks_skipped").notNull().default(0),
+  dryRun: boolean("dry_run").notNull().default(false),
+  errorMessage: text("error_message"),
+  details: text("details"),
+  triggeredBy: varchar("triggered_by"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertRetainerGenerationLogSchema = createInsertSchema(retainerGenerationLogs).omit({ id: true, createdAt: true });
+export type InsertRetainerGenerationLog = z.infer<typeof insertRetainerGenerationLogSchema>;
+export type RetainerGenerationLog = typeof retainerGenerationLogs.$inferSelect;
+
+// ── Company Service Delivery Config ───────────────────────────────────────────
+export const companyServiceConfig = pgTable("company_service_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  // HubSpot: JSON array of hub keys they have
+  hubspotHubs: text("hubspot_hubs"),
+  hubspotPortalId: text("hubspot_portal_id"),
+  // Social media management
+  socialTool: text("social_tool"),       // "hubspot" | "followr" | "meta_suite" | "buffer" | "other" | "not_managed"
+  socialToolNotes: text("social_tool_notes"),
+  // Landing pages
+  landingPagePlatform: text("landing_page_platform"), // "hubspot" | "wordpress" | "other" | "na"
+  landingPageNotes: text("landing_page_notes"),
+  // Blog
+  blogPlatform: text("blog_platform"),   // "hubspot" | "wordpress" | "other" | "na"
+  blogNotes: text("blog_notes"),
+  // Website access
+  websiteAccess: text("website_access"), // "full_manage" | "edit_access" | "read_only" | "no_access" | "na"
+  websiteUrl: text("website_url"),
+  websiteNotes: text("website_notes"),
+  updatedAt: text("updated_at"),
+});
+
+export const insertCompanyServiceConfigSchema = createInsertSchema(companyServiceConfig).omit({ id: true });
+export type InsertCompanyServiceConfig = z.infer<typeof insertCompanyServiceConfigSchema>;
+export type CompanyServiceConfig = typeof companyServiceConfig.$inferSelect;
+
+// ── Company Profile ───────────────────────────────────────────────────────────
+export const companyProfiles = pgTable("company_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  businessLegalName: text("business_legal_name"),
+  dbaName: text("dba_name"),
+  physicalAddress: text("physical_address"),
+  mailingAddress: text("mailing_address"),
+  // phones: JSON array of {label: string, number: string}
+  phones: text("phones"),
+  primaryEmail: text("primary_email"),
+  website: text("website"),
+  stateOfIncorporation: text("state_of_incorporation"),
+  businessRegistrationUrl: text("business_registration_url"),
+  // additionalContacts: JSON array of {label: string, name: string, phone: string, email: string}
+  additionalContacts: text("additional_contacts"),
+  notes: text("notes"),
+  companySummary: text("company_summary"),
+  updatedAt: text("updated_at"),
+});
+export const insertCompanyProfileSchema = createInsertSchema(companyProfiles).omit({ id: true });
+export type InsertCompanyProfile = z.infer<typeof insertCompanyProfileSchema>;
+export type CompanyProfile = typeof companyProfiles.$inferSelect;
+
+// ── Government Profile ────────────────────────────────────────────────────────
+export const governmentProfiles = pgTable("government_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().unique(),
+  fein: text("fein"),
+  dunsNumber: text("duns_number"),
+  ueiNumber: text("uei_number"),
+  cageCode: text("cage_code"),
+  cageCodeNotes: text("cage_code_notes"),
+  physicalAddress: text("physical_address"),
+  mailingAddress: text("mailing_address"),
+  // phones: JSON array of {label: string, number: string}
+  phones: text("phones"),
+  businessEmail: text("business_email"),
+  bankingRoutingNumber: text("banking_routing_number"),
+  bankingAccountNumber: text("banking_account_number"),
+  bankingInstitution: text("banking_institution"),
+  // naicsCodes: JSON array of {code: string, description: string}
+  naicsCodes: text("naics_codes"),
+  // commodityCodes: JSON array of {code: string, description: string}
+  commodityCodes: text("commodity_codes"),
+  capabilitiesStatement: text("capabilities_statement"),
+  stateRegistrationUrl: text("state_registration_url"),
+  additionalNotes: text("additional_notes"),
+  updatedAt: text("updated_at"),
+});
+export const insertGovernmentProfileSchema = createInsertSchema(governmentProfiles).omit({ id: true });
+export type InsertGovernmentProfile = z.infer<typeof insertGovernmentProfileSchema>;
+export type GovernmentProfile = typeof governmentProfiles.$inferSelect;
+
+// ── Government Portals ────────────────────────────────────────────────────────
+export const governmentPortals = pgTable("government_portals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
   name: text("name").notNull(),
-  templateId: varchar("template_id"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at"),
-});
-
-export const insertCompanyChecklistSchema = createInsertSchema(companyChecklists).omit({ id: true, createdAt: true, updatedAt: true });
-export type InsertCompanyChecklist = z.infer<typeof insertCompanyChecklistSchema>;
-export type CompanyChecklist = typeof companyChecklists.$inferSelect;
-
-export const companyChecklistItems = pgTable("company_checklist_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  checklistId: varchar("checklist_id").notNull().references(() => companyChecklists.id, { onDelete: "cascade" }),
-  text: text("text").notNull(),
-  completed: boolean("completed").notNull().default(false),
-  completedAt: text("completed_at"),
-  completedBy: text("completed_by"),
+  url: text("url"),
+  username: text("username"),
+  password: text("password"),
+  notes: text("notes"),
+  // category: "federal" | "state" | "county" | "national" | "other"
+  category: text("category").notNull().default("federal"),
+  registeredDate: text("registered_date"),
+  registrationNotes: text("registration_notes"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
 });
-
-export const insertCompanyChecklistItemSchema = createInsertSchema(companyChecklistItems).omit({ id: true, createdAt: true, completedAt: true, completedBy: true });
-export type InsertCompanyChecklistItem = z.infer<typeof insertCompanyChecklistItemSchema>;
-export type CompanyChecklistItem = typeof companyChecklistItems.$inferSelect;
-
-// ─── Task Label Assignments (many-to-many: tasks ↔ labels) ────────────────────
-export const taskLabelAssignments = pgTable("task_label_assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  taskId: varchar("task_id").notNull(),
-  labelId: varchar("label_id").notNull(),
-});
-
-export const insertTaskLabelAssignmentSchema = createInsertSchema(taskLabelAssignments).omit({ id: true });
-export type InsertTaskLabelAssignment = z.infer<typeof insertTaskLabelAssignmentSchema>;
-export type TaskLabelAssignment = typeof taskLabelAssignments.$inferSelect;
+export const insertGovernmentPortalSchema = createInsertSchema(governmentPortals).omit({ id: true, createdAt: true });
+export type InsertGovernmentPortal = z.infer<typeof insertGovernmentPortalSchema>;
+export type GovernmentPortal = typeof governmentPortals.$inferSelect;

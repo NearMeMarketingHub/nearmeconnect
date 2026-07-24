@@ -26,9 +26,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useUpload } from "@/hooks/use-upload";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
+import { HubspotPanel } from "@/components/hubspot-panel";
+import { CompanyCommandCenter } from "@/components/company-command-center";
 import {
   ArrowLeft,
   Plus,
@@ -89,10 +91,13 @@ import {
   BarChart3,
   Menu,
   FolderOpen,
-  Landmark,
-  SendHorizonal,
-  Eye,
-  CheckSquare,
+  List,
+  LayoutGrid,
+  Kanban,
+  Megaphone,
+  CalendarRange,
+  Workflow,
+  Sparkles,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
@@ -101,9 +106,20 @@ import { ChatMemberSelector } from "@/components/chat-member-selector";
 import { DeliverableTypePicker } from "@/components/deliverable-type-picker";
 import { MentionInput, renderMessageWithMentions } from "@/components/mention-input";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
+import { TaskBoardView } from "@/components/task-board-view";
+import { TaskGroupedView } from "@/components/task-grouped-view";
 import { CompanyInfoHub } from "@/components/company-info-hub";
-import { ProjectBoard } from "@/components/project-board";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { MarketingHub } from "@/components/marketing-hub";
+import { GovernmentHub } from "@/components/government-hub";
+import CompanyWorkflowsPanel from "@/pages/admin/company-workflows";
+import { NotepadPanel } from "@/components/notepad-panel";
+import { MessageBoardPanel } from "@/components/message-board-panel";
+import { SeoPanel } from "@/components/seo-panel";
+import { IntegrationHealthPanel } from "@/components/integration-health-panel";
+import { EmailComposerDialog } from "@/components/email-composer-dialog";
+import { EmailHistory } from "@/components/email-history";
+import { CompanyRetainerTab } from "@/components/company-retainer-tab";
+import { HillChartPanel } from "@/components/hill-chart-panel";
 import type { Company, Task, DeliverableType, CreditTransaction, MeetingRequest, MeetingType, ClientOnboarding, CampaignRequest } from "@shared/schema";
 import { getBillingPeriod, formatBillingPeriod, isDateInBillingPeriod, isTaskInBillingPeriod } from "@shared/billing";
 
@@ -169,12 +185,6 @@ interface CalendarDay {
   tasks: Task[];
 }
 
-const TIER_PRICES: Record<string, string> = {
-  essentials: "$2,500 / mo",
-  growth: "$5,000 / mo",
-  accelerator: "$7,000 / mo",
-};
-
 const CATEGORY_COLORS = [
   { label: "Blue", value: "#3b82f6" },
   { label: "Green", value: "#22c55e" },
@@ -212,6 +222,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const updateMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { name, color: color || null });
     },
@@ -223,6 +234,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const deleteMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/task-categories/${id}`);
     },
@@ -234,6 +246,7 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   });
 
   const reorderMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, sortOrder }: { id: string; sortOrder: number }) => {
       await apiRequest("PATCH", `/api/task-categories/${id}`, { sortOrder });
     },
@@ -391,185 +404,6 @@ function ManageCategoriesDialog({ companyId, categories }: { companyId: string; 
   );
 }
 
-// ─── Manage Labels Dialog ────────────────────────────────────────────────────
-
-function ManageLabelsDialog({ companyId }: { companyId: string }) {
-  const [open, setOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState("#818cf8");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editColor, setEditColor] = useState("#818cf8");
-  const { toast } = useToast();
-
-  const { data: labels = [] } = useQuery<any[]>({
-    queryKey: ["/api/companies", companyId, "task-labels"],
-    queryFn: async () => {
-      const r = await fetch(`/api/companies/${companyId}/task-labels`);
-      if (!r.ok) return [];
-      return r.json();
-    },
-    enabled: open,
-    staleTime: 10000,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", `/api/companies/${companyId}/task-labels`, {
-        name: newName.trim(),
-        color: newColor,
-        sortOrder: labels.length,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
-      setNewName("");
-      setNewColor("#818cf8");
-      toast({ title: "Label created" });
-    },
-    onError: () => toast({ title: "Failed to create label", variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, name, color }: { id: string; name: string; color: string }) => {
-      await apiRequest("PATCH", `/api/task-labels/${id}`, { name, color });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
-      setEditingId(null);
-      toast({ title: "Label updated" });
-    },
-    onError: () => toast({ title: "Failed to update label", variant: "destructive" }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/task-labels/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-labels"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "task-label-assignments"] });
-      toast({ title: "Label deleted" });
-    },
-    onError: () => toast({ title: "Failed to delete label", variant: "destructive" }),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-testid="button-manage-labels">
-          <Tag className="h-4 w-4 mr-2" />
-          Labels
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Manage Task Labels</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          <div className="space-y-2">
-            {labels.map((label: any) => (
-              <div key={label.id} className="flex items-center gap-2 p-2 rounded-md border" data-testid={`label-item-${label.id}`}>
-                {editingId === label.id ? (
-                  <>
-                    <input
-                      type="color"
-                      value={editColor}
-                      onChange={(e) => setEditColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer border p-0.5"
-                      title="Label color"
-                    />
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="flex-1 h-8"
-                      data-testid="input-edit-label-name"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") updateMutation.mutate({ id: label.id, name: editName, color: editColor });
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                    />
-                    <Button
-                      size="sm" className="h-7 text-xs"
-                      onClick={() => updateMutation.mutate({ id: label.id, name: editName, color: editColor })}
-                      disabled={updateMutation.isPending}
-                      data-testid="button-save-label"
-                    >
-                      Save
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingId(null)}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-5 h-5 rounded shrink-0" style={{ backgroundColor: label.color }} />
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold text-white flex-1"
-                      style={{ backgroundColor: label.color }}
-                    >
-                      {label.name}
-                    </span>
-                    <Button
-                      size="sm" variant="ghost" className="h-7 text-xs"
-                      onClick={() => { setEditingId(label.id); setEditName(label.name); setEditColor(label.color); }}
-                      data-testid={`button-edit-label-${label.id}`}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteMutation.mutate(label.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-label-${label.id}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            ))}
-            {labels.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">No labels yet. Create one below.</p>
-            )}
-          </div>
-
-          <div className="border-t pt-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Add New Label</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={newColor}
-                onChange={(e) => setNewColor(e.target.value)}
-                className="w-8 h-8 rounded cursor-pointer border p-0.5 shrink-0"
-                title="Label color"
-              />
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Label name..."
-                className="flex-1 h-8"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newName.trim()) createMutation.mutate();
-                }}
-                data-testid="input-new-label-name"
-              />
-              <Button
-                size="sm" className="h-8 px-3"
-                onClick={() => createMutation.mutate()}
-                disabled={!newName.trim() || createMutation.isPending}
-                data-testid="button-create-label"
-              >
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function CompanyDashboard() {
   const [, params] = useRoute("/admin/companies/:id");
   const companyId = params?.id;
@@ -578,33 +412,94 @@ export default function CompanyDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  // Parse URL query params
+  // Navigation structure — two-level: category → sub-tab
+  const NAV_GROUPS = [
+    { key: "overview",   label: "Overview",   subTabs: [] as { key: string; label: string }[], defaultSub: "details" },
+    { key: "work",       label: "Work",       subTabs: [
+      { key: "tasks",            label: "Tasks" },
+      { key: "campaigns",        label: "Campaigns" },
+
+      { key: "calendar",         label: "Calendar" },
+      { key: "cadences",         label: "Cadences" },
+      { key: "hill-chart",       label: "Hill Chart" },
+    ], defaultSub: "tasks" },
+    { key: "marketing",  label: "Marketing",  subTabs: [
+      { key: "marketing",    label: "Marketing Hub" },
+      { key: "government",   label: "Government Hub" },
+      { key: "onboarding",   label: "Info Hub" },
+      { key: "hubspot",      label: "HubSpot" },
+      { key: "workflows",    label: "Workflows" },
+      { key: "seo",          label: "SEO / Directories" },
+      { key: "gbp",          label: "GBP" },
+    ], defaultSub: "marketing" },
+    { key: "communicate", label: "Communicate", subTabs: [
+      { key: "chat",     label: "Chat" },
+      { key: "meetings", label: "Meetings" },
+      { key: "board",    label: "Board" },
+    ], defaultSub: "chat" },
+    { key: "admin", label: "Admin", subTabs: [
+      { key: "users",          label: "Users" },
+      { key: "credit-history", label: "Credit History" },
+      { key: "reporting",      label: "Reporting" },
+      { key: "emails",         label: "Emails" },
+      { key: "details",        label: "Details" },
+      { key: "integrations",   label: "Integrations" },
+      { key: "retainer",       label: "Retainer" },
+    ], defaultSub: "users" },
+  ];
+  const TAB_TO_CATEGORY: Record<string, string> = {
+    details: "overview", tasks: "work", campaigns: "work",
+    calendar: "work", cadences: "work", pending_approval: "work",
+    marketing: "marketing", government: "marketing", onboarding: "marketing", hubspot: "marketing", workflows: "marketing", seo: "marketing", gbp: "marketing",
+    chat: "communicate", meetings: "communicate", board: "communicate",
+    "hill-chart": "work",
+    users: "admin", "credit-history": "admin", reporting: "admin", integrations: "admin", emails: "admin", retainer: "admin",
+  };
+
+  // Parse URL query params — new format: ?tab=work&sub=tasks; old format: ?tab=tasks
   const urlParams = new URLSearchParams(searchString);
-  const initialTab = urlParams.get("tab") || "overview";
+  const urlTabParam = urlParams.get("tab");
+  const urlSubParam  = urlParams.get("sub");
   const initialThread = urlParams.get("thread");
-  
+  const initialPost = urlParams.get("post");
+  const _initNav = (() => {
+    const isCategory = urlTabParam ? NAV_GROUPS.some(g => g.key === urlTabParam) : false;
+    if (urlTabParam && isCategory) {
+      const group = NAV_GROUPS.find(g => g.key === urlTabParam)!;
+      const sub = urlSubParam && group.subTabs.some(s => s.key === urlSubParam) ? urlSubParam : group.defaultSub;
+      return { cat: urlTabParam, tab: sub };
+    }
+    if (urlTabParam && TAB_TO_CATEGORY[urlTabParam]) {
+      return { cat: TAB_TO_CATEGORY[urlTabParam], tab: urlTabParam };
+    }
+    return { cat: "marketing", tab: "marketing" };
+  })();
+
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(_initNav.tab);
+  const [activeCategory, setActiveCategory] = useState(_initNav.cat);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [composeEmailOpen, setComposeEmailOpen] = useState(false);
   const [companyTaskFilter, setCompanyTaskFilter] = useState<"all" | "pending" | "in_progress" | "review" | "approved" | "completed" | "rejected">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
   const [companyTaskPage, setCompanyTaskPage] = useState(1);
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
+  const [companyTaskViewMode, setCompanyTaskViewMode] = useState<"list" | "by-assignee" | "by-category" | "category" | "stage" | "board">("board");
+  const [showCompletedOnBoard, setShowCompletedOnBoard] = useState(false);
   const COMPANY_TASKS_PER_PAGE = 10;
   
   // Task form state
   const [taskOpen, setTaskOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
-  const [taskTopic, setTaskTopic] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
   const [deliverableType, setDeliverableType] = useState("");
   const [taskCategoryId, setTaskCategoryId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [additionalAssignees, setAdditionalAssignees] = useState<string[]>([]);
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrencePattern, setRecurrencePattern] = useState<string>("monthly");
+  const [recurrencePattern, setRecurrencePattern] = useState<"day_of_month" | "day_of_week" | "biweekly">("day_of_month");
   const [recurrenceDay, setRecurrenceDay] = useState("1");
   const [recurrenceWeekday, setRecurrenceWeekday] = useState("1"); // 0-6 (Sun-Sat), default Monday
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState("1"); // 1-4 or -1 for last
@@ -682,11 +577,7 @@ export default function CompanyDashboard() {
   const [editClientType, setEditClientType] = useState("");
   const [editTier, setEditTier] = useState("");
   const [editMonthlyCredits, setEditMonthlyCredits] = useState("");
-  const [editWebsite, setEditWebsite] = useState("");
-  const [editPrimaryContactName, setEditPrimaryContactName] = useState("");
-  const [editPrimaryContactEmail, setEditPrimaryContactEmail] = useState("");
-  const [editPrimaryContactPhone, setEditPrimaryContactPhone] = useState("");
-  const [editNotes, setEditNotes] = useState("");
+  const [editHubspotId, setEditHubspotId] = useState("");
 
   // Company data
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
@@ -709,6 +600,17 @@ export default function CompanyDashboard() {
     },
     enabled: !!companyId,
   });
+
+  const { data: mySecondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids", { companyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/tasks/my-secondary-task-ids?companyId=${companyId}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!companyId && !!user?.id,
+  });
+  const mySecondaryTaskIdSet = new Set(mySecondaryTaskIds || []);
 
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
@@ -735,6 +637,42 @@ export default function CompanyDashboard() {
     },
     enabled: !!companyId,
   });
+
+  // Company users for Users tab
+  interface CompanyUserWithTags {
+    id: string;
+    memberId: string;
+    role: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    createdAt: string;
+    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
+  }
+
+  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
+    queryKey: ["/api/admin/companies", companyId, "users"],
+    queryFn: async () => {
+      if (!companyId) return [];
+      const response = await fetch(`/api/admin/companies/${companyId}/users`);
+      if (!response.ok) throw new Error("Failed to fetch users");
+      return response.json();
+    },
+    enabled: !!companyId,
+  });
+
+  const assigneeUserMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of assignees || []) {
+      map[a.id] = a.name;
+    }
+    for (const u of companyUsers) {
+      if (!map[u.id]) {
+        map[u.id] = `${u.firstName} ${u.lastName}`.trim() || u.email;
+      }
+    }
+    return map;
+  }, [assignees, companyUsers]);
 
   const { data: transactions = [] } = useQuery<CreditTransaction[]>({
     queryKey: ["/api/credit-transactions", { companyId }],
@@ -840,29 +778,6 @@ export default function CompanyDashboard() {
     enabled: !!companyId,
   });
 
-  // Company users for Users tab
-  interface CompanyUserWithTags {
-    id: string;
-    memberId: string;
-    role: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    createdAt: string;
-    tags?: { id: string; name: string; color: string; isPreset: boolean }[];
-  }
-
-  const { data: companyUsers = [] } = useQuery<CompanyUserWithTags[]>({
-    queryKey: ["/api/admin/companies", companyId, "users"],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const response = await fetch(`/api/admin/companies/${companyId}/users`);
-      if (!response.ok) throw new Error("Failed to fetch users");
-      return response.json();
-    },
-    enabled: !!companyId,
-  });
-
   const { data: allUserTags = [] } = useQuery<{ id: string; name: string; color: string; isPreset: boolean }[]>({
     queryKey: ["/api/admin/user-tags"],
   });
@@ -885,32 +800,6 @@ export default function CompanyDashboard() {
   const { data: companyCustomRoles = [] } = useQuery<{ id: string; name: string; companyId: string }[]>({
     queryKey: ["/api/admin/custom-roles"],
     select: (data) => data.filter(r => r.companyId === companyId),
-  });
-
-  const { data: checklistTemplates = [] } = useQuery<any[]>({
-    queryKey: ["/api/admin/checklist-templates"],
-  });
-
-  const { data: companyChecklists = [], refetch: refetchChecklists } = useQuery<any[]>({
-    queryKey: ["/api/companies", companyId, "checklists"],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const res = await fetch(`/api/companies/${companyId}/checklists`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!companyId,
-  });
-
-  const { data: govForms = [], refetch: refetchGovForms } = useQuery<any[]>({
-    queryKey: ["/api/companies", companyId, "government-forms"],
-    queryFn: async () => {
-      if (!companyId) return [];
-      const res = await fetch(`/api/companies/${companyId}/government-forms`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!companyId,
   });
 
   const companyOwners = companyUsers.filter(u => u.role === "company_owner");
@@ -1051,6 +940,7 @@ export default function CompanyDashboard() {
   });
 
   const companyEditMeetingMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, proposedDate, proposedTime, creditCost, duration, teamsLink }: { id: string; proposedDate: string; proposedTime: string; creditCost: string; duration: number; teamsLink: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { proposedDate, proposedTime, creditCost, duration, teamsLink });
     },
@@ -1066,6 +956,7 @@ export default function CompanyDashboard() {
   });
 
   const companyRejectMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (id: string) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { status: "rejected" });
     },
@@ -1079,6 +970,7 @@ export default function CompanyDashboard() {
   });
 
   const saveMeetingNotesMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
       return apiRequest("PATCH", `/api/meeting-requests/${id}`, { notes });
     },
@@ -1208,8 +1100,53 @@ export default function CompanyDashboard() {
       resetTaskForm();
       toast({ title: "Task assigned successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to assign task", variant: "destructive" });
+    onError: (e: any) => {
+      toast({ title: "Failed to assign task", description: e?.message || String(e), variant: "destructive" });
+    },
+  });
+
+  const updateCompanyTaskMutation = useMutation({
+    mutationFn: async ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, updates);
+      return res.json() as Promise<Task>;
+    },
+    onMutate: async ({ taskId, updates }) => {
+      if (updates.status === undefined) return;
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      const previousTasks = queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }]);
+      if (previousTasks) {
+        queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], previousTasks.map(t =>
+          t.id === taskId ? { ...t, ...updates } : t
+        ));
+      }
+      return { previousTasks };
+    },
+    onSuccess: (
+      updatedTask: Task,
+      { updates }: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
+        old ? old.map(t => t.id === updatedTask.id ? updatedTask : t) : old
+      );
+      const creditStatuses = new Set(["in_progress", "completed", "pending", "rejected"]);
+      const previousTask = context?.previousTasks?.find(t => t.id === updatedTask.id);
+      if (updates.status && creditStatuses.has(updates.status) && updates.status !== previousTask?.status) {
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "credits"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/credit-transactions"] });
+      }
+      toast({ title: "Task updated successfully" });
+    },
+    onError: (
+      _err: Error,
+      _vars: { taskId: string; updates: Partial<Task> },
+      context: { previousTasks?: Task[] } | undefined
+    ) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(["/api/tasks", { companyId }], context.previousTasks);
+      }
+      toast({ title: "Failed to update task", variant: "destructive" });
     },
   });
 
@@ -1257,6 +1194,7 @@ export default function CompanyDashboard() {
   });
 
   const renameThreadMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ threadId, name }: { threadId: string; name: string }) => {
       return apiRequest("PATCH", `/api/chat/threads/${threadId}`, { name });
     },
@@ -1271,6 +1209,7 @@ export default function CompanyDashboard() {
   });
 
   const deleteThreadMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (threadId: string) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}`);
     },
@@ -1300,6 +1239,7 @@ export default function CompanyDashboard() {
   });
 
   const removeChatMemberMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ threadId, memberId }: { threadId: string; memberId: string }) => {
       return apiRequest("DELETE", `/api/chat/threads/${threadId}/members/${memberId}`);
     },
@@ -1388,6 +1328,7 @@ export default function CompanyDashboard() {
   });
 
   const updateCadenceMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       return apiRequest("PATCH", `/api/cadences/${id}`, data);
     },
@@ -1461,6 +1402,7 @@ export default function CompanyDashboard() {
   });
 
   const editCompanyMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest("PATCH", `/api/companies/${companyId}`, data);
       return res.json();
@@ -1483,11 +1425,6 @@ export default function CompanyDashboard() {
       setEditClientType(company.clientType);
       setEditTier(company.subscriptionTier);
       setEditMonthlyCredits(String(company.monthlyCredits));
-      setEditWebsite((company as any).website || "");
-      setEditPrimaryContactName((company as any).primaryContactName || "");
-      setEditPrimaryContactEmail((company as any).primaryContactEmail || "");
-      setEditPrimaryContactPhone((company as any).primaryContactPhone || "");
-      setEditNotes((company as any).notes || "");
       setEditCompanyOpen(true);
     }
   };
@@ -1495,23 +1432,19 @@ export default function CompanyDashboard() {
   const handleEditCompanySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editName.trim()) return;
-    const tierCreditsMap: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
-    const monthlyCredits = parseInt(editMonthlyCredits) || tierCreditsMap[editTier] || 20;
+    const tierCredits: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
+    const monthlyCredits = parseInt(editMonthlyCredits) || tierCredits[editTier] || 20;
     editCompanyMutation.mutate({
       name: editName.trim(),
       industry: editIndustry.trim(),
       clientType: editClientType,
       subscriptionTier: editTier,
       monthlyCredits,
-      website: editWebsite.trim() || null,
-      primaryContactName: editPrimaryContactName.trim() || null,
-      primaryContactEmail: editPrimaryContactEmail.trim() || null,
-      primaryContactPhone: editPrimaryContactPhone.trim() || null,
-      notes: editNotes.trim() || null,
     });
   };
 
   const updateLogoMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (logoUrl: string) => {
       return apiRequest("PATCH", `/api/companies/${companyId}`, { logoUrl });
     },
@@ -1531,6 +1464,19 @@ export default function CompanyDashboard() {
     onError: (error) => {
       toast({ title: "Failed to upload logo", description: error.message, variant: "destructive" });
     },
+  });
+
+  useEffect(() => {
+    if (company) setEditHubspotId(company.hubspotCompanyId || "");
+  }, [company?.hubspotCompanyId]);
+
+  const saveHubspotIdMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/companies/${companyId}`, { hubspotCompanyId: editHubspotId.trim() || null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: "HubSpot Company ID saved" });
+    },
+    onError: () => toast({ title: "Failed to save HubSpot Company ID", variant: "destructive" }),
   });
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1571,7 +1517,7 @@ export default function CompanyDashboard() {
     onSuccess: () => {
       setInviteEmail("");
       toast({ title: "Invitation sent successfully" });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/companies", companyId, "users"] });
     },
     onError: () => {
       toast({ title: "Failed to send invitation", variant: "destructive" });
@@ -1670,7 +1616,6 @@ export default function CompanyDashboard() {
   const resetTaskForm = () => {
     setTaskTitle("");
     setTaskDescription("");
-    setTaskTopic("");
     setTaskPriority("medium");
     setDeliverableType("");
     setAssignedTo("");
@@ -1704,7 +1649,6 @@ export default function CompanyDashboard() {
       companyId,
       title: taskTitle,
       description: taskDescription || null,
-      topic: taskTopic || null,
       priority: taskPriority,
       deliverableType: deliverableType,
       creditCost: finalCreditCost,
@@ -1714,8 +1658,8 @@ export default function CompanyDashboard() {
       dueDate: taskDueDate || null,
       isRecurring,
       recurrencePattern: isRecurring ? recurrencePattern : null,
-      recurrenceDay: isRecurring && ["day_of_month", "monthly", "quarterly", "semi_annually", "annually"].includes(recurrencePattern) ? parseInt(recurrenceDay) : null,
-      recurrenceWeekday: isRecurring && ["day_of_week", "biweekly", "weekly", "annually"].includes(recurrencePattern) ? parseInt(recurrenceWeekday) : null,
+      recurrenceDay: isRecurring && recurrencePattern === "day_of_month" ? parseInt(recurrenceDay) : null,
+      recurrenceWeekday: isRecurring && (recurrencePattern === "day_of_week" || recurrencePattern === "biweekly") ? parseInt(recurrenceWeekday) : null,
       recurrenceWeekOrdinal: isRecurring && recurrencePattern === "day_of_week" ? parseInt(recurrenceWeekOrdinal) : null,
       bulkQuantity: qty > 1 ? qty : null,
       taskOwnership,
@@ -1745,32 +1689,29 @@ export default function CompanyDashboard() {
     });
   };
 
-  // Update state when URL params change
+  // Update state when URL params change (supports new ?tab=category&sub=key and old ?tab=key)
   useEffect(() => {
     const params = new URLSearchParams(searchString);
-    const tabParam = params.get("tab");
+    const tabParam    = params.get("tab");
+    const subParam    = params.get("sub");
     const threadParam = params.get("thread");
-    
-    if (tabParam && tabParam !== activeTab) {
-      setActiveTab(tabParam);
+    const isCategory = tabParam ? NAV_GROUPS.some(g => g.key === tabParam) : false;
+    let newCat: string | null = null;
+    let newTab: string | null = null;
+    if (tabParam && isCategory) {
+      const group = NAV_GROUPS.find(g => g.key === tabParam)!;
+      newCat = tabParam;
+      newTab = subParam && group.subTabs.some(s => s.key === subParam) ? subParam : group.defaultSub;
+    } else if (tabParam && TAB_TO_CATEGORY[tabParam]) {
+      newCat = TAB_TO_CATEGORY[tabParam];
+      newTab = tabParam;
     }
+    if (newCat && newCat !== activeCategory) setActiveCategory(newCat);
+    if (newTab && newTab !== activeTab) setActiveTab(newTab);
     if (threadParam && threadParam !== selectedThreadId) {
       setSelectedThreadId(threadParam);
     }
   }, [searchString]);
-
-  // Auto-open task from ?taskId= URL param (e.g. from notification links)
-  const urlTaskId = useMemo(() => new URLSearchParams(searchString).get("taskId"), [searchString]);
-  const [urlTaskOpened, setUrlTaskOpened] = useState(false);
-  useEffect(() => {
-    if (!urlTaskId || !tasks || urlTaskOpened) return;
-    const match = tasks.find(t => t.id === urlTaskId);
-    if (match) {
-      setSelectedTask(match);
-      setActiveTab("tasks");
-      setUrlTaskOpened(true);
-    }
-  }, [urlTaskId, tasks, urlTaskOpened]);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -1789,22 +1730,6 @@ export default function CompanyDashboard() {
   const activeTasks = (tasks || []).filter(t => t.status !== "completed" && t.approvalStatus !== "rejected");
   const completedTasks = (tasks || []).filter(t => t.status === "completed");
   const pendingApprovalTasks = (tasks || []).filter((t) => t.approvalStatus === "pending_approval");
-
-  // Overview tab derived values
-  const overviewToday = new Date(); overviewToday.setHours(0, 0, 0, 0);
-  const overdueTasks = activeTasks.filter(t => t.dueDate && new Date(t.dueDate) < overviewToday);
-  const inReviewTasks = activeTasks.filter(t => t.status === "review");
-  const urgentHighTasks = activeTasks.filter(t => (t.priority === "urgent" || t.priority === "high") && !overdueTasks.find(o => o.id === t.id));
-  const creditTotal = (company?.monthlyCredits || 0) + (company?.bonusCredits || 0);
-  const creditRemaining = company?.credits || 0;
-  const creditUsed = Math.max(0, creditTotal - creditRemaining);
-  const creditPct = creditTotal > 0 ? Math.min(100, Math.max(0, (creditRemaining / creditTotal) * 100)) : 100;
-  const recentlyCompleted = [...completedTasks]
-    .sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime())
-    .slice(0, 8);
-  const completedThisPeriod = billingPeriod
-    ? completedTasks.filter(t => t.completedAt && isDateInBillingPeriod(new Date(t.completedAt), billingPeriod))
-    : completedTasks;
 
   const currentBillingPeriodTasks = (tasks || []).filter(task => {
     if (!billingPeriod) return true;
@@ -1846,7 +1771,7 @@ export default function CompanyDashboard() {
     if (!tasks) return [];
     let filtered = tasks.filter(t => t.status !== "cadence_parent");
     if (assignedToMeFilter && user?.id) {
-      filtered = filtered.filter(t => t.assignedTo === user.id || (t.assigneeIds as string[] | undefined)?.includes(user.id));
+      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     if (companyTaskFilter === "rejected") {
       filtered = filtered.filter(t => t.approvalStatus === "rejected");
@@ -1892,6 +1817,31 @@ export default function CompanyDashboard() {
     return filtered;
   }, [tasks, companyTaskFilter, taskMonthDate, assignedToMeFilter, user?.id, categoryFilter]);
 
+  const boardFilteredTasks = useMemo(() => {
+    if (!tasks) return [];
+    let filtered = tasks.filter(t => t.status !== "cadence_parent" && t.approvalStatus !== "rejected");
+    if (!showCompletedOnBoard) {
+      filtered = filtered.filter(t => t.status !== "completed");
+    }
+    if (assignedToMeFilter && user?.id) {
+      filtered = filtered.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
+    }
+    if (categoryFilter !== "all") {
+      if (categoryFilter === "uncategorized") {
+        filtered = filtered.filter(t => !t.categoryId);
+      } else {
+        filtered = filtered.filter(t => t.categoryId === categoryFilter);
+      }
+    }
+    filtered.sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
+    });
+    return filtered;
+  }, [tasks, showCompletedOnBoard, assignedToMeFilter, user?.id, categoryFilter, mySecondaryTaskIdSet]);
+
   const companyTaskCounts = useMemo(() => {
     if (!tasks) return { all: 0, pending: 0, in_progress: 0, completed: 0, review: 0, rejected: 0 };
     const selectedMonthStart = `${taskMonthDate.getFullYear()}-${String(taskMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
@@ -1911,7 +1861,7 @@ export default function CompanyDashboard() {
       return dateStr >= selectedMonthStart && dateStr < selectedMonthEnd;
     });
     if (assignedToMeFilter && user?.id) {
-      normalTasks = normalTasks.filter(t => t.assignedTo === user.id || (t.assigneeIds as string[] | undefined)?.includes(user.id));
+      normalTasks = normalTasks.filter(t => t.assignedTo === user.id || mySecondaryTaskIdSet.has(t.id));
     }
     const nonRejected = normalTasks.filter(t => t.approvalStatus !== "rejected");
     return {
@@ -2226,11 +2176,11 @@ export default function CompanyDashboard() {
               <Button variant="ghost" size="icon" onClick={handleEditCompanyOpen} data-testid="button-edit-company">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <DialogContent className="max-h-[90vh] flex flex-col">
+              <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Edit Company Details</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleEditCompanySubmit} className="space-y-4 overflow-y-auto flex-1 pr-1">
+                <form onSubmit={handleEditCompanySubmit} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="editName">Company Name</Label>
                     <Input
@@ -2260,7 +2210,6 @@ export default function CompanyDashboard() {
                       <SelectContent>
                         <SelectItem value="marketing">Marketing</SelectItem>
                         <SelectItem value="government">Government</SelectItem>
-                        <SelectItem value="implementation">Implementation</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2268,16 +2217,16 @@ export default function CompanyDashboard() {
                     <Label>Subscription Tier</Label>
                     <Select value={editTier} onValueChange={(val) => {
                       setEditTier(val);
-                      const tierCreditsMap: Record<string, string> = { essentials: "20", growth: "40", accelerator: "60" };
-                      setEditMonthlyCredits(tierCreditsMap[val] || editMonthlyCredits);
+                      const tierCredits: Record<string, string> = { essentials: "20", growth: "40", accelerator: "60" };
+                      setEditMonthlyCredits(tierCredits[val] || editMonthlyCredits);
                     }}>
                       <SelectTrigger data-testid="select-edit-tier">
                         <SelectValue placeholder="Select tier" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="essentials">Essentials — $2,500/mo</SelectItem>
-                        <SelectItem value="growth">Growth — $5,000/mo</SelectItem>
-                        <SelectItem value="accelerator">Accelerator — $7,000/mo</SelectItem>
+                        <SelectItem value="essentials">Essentials - $2,500/mo</SelectItem>
+                        <SelectItem value="growth">Growth - $5,000/mo</SelectItem>
+                        <SelectItem value="accelerator">Accelerator - $7,000/mo</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2290,61 +2239,6 @@ export default function CompanyDashboard() {
                       onChange={(e) => setEditMonthlyCredits(e.target.value)}
                       placeholder="Credits per month"
                       data-testid="input-edit-monthly-credits"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editWebsite">Website</Label>
-                    <Input
-                      id="editWebsite"
-                      value={editWebsite}
-                      onChange={(e) => setEditWebsite(e.target.value)}
-                      placeholder="https://example.com"
-                      data-testid="input-edit-website"
-                    />
-                  </div>
-                  <div className="border-t pt-3 space-y-3">
-                    <p className="text-sm font-medium text-muted-foreground">Primary Contact</p>
-                    <div className="space-y-2">
-                      <Label htmlFor="editContactName">Contact Name</Label>
-                      <Input
-                        id="editContactName"
-                        value={editPrimaryContactName}
-                        onChange={(e) => setEditPrimaryContactName(e.target.value)}
-                        placeholder="John Smith"
-                        data-testid="input-edit-contact-name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="editContactEmail">Contact Email</Label>
-                      <Input
-                        id="editContactEmail"
-                        type="email"
-                        value={editPrimaryContactEmail}
-                        onChange={(e) => setEditPrimaryContactEmail(e.target.value)}
-                        placeholder="john@example.com"
-                        data-testid="input-edit-contact-email"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="editContactPhone">Contact Phone</Label>
-                      <Input
-                        id="editContactPhone"
-                        value={editPrimaryContactPhone}
-                        onChange={(e) => setEditPrimaryContactPhone(e.target.value)}
-                        placeholder="(555) 123-4567"
-                        data-testid="input-edit-contact-phone"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editNotes">Notes</Label>
-                    <Textarea
-                      id="editNotes"
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      placeholder="Additional information..."
-                      className="min-h-[80px]"
-                      data-testid="input-edit-notes"
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={editCompanyMutation.isPending} data-testid="button-save-company">
@@ -2465,12 +2359,89 @@ export default function CompanyDashboard() {
           </div>
         </div>
       </header>
-      {/* Main Content with Tabs */}
-      <div className="flex-1 p-6">
+      {/* Main Content - Two-Level Navigation */}
+
+      {/* ── Level 1: Category Bar ── */}
+      <div className="hidden md:flex border-b bg-card shrink-0">
+        {NAV_GROUPS.map(group => {
+          const unreadChat = threads.reduce((t, th) => t + getUnreadCount(th.id), 0);
+          const hasDot =
+            (group.key === "work" && pendingApprovalTasks.length > 0) ||
+            (group.key === "communicate" && (unreadChat > 0 || companyPendingMeetings > 0));
+          return (
+            <button
+              key={group.key}
+              onClick={() => {
+                const newSub = group.defaultSub;
+                setActiveCategory(group.key);
+                setActiveTab(newSub);
+                setLocation(`/admin/companies/${companyId}?tab=${group.key}&sub=${newSub}`);
+              }}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                activeCategory === group.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              }`}
+              data-testid={`category-tab-${group.key}`}
+            >
+              {group.label}
+              {hasDot && <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Level 2: Sub-tab Bar ── */}
+      {(() => {
+        const currentGroup = NAV_GROUPS.find(g => g.key === activeCategory);
+        if (!currentGroup || currentGroup.subTabs.length === 0) return null;
+        const allSubTabs = [
+          ...currentGroup.subTabs,
+          ...(activeCategory === "work" && pendingApprovalTasks.length > 0
+            ? [{ key: "pending_approval", label: `Pending (${pendingApprovalTasks.length})` }]
+            : []),
+        ];
+        return (
+          <div className="hidden md:flex border-b bg-muted/20 shrink-0">
+            {allSubTabs.map(sub => {
+              const isActive = activeTab === sub.key;
+              const badge =
+                sub.key === "tasks"     ? activeTasks.length :
+                sub.key === "campaigns" ? companyCampaignRequests.length :
+                sub.key === "users"     ? companyUsers.length :
+                sub.key === "chat"      ? threads.reduce((t, th) => t + getUnreadCount(th.id), 0) :
+                sub.key === "meetings"  ? (companyPendingMeetings || 0) :
+                0;
+              return (
+                <button
+                  key={sub.key}
+                  onClick={() => {
+                    setActiveTab(sub.key);
+                    setActiveCategory(activeCategory);
+                    setLocation(`/admin/companies/${companyId}?tab=${activeCategory}&sub=${sub.key}`);
+                  }}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-sm border-b-2 -mb-px transition-colors ${
+                    isActive
+                      ? "border-primary text-foreground font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                  }`}
+                  data-testid={`subtab-${sub.key}`}
+                >
+                  {sub.label}
+                  {badge > 0 && (
+                    <span className="text-[10px] font-mono bg-muted rounded px-1 leading-tight">{badge}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      <div className="flex-1 overflow-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <MobileTabMenu
             tabs={[
-              { value: "overview", label: "Overview" },
               { value: "details", label: "Details" },
               { value: "pending_approval", label: "Pending Approval", count: pendingApprovalTasks.length, hidden: pendingApprovalTasks.length === 0 },
               { value: "tasks", label: "Tasks", count: activeTasks.length },
@@ -2481,687 +2452,40 @@ export default function CompanyDashboard() {
               { value: "credit-history", label: "Credit History" },
               { value: "onboarding", label: "Info Hub" },
               { value: "users", label: "Users", count: companyUsers.length },
+              { value: "cadences", label: "Cadences" },
               { value: "reporting", label: "Reporting" },
-              { value: "checklists", label: "Checklists", count: companyChecklists.length || undefined },
-              { value: "government", label: "Government" },
+              { value: "hubspot", label: "HubSpot" },
+              { value: "marketing", label: "Marketing Hub" },
+
+              { value: "workflows", label: "Workflows" },
+              { value: "retainer", label: "Retainer" },
             ]}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={(tab) => {
+              setActiveTab(tab);
+              setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
+            }}
             title="Company Dashboard"
           />
-          <TabsList className="hidden md:inline-flex h-auto flex-wrap gap-1" data-testid="tabs-company-dashboard">
-            <TabsTrigger value="overview" data-testid="tab-overview">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Overview
-            </TabsTrigger>
-            <TabsTrigger value="details" data-testid="tab-details">
-              <Settings className="h-4 w-4 mr-2" />
-              Details
-            </TabsTrigger>
-            {pendingApprovalTasks.length > 0 && (
-              <TabsTrigger value="pending_approval" data-testid="tab-pending-approval" className="bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
-                Pending Approval ({pendingApprovalTasks.length})
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="tasks" data-testid="tab-tasks">
-              <ClipboardList className="h-4 w-4 mr-2" />
-              Tasks ({activeTasks.length})
-            </TabsTrigger>
-            <TabsTrigger value="campaigns" data-testid="tab-campaigns">
-              <Target className="h-4 w-4 mr-2" />
-              Campaigns ({companyCampaignRequests.length})
-            </TabsTrigger>
-            <TabsTrigger value="calendar" data-testid="tab-calendar">
-              <CalendarIcon className="h-4 w-4 mr-2" />
-              Calendar
-            </TabsTrigger>
-            <TabsTrigger value="chat" data-testid="tab-chat">
-              <MessageCircle className="h-4 w-4 mr-2" />
-              Chat
-              {threads.reduce((total, t) => total + getUnreadCount(t.id), 0) > 0 && (
-                <Badge variant="destructive" className="ml-1 text-xs">
-                  {threads.reduce((total, t) => total + getUnreadCount(t.id), 0)}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="meetings" data-testid="tab-meetings">
-              <Video className="h-4 w-4 mr-2" />
-              Meetings
-              {companyPendingMeetings > 0 && (
-                <Badge variant="destructive" className="ml-1 text-xs">{companyPendingMeetings}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="credit-history" data-testid="tab-credit-history">
-              Credit History
-            </TabsTrigger>
-            <TabsTrigger value="onboarding" data-testid="tab-onboarding">
-              <FileEdit className="w-4 h-4 mr-1" />
-              Info Hub
-            </TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">
-              <Users className="h-4 w-4 mr-2" />
-              Users ({companyUsers.length})
-            </TabsTrigger>
-            <TabsTrigger value="reporting" data-testid="tab-reporting">
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Reporting
-            </TabsTrigger>
-            <TabsTrigger value="checklists" data-testid="tab-checklists">
-              <ClipboardList className="h-4 w-4 mr-2" />
-              Checklists
-              {companyChecklists.length > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs">{companyChecklists.length}</Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="government" data-testid="tab-government">
-              <Landmark className="h-4 w-4 mr-2" />
-              Government
-              {govForms.some(f => f.status === "completed") && (
-                <Badge variant="secondary" className="ml-1 text-xs">{govForms.filter(f => f.status === "completed").length}</Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* Credit gauge + retainer */}
-            <div className="grid gap-4 md:grid-cols-3">
-              {/* Credit gauge */}
-              <Card className="md:col-span-2">
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Coins className="h-4 w-4 text-muted-foreground" />
-                    Credits Remaining
-                  </CardTitle>
-                  <Badge
-                    variant="outline"
-                    className={
-                      creditPct > 50
-                        ? "border-green-500 text-green-600 dark:text-green-400"
-                        : creditPct > 25
-                        ? "border-yellow-500 text-yellow-600 dark:text-yellow-400"
-                        : "border-destructive text-destructive"
-                    }
-                  >
-                    {creditPct.toFixed(0)}% left
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-end gap-2">
-                    <span className="text-4xl font-bold" data-testid="text-overview-credits">{creditRemaining}</span>
-                    <span className="text-lg text-muted-foreground pb-0.5">/ {creditTotal} credits</span>
-                  </div>
-                  <div className="h-3 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        creditPct > 50 ? "bg-green-500" : creditPct > 25 ? "bg-yellow-500" : "bg-destructive"
-                      }`}
-                      style={{ width: `${creditPct}%` }}
-                      data-testid="bar-credit-remaining"
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{creditUsed} used this period</span>
-                    <span>{company.monthlyCredits} monthly allocation{company.bonusCredits > 0 ? ` + ${company.bonusCredits} bonus` : ""}</span>
-                  </div>
-                  {projectedCredits > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs pt-0.5">
-                      <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-muted-foreground">Projected usage this period:</span>
-                      <span className={projectedCredits > creditTotal ? "text-destructive font-medium" : "font-medium"}>
-                        {projectedCredits.toFixed(1)} credits
-                      </span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Retainer card */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Crown className="h-4 w-4 text-muted-foreground" />
-                    Retainer
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <div className="text-2xl font-bold capitalize">{company.subscriptionTier}</div>
-                    <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">{TIER_PRICES[company.subscriptionTier] || "Custom"}</p>
-                  </div>
-                  <Separator />
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Monthly credits</span>
-                      <span className="font-medium">{company.monthlyCredits}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Industry</span>
-                      <span className="font-medium truncate max-w-[120px] text-right">{company.industry || "—"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Status</span>
-                      <span className={`font-medium ${company.isPaused ? "text-destructive" : "text-green-600 dark:text-green-400"}`}>
-                        {company.isPaused ? "Paused" : "Active"}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Quick stat row */}
-            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-              <Card>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Active Tasks</p>
-                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="text-3xl font-bold">{activeTasks.length}</div>
-                  {overdueTasks.length > 0 && (
-                    <p className="text-xs text-destructive mt-0.5 font-medium">{overdueTasks.length} overdue</p>
-                  )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Review</p>
-                    <CheckCheck className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="text-3xl font-bold">{inReviewTasks.length}</div>
-                  {pendingApprovalTasks.length > 0 && (
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5 font-medium">{pendingApprovalTasks.length} pending approval</p>
-                  )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Completed (Period)</p>
-                    <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="text-3xl font-bold">{completedThisPeriod.length}</div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{completedTasks.length} total</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Priority</p>
-                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="text-3xl font-bold">{urgentHighTasks.length + overdueTasks.length}</div>
-                  <p className="text-xs text-muted-foreground mt-0.5">need attention</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Outstanding / Priority Tasks */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                  Outstanding &amp; Priority Tasks
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {overdueTasks.length === 0 && inReviewTasks.length === 0 && pendingApprovalTasks.length === 0 && urgentHighTasks.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                    <p className="text-sm font-medium">All caught up!</p>
-                    <p className="text-xs">No overdue or priority tasks right now.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {overdueTasks.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-destructive mb-2">Overdue ({overdueTasks.length})</p>
-                        <div className="space-y-1.5">
-                          {overdueTasks.map(task => (
-                            <div
-                              key={task.id}
-                              className="flex items-center justify-between p-2.5 rounded-md border border-destructive/30 bg-destructive/5 cursor-pointer hover:bg-destructive/10 transition-colors"
-                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
-                              data-testid={`row-overview-overdue-${task.id}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <XCircle className="h-4 w-4 text-destructive shrink-0" />
-                                <span className="text-sm font-medium truncate">{task.title}</span>
-                              </div>
-                              <span className="text-xs text-destructive shrink-0 ml-2">
-                                Due {new Date(task.dueDate!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {pendingApprovalTasks.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-yellow-600 dark:text-yellow-400 mb-2">Pending Approval ({pendingApprovalTasks.length})</p>
-                        <div className="space-y-1.5">
-                          {pendingApprovalTasks.map(task => (
-                            <div
-                              key={task.id}
-                              className="flex items-center justify-between p-2.5 rounded-md border border-yellow-500/30 bg-yellow-500/5 cursor-pointer hover:bg-yellow-500/10 transition-colors"
-                              onClick={() => { setSelectedTask(task); setActiveTab("pending_approval"); }}
-                              data-testid={`row-overview-approval-${task.id}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                                <span className="text-sm font-medium truncate">{task.title}</span>
-                              </div>
-                              <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-600 dark:text-yellow-400 shrink-0 ml-2">Awaiting approval</Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {inReviewTasks.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 mb-2">In Review ({inReviewTasks.length})</p>
-                        <div className="space-y-1.5">
-                          {inReviewTasks.map(task => (
-                            <div
-                              key={task.id}
-                              className="flex items-center justify-between p-2.5 rounded-md border border-blue-500/30 bg-blue-500/5 cursor-pointer hover:bg-blue-500/10 transition-colors"
-                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
-                              data-testid={`row-overview-review-${task.id}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <CheckCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                                <span className="text-sm font-medium truncate">{task.title}</span>
-                              </div>
-                              <Badge variant="outline" className="text-xs border-blue-500 text-blue-600 dark:text-blue-400 shrink-0 ml-2">Review</Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {urgentHighTasks.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400 mb-2">High Priority ({urgentHighTasks.length})</p>
-                        <div className="space-y-1.5">
-                          {urgentHighTasks.slice(0, 5).map(task => (
-                            <div
-                              key={task.id}
-                              className="flex items-center justify-between p-2.5 rounded-md border border-orange-500/30 bg-orange-500/5 cursor-pointer hover:bg-orange-500/10 transition-colors"
-                              onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
-                              data-testid={`row-overview-priority-${task.id}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Zap className="h-4 w-4 text-orange-500 shrink-0" />
-                                <span className="text-sm font-medium truncate">{task.title}</span>
-                              </div>
-                              <Badge variant="outline" className="text-xs border-orange-500 text-orange-600 dark:text-orange-400 shrink-0 ml-2 capitalize">{task.priority}</Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Completion report */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                    Completion Report
-                  </CardTitle>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span><span className="font-semibold text-foreground">{completedThisPeriod.length}</span> this period</span>
-                    <span><span className="font-semibold text-foreground">{completedTasks.length}</span> total</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {recentlyCompleted.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Circle className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No completed tasks yet.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {recentlyCompleted.map(task => (
-                      <div
-                        key={task.id}
-                        className="flex items-center justify-between p-2.5 rounded-md border bg-muted/30 hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => { setSelectedTask(task); setActiveTab("tasks"); }}
-                        data-testid={`row-overview-completed-${task.id}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                          <span className="text-sm font-medium truncate">{task.title}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          {task.creditsDeducted && (
-                            <Badge variant="secondary" className="text-xs">{task.creditCost} cr</Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {task.completedAt
-                              ? new Date(task.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                              : "—"}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {completedTasks.length > 8 && (
-                      <button
-                        className="w-full text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
-                        onClick={() => { setActiveTab("tasks"); setCompanyTaskFilter("completed"); }}
-                        data-testid="button-overview-see-all-completed"
-                      >
-                        View all {completedTasks.length} completed tasks →
-                      </button>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Details Tab */}
-          <TabsContent value="details" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Credits</CardTitle>
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{company.credits}</div>
-                  <p className="text-xs text-muted-foreground">
-                    of {company.monthlyCredits} monthly
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Projected Usage</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold font-mono" data-testid="text-projected-credits">{projectedCredits.toFixed(2)}</div>
-                  <p className="text-xs text-muted-foreground">Tasks & Meetings this period</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Subscription</CardTitle>
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold capitalize">{company.subscriptionTier}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {company.industry || "No industry set"}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Status</CardTitle>
-                  {company.isPaused ? (
-                    <AlertTriangle className="h-4 w-4 text-destructive" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {company.isPaused ? "Paused" : "Active"}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {company.isPaused && company.pausedAt
-                      ? `Since ${new Date(company.pausedAt).toLocaleDateString()}`
-                      : company.onboardingComplete ? "Onboarding Complete" : "Onboarding pending"
-                    }
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-                  <ClipboardList className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{activeTasks.length}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {completedTasks.length} completed
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Admin Settings Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Settings className="h-5 w-5 text-muted-foreground" />
-                  Company Settings
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">Admin-only settings for this company</p>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-5 md:grid-cols-3">
-                  {/* Client Type */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Business Type</Label>
-                    <Select
-                      value={company.clientType}
-                      onValueChange={(val) => {
-                        editCompanyMutation.mutate({
-                          name: company.name,
-                          industry: company.industry || "",
-                          clientType: val,
-                          subscriptionTier: company.subscriptionTier,
-                          monthlyCredits: company.monthlyCredits,
-                        });
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-inline-client-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="marketing">Marketing</SelectItem>
-                        <SelectItem value="government">Government</SelectItem>
-                        <SelectItem value="implementation">Implementation</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      {company.clientType === "government" ? "Government portal view with docs & forms" : company.clientType === "implementation" ? "Implementation project view" : "Standard marketing agency view"}
-                    </p>
-                  </div>
-
-                  {/* Subscription Tier */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Retainer Tier</Label>
-                    <Select
-                      value={company.subscriptionTier}
-                      onValueChange={(val) => {
-                        const tierCredits: Record<string, number> = { essentials: 20, growth: 40, accelerator: 60 };
-                        editCompanyMutation.mutate({
-                          name: company.name,
-                          industry: company.industry || "",
-                          clientType: company.clientType,
-                          subscriptionTier: val,
-                          monthlyCredits: tierCredits[val] ?? company.monthlyCredits,
-                        });
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-inline-retainer-tier">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="essentials">Essentials — $2,500/mo</SelectItem>
-                        <SelectItem value="growth">Growth — $5,000/mo</SelectItem>
-                        <SelectItem value="accelerator">Accelerator — $7,000/mo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Current: <span className="font-medium text-orange-600 dark:text-orange-400">{TIER_PRICES[company.subscriptionTier] || "Custom"}</span>
-                    </p>
-                  </div>
-
-                  {/* Monthly Credits */}
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-medium">Monthly Credits</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        defaultValue={company.monthlyCredits}
-                        key={company.monthlyCredits}
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (!isNaN(val) && val !== company.monthlyCredits) {
-                            editCompanyMutation.mutate({
-                              name: company.name,
-                              industry: company.industry || "",
-                              clientType: company.clientType,
-                              subscriptionTier: company.subscriptionTier,
-                              monthlyCredits: val,
-                            });
-                          }
-                        }}
-                        data-testid="input-inline-monthly-credits"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">Credits allocated each billing cycle</p>
-                  </div>
-                </div>
-                {/* Onboarding Controls */}
-                <div className="border-t pt-4 space-y-3">
-                  <Label className="text-sm font-medium">Onboarding</Label>
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <p className="text-sm font-medium">Onboarding Complete</p>
-                      <p className="text-xs text-muted-foreground">Mark this company's onboarding as finished</p>
-                    </div>
-                    <Switch
-                      checked={!!company.onboardingComplete}
-                      onCheckedChange={async (checked) => {
-                        try {
-                          await apiRequest("POST", `/api/companies/${companyId}/onboarding-override`, { complete: checked });
-                          queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
-                          toast({ title: checked ? "Onboarding marked complete" : "Onboarding marked incomplete" });
-                        } catch {
-                          toast({ title: "Failed to update onboarding status", variant: "destructive" });
-                        }
-                      }}
-                      data-testid="switch-onboarding-complete"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <p className="text-sm font-medium">Bypass Onboarding</p>
-                      <p className="text-xs text-muted-foreground">Allow clients to skip the onboarding flow entirely</p>
-                    </div>
-                    <Switch
-                      checked={!!(company as any).bypassOnboarding}
-                      onCheckedChange={(checked) => {
-                        editCompanyMutation.mutate({
-                          name: company.name,
-                          industry: company.industry || "",
-                          clientType: company.clientType,
-                          subscriptionTier: company.subscriptionTier,
-                          monthlyCredits: company.monthlyCredits,
-                          bypassOnboarding: checked,
-                        });
-                      }}
-                      data-testid="switch-bypass-onboarding"
-                    />
-                  </div>
-                </div>
-                {editCompanyMutation.isPending && (
-                  <p className="text-xs text-muted-foreground animate-pulse">Saving changes...</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Pause/Resume Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Account Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {company.isPaused ? "Account is Paused" : "Account is Active"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {company.isPaused
-                        ? "Clients cannot access the portal. Click Resume to restore access with full credits."
-                        : "Clients have full access to the portal. Click Pause to suspend access."
-                      }
-                    </p>
-                  </div>
-                  {company.isPaused ? (
-                    <Button
-                      onClick={() => resumeCompanyMutation.mutate()}
-                      disabled={resumeCompanyMutation.isPending}
-                      data-testid="button-resume-company-details"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      {resumeCompanyMutation.isPending ? "Resuming..." : "Resume Account"}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      onClick={() => pauseCompanyMutation.mutate()}
-                      disabled={pauseCompanyMutation.isPending}
-                      data-testid="button-pause-company-details"
-                    >
-                      <Pause className="h-4 w-4 mr-2" />
-                      {pauseCompanyMutation.isPending ? "Pausing..." : "Pause Account"}
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Credit History */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Recent Credit Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {transactions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No credit activity yet
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {transactions.slice(0, 10).map((t) => (
-                      <div key={t.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <div className="flex items-center gap-3">
-                          {parseFloat(t.amount) > 0 ? (
-                            <TrendingUp className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-orange-500" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium">{t.description}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(t.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={parseFloat(t.amount) > 0 ? "default" : "secondary"}>
-                          {parseFloat(t.amount) > 0 ? "+" : ""}{t.amount}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          <TabsContent value="details">
+            <CompanyCommandCenter
+              companyId={companyId!}
+              company={company}
+              tasks={tasks || []}
+              campaigns={companyCampaignRequests}
+              meetings={companyMeetingRequests}
+              transactions={transactions}
+              onboardingData={onboardingData}
+              threads={threads}
+              companyUsers={companyUsers}
+              agencyAdmins={agencyAdmins}
+              onNavigate={(tab) => {
+                setActiveTab(tab);
+                setActiveCategory(TAB_TO_CATEGORY[tab] || activeCategory);
+              }}
+            />
           </TabsContent>
 
           {/* Tasks Tab */}
@@ -3169,8 +2493,7 @@ export default function CompanyDashboard() {
             <div className="flex justify-between items-center flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Tasks</h2>
               <div className="flex items-center gap-2">
-                <ManageCategoriesDialog companyId={companyId} categories={taskCategoriesData || []} />
-                <ManageLabelsDialog companyId={companyId} />
+                <ManageCategoriesDialog companyId={companyId!} categories={taskCategoriesData || []} />
                 <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
                   <DialogTrigger asChild>
                     <Button data-testid="button-assign-task">
@@ -3209,15 +2532,6 @@ export default function CompanyDashboard() {
                         onChange={(e) => setTaskDescription(e.target.value)}
                         placeholder="Task description"
                         data-testid="input-task-description"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Topic <span className="text-muted-foreground font-normal text-xs">(optional — not copied to next recurrence)</span></Label>
-                      <Input
-                        value={taskTopic}
-                        onChange={(e) => setTaskTopic(e.target.value)}
-                        placeholder="e.g. Q3 blog, July social content"
-                        data-testid="input-task-topic"
                       />
                     </div>
                     <div className="space-y-2">
@@ -3381,51 +2695,19 @@ export default function CompanyDashboard() {
                       <div className="space-y-3 p-3 border rounded-md bg-muted/30">
                         <div className="space-y-2">
                           <Label>Recurrence Pattern</Label>
-                          <Select value={recurrencePattern} onValueChange={setRecurrencePattern}>
+                          <Select value={recurrencePattern} onValueChange={(val) => setRecurrencePattern(val as "day_of_month" | "day_of_week" | "biweekly")}>
                             <SelectTrigger data-testid="select-recurrence-pattern">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="daily">Daily</SelectItem>
-                              <SelectItem value="weekly">Weekly</SelectItem>
-                              <SelectItem value="biweekly">Bi-weekly (every other week)</SelectItem>
-                              <SelectItem value="monthly">Monthly (same date each month)</SelectItem>
-                              <SelectItem value="day_of_week">Monthly (specific weekday, e.g. 2nd Tuesday)</SelectItem>
-                              <SelectItem value="quarterly">Quarterly</SelectItem>
-                              <SelectItem value="semi_annually">Semi-annually</SelectItem>
-                              <SelectItem value="annually">Annually</SelectItem>
+                              <SelectItem value="day_of_month">Same day each month (e.g., the 15th)</SelectItem>
+                              <SelectItem value="day_of_week">Same week & day each month (e.g., 2nd Tuesday)</SelectItem>
+                              <SelectItem value="biweekly">Every other week</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
 
-                        {recurrencePattern === "daily" && (
-                          <p className="text-xs text-muted-foreground">Task repeats every day. Use the Due Date field above to set the first occurrence.</p>
-                        )}
-
-                        {(recurrencePattern === "weekly" || recurrencePattern === "biweekly") && (
-                          <div className="space-y-2">
-                            <Label>Day of Week</Label>
-                            <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
-                              <SelectTrigger data-testid="select-biweekly-day">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="0">Sunday</SelectItem>
-                                <SelectItem value="1">Monday</SelectItem>
-                                <SelectItem value="2">Tuesday</SelectItem>
-                                <SelectItem value="3">Wednesday</SelectItem>
-                                <SelectItem value="4">Thursday</SelectItem>
-                                <SelectItem value="5">Friday</SelectItem>
-                                <SelectItem value="6">Saturday</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              {recurrencePattern === "weekly" ? "Every" : "Every other"} {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][parseInt(recurrenceWeekday)]}
-                            </p>
-                          </div>
-                        )}
-
-                        {(recurrencePattern === "monthly" || recurrencePattern === "day_of_month" || recurrencePattern === "quarterly" || recurrencePattern === "semi_annually") && (
+                        {recurrencePattern === "day_of_month" && (
                           <div className="space-y-2">
                             <Label>Day of Month</Label>
                             <Popover>
@@ -3436,7 +2718,7 @@ export default function CompanyDashboard() {
                                   data-testid="button-recurrence-day"
                                 >
                                   <CalendarIcon className="mr-2 h-4 w-4" />
-                                  Day {recurrenceDay} of each {recurrencePattern === "quarterly" ? "quarter" : recurrencePattern === "semi_annually" ? "half-year" : "month"}
+                                  Day {recurrenceDay} of each month
                                 </Button>
                               </PopoverTrigger>
                               <PopoverContent className="w-auto p-4" align="start">
@@ -3548,34 +2830,26 @@ export default function CompanyDashboard() {
                           </div>
                         )}
 
-                        {recurrencePattern === "annually" && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-2">
-                              <Label>Month</Label>
-                              <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
-                                <SelectTrigger data-testid="select-annual-month">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
-                                    <SelectItem key={i} value={String(i)}>{m}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Day</Label>
-                              <Select value={recurrenceDay} onValueChange={setRecurrenceDay}>
-                                <SelectTrigger data-testid="select-annual-day">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                                    <SelectItem key={d} value={String(d)}>{d}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                        {recurrencePattern === "biweekly" && (
+                          <div className="space-y-2">
+                            <Label>Day of Week</Label>
+                            <Select value={recurrenceWeekday} onValueChange={setRecurrenceWeekday}>
+                              <SelectTrigger data-testid="select-biweekly-day">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="0">Sunday</SelectItem>
+                                <SelectItem value="1">Monday</SelectItem>
+                                <SelectItem value="2">Tuesday</SelectItem>
+                                <SelectItem value="3">Wednesday</SelectItem>
+                                <SelectItem value="4">Thursday</SelectItem>
+                                <SelectItem value="5">Friday</SelectItem>
+                                <SelectItem value="6">Saturday</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Every other {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][parseInt(recurrenceWeekday)]}
+                            </p>
                           </div>
                         )}
                       </div>
@@ -3644,19 +2918,313 @@ export default function CompanyDashboard() {
               </div>
             </div>
 
-            <SidebarProvider style={{ minHeight: 0 }} defaultOpen={false}>
-              <ProjectBoard
-                companyId={companyId}
-                tasks={tasks || []}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant={!assignedToMeFilter ? "default" : "outline"} size="sm"
+                onClick={() => { setAssignedToMeFilter(false); setCompanyTaskPage(1); }}
+                data-testid="company-filter-all-tasks">
+                <ListTodo className="w-3 h-3 mr-1" />
+                All Tasks
+              </Button>
+              <Button variant={assignedToMeFilter ? "default" : "outline"} size="sm"
+                onClick={() => { setAssignedToMeFilter(true); setCompanyTaskPage(1); }}
+                data-testid="company-filter-assigned-to-me">
+                <User className="w-3 h-3 mr-1" />
+                Assigned to Me
+              </Button>
+              <div className="w-px h-6 bg-border" />
+              {(taskCategoriesData || []).length > 0 && (
+                <Select value={categoryFilter} onValueChange={(val) => { setCategoryFilter(val); setCompanyTaskPage(1); }}>
+                  <SelectTrigger className="h-8 w-[160px]" data-testid="select-category-filter">
+                    <FolderOpen className="w-3 h-3 mr-1" />
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    <SelectItem value="uncategorized">Uncategorized</SelectItem>
+                    {(taskCategoriesData || []).map((cat: any) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <span className="flex items-center gap-1.5">
+                          {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                          {cat.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button variant={companyTaskFilter === "all" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("all"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-all">
+                All ({companyTaskCounts.all})
+              </Button>
+              <Button variant={companyTaskFilter === "pending" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("pending"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-pending">
+                <Circle className="w-3 h-3 mr-1" />
+                Pending ({companyTaskCounts.pending})
+              </Button>
+              <Button variant={companyTaskFilter === "in_progress" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("in_progress"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-in-progress">
+                <Clock className="w-3 h-3 mr-1" />
+                In Progress ({companyTaskCounts.in_progress})
+              </Button>
+              <Button variant={companyTaskFilter === "review" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("review"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-review">
+                <AlertTriangle className="w-3 h-3 mr-1" />
+                Review ({companyTaskCounts.review})
+              </Button>
+              <Button variant={companyTaskFilter === "approved" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("approved"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-approved">
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Approved ({companyTaskCounts.approved})
+              </Button>
+              <Button variant={companyTaskFilter === "completed" ? "default" : "outline"} size="sm"
+                onClick={() => { setCompanyTaskFilter("completed"); setCompanyTaskPage(1); }}
+                data-testid="company-filter-completed">
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Completed ({companyTaskCounts.completed})
+              </Button>
+              {companyTaskCounts.rejected > 0 && (
+                <Button variant={companyTaskFilter === "rejected" ? "default" : "outline"} size="sm"
+                  onClick={() => { setCompanyTaskFilter("rejected"); setCompanyTaskPage(1); }}
+                  data-testid="company-filter-rejected">
+                  Rejected ({companyTaskCounts.rejected})
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              {companyTaskViewMode !== "board" && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() - 1, 1)); setCompanyTaskPage(1); }}
+                    data-testid="button-task-month-prev"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-task-month">
+                    {taskMonthDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => { setTaskMonthDate(new Date(taskMonthDate.getFullYear(), taskMonthDate.getMonth() + 1, 1)); setCompanyTaskPage(1); }}
+                    data-testid="button-task-month-next"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {companyTaskViewMode === "board" && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={showCompletedOnBoard ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowCompletedOnBoard(v => !v)}
+                    data-testid="button-show-completed-board"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                    {showCompletedOnBoard ? "Hide Completed" : "Show Completed"}
+                  </Button>
+                </div>
+              )}
+              <div className="flex items-center gap-1 flex-wrap" data-testid="company-view-mode-toggle">
+                <Button
+                  variant={companyTaskViewMode === "board" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("board")}
+                  data-testid="company-view-toggle-board"
+                >
+                  <Kanban className="w-4 h-4 mr-1" />
+                  Board
+                </Button>
+                <Button
+                  variant={companyTaskViewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("list")}
+                  data-testid="company-view-toggle-list"
+                >
+                  <List className="w-4 h-4 mr-1" />
+                  List
+                </Button>
+                <Button
+                  variant={companyTaskViewMode === "by-assignee" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setCompanyTaskViewMode("by-assignee")}
+                  data-testid="company-view-toggle-by-assignee"
+                >
+                  <Users className="w-4 h-4 mr-1" />
+                  By Assignee
+                </Button>
+              </div>
+            </div>
+
+            {(companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") && tasksLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : (companyTaskViewMode === "by-assignee" || companyTaskViewMode === "by-category") ? (
+              <TaskGroupedView
+                tasks={filteredCompanyTasks}
+                groupBy={companyTaskViewMode === "by-assignee" ? "assignee" : "category"}
                 categories={taskCategoriesData || []}
-                tasksLoading={tasksLoading}
-                onTaskClick={(task) => setSelectedTask(task)}
-                onAddTask={(categoryId) => {
-                  if (categoryId) setTaskCategoryId(categoryId);
-                  setTaskOpen(true);
-                }}
+                userMap={assigneeUserMap}
+                onTaskClick={setSelectedTask}
               />
-            </SidebarProvider>
+            ) : companyTaskViewMode === "board" && tasksLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24 w-full" />
+                ))}
+              </div>
+            ) : companyTaskViewMode === "board" ? (
+              <TaskBoardView
+                tasks={boardFilteredTasks}
+                categories={taskCategoriesData || []}
+                mode="swimlane"
+                onTaskClick={setSelectedTask}
+                onStatusChange={(taskId, newStatus) =>
+                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
+                }
+                allowDrag={true}
+                showCompleted={showCompletedOnBoard}
+              />
+            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") && tasksLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : (companyTaskViewMode === "category" || companyTaskViewMode === "stage") ? (
+              <TaskBoardView
+                tasks={filteredCompanyTasks}
+                categories={taskCategoriesData || []}
+                mode={companyTaskViewMode === "category" ? "category" : "stage"}
+                onTaskClick={setSelectedTask}
+                onStatusChange={(taskId, newStatus) =>
+                  updateCompanyTaskMutation.mutate({ taskId, updates: { status: newStatus } })
+                }
+                allowDrag={companyTaskViewMode === "stage"}
+              />
+            ) : tasksLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : filteredCompanyTasks.length > 0 ? (
+              <div className="space-y-2">
+                {paginatedCompanyTasks.map((task) => (
+                  <Card
+                    key={task.id}
+                    className="cursor-pointer hover-elevate"
+                    onClick={() => setSelectedTask(task)}
+                    data-testid={`card-task-${task.id}`}
+                  >
+                    <CardContent className="py-3 flex items-center gap-4">
+                      <button
+                        onClick={(e) => handleToggleComplete(e, task)}
+                        className="shrink-0"
+                        data-testid={`button-toggle-task-${task.id}`}
+                      >
+                        {getStatusIcon(task.status, task.approvalStatus)}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={task.status === "completed" ? "line-through text-muted-foreground" : "font-medium"}>
+                            {task.title}
+                          </span>
+                          {task.isRecurring && (
+                            <Badge variant="outline" className="gap-1">
+                              <Repeat className="h-3 w-3" />
+                              {task.recurrencePattern === "biweekly" && task.recurrenceWeekday !== null && task.recurrenceWeekday !== undefined
+                                ? `Every other ${["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][task.recurrenceWeekday]}`
+                                : "Monthly"}
+                            </Badge>
+                          )}
+                          {task.categoryId && (() => {
+                            const cat = (taskCategoriesData || []).find((c: any) => c.id === task.categoryId);
+                            if (!cat) return null;
+                            return (
+                              <Badge variant="outline" className="text-xs gap-1" data-testid={`badge-category-${task.id}`}>
+                                {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                                {cat.name}
+                              </Badge>
+                            );
+                          })()}
+                          {task.campaignRequestId && (() => {
+                            const campaign = companyCampaignRequests.find(c => c.id === task.campaignRequestId);
+                            if (!campaign) return null;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30 text-xs cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCampaign(campaign);
+                                }}
+                                data-testid={`badge-campaign-${task.id}`}
+                              >
+                                <Target className="w-3 h-3 mr-1" />
+                                {campaign.name || "Campaign"}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                        {task.description && (
+                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {task.dueDate && (
+                            <span className={`text-sm flex items-center gap-1 ${getDueDateColor(task.dueDate, task.status)}`}>
+                              <Clock className="h-3 w-3" />
+                              {formatDueDate(task.dueDate, task.status)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <TaskAssigneeAvatars taskId={task.id} />
+                        {getPriorityBadge(task.priority)}
+                        <Badge variant="secondary">{task.creditCost} credits</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {companyTotalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {(companyTaskPage - 1) * COMPANY_TASKS_PER_PAGE + 1}-{Math.min(companyTaskPage * COMPANY_TASKS_PER_PAGE, filteredCompanyTasks.length)} of {filteredCompanyTasks.length} tasks
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setCompanyTaskPage(p => Math.max(1, p - 1))} disabled={companyTaskPage === 1} data-testid="button-company-prev-page">
+                        <ChevronLeft className="w-4 h-4" /> Previous
+                      </Button>
+                      <span className="text-sm text-muted-foreground">Page {companyTaskPage} of {companyTotalPages}</span>
+                      <Button variant="outline" size="sm" onClick={() => setCompanyTaskPage(p => Math.min(companyTotalPages, p + 1))} disabled={companyTaskPage === companyTotalPages} data-testid="button-company-next-page">
+                        Next <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  No tasks found. Assign a task to get started.
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Calendar Tab */}
@@ -3838,6 +3406,19 @@ export default function CompanyDashboard() {
                 <span>Recurring task</span>
               </div>
             </div>
+          </TabsContent>
+
+          {/* Board Tab */}
+          <TabsContent value="board" className="space-y-4">
+            {companyId && user && (
+              <MessageBoardPanel
+                companyId={companyId}
+                currentUserId={user.id}
+                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+                isAdmin={true}
+                initialPostId={initialPost}
+              />
+            )}
           </TabsContent>
 
           {/* Chat Tab */}
@@ -5008,7 +4589,125 @@ export default function CompanyDashboard() {
 
           {/* Company Info / Onboarding Tab */}
           <TabsContent value="onboarding" className="space-y-4">
-            {companyId && <CompanyInfoHub companyId={companyId} onboardingComplete={company?.onboardingComplete} />}
+            {companyId && <CompanyInfoHub companyId={companyId} />}
+          </TabsContent>
+
+          <TabsContent value="marketing" className="space-y-4">
+            {companyId && <MarketingHub companyId={companyId} onNavigateToTab={(tab) => {
+              setActiveTab(tab);
+              setActiveCategory(TAB_TO_CATEGORY[tab] || "marketing");
+            }} />}
+          </TabsContent>
+
+
+          {/* Workflows Tab */}
+          <TabsContent value="workflows" className="min-h-0">
+            {companyId && <CompanyWorkflowsPanel companyId={companyId} />}
+          </TabsContent>
+
+          {/* Government Hub Tab */}
+          <TabsContent value="government" className="min-h-0">
+            {companyId && <GovernmentHub companyId={companyId} isAdmin={true} />}
+          </TabsContent>
+
+          {/* SEO / Directories Tab */}
+          <TabsContent value="seo" className="space-y-4">
+            {companyId && user && (
+              <SeoPanel
+                companyId={companyId}
+                currentUserId={user.id}
+                currentUserName={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "Admin"}
+                isAdmin={true}
+              />
+            )}
+          </TabsContent>
+
+          {/* GBP Tab */}
+          <TabsContent value="gbp" className="space-y-4">
+            {companyId && company && (
+              <GbpConnectionPanel companyId={companyId} company={company} />
+            )}
+          </TabsContent>
+
+          {/* Cadences Tab */}
+          <TabsContent value="cadences" className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Recurring tasks that auto-generate each month</p>
+              </div>
+              <Button onClick={() => setCreateCadenceOpen(true)} data-testid="button-create-cadence">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Cadence
+              </Button>
+            </div>
+
+            {cadencesLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
+              </div>
+            ) : !cadenceList || cadenceList.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <Repeat className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">No cadences set up yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">Create a cadence to auto-generate recurring tasks each month</p>
+                  <Button className="mt-4" onClick={() => setCreateCadenceOpen(true)}>
+                    Create your first cadence
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {cadenceList.map((cadence: any) => (
+                  <Card
+                    key={cadence.id}
+                    className="cursor-pointer hover-elevate"
+                    onClick={() => { setSelectedCadence(cadence); setCadenceDetailOpen(true); }}
+                    data-testid={`cadence-card-${cadence.id}`}
+                  >
+                    <CardContent className="py-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="bg-primary/10 p-2 rounded-lg flex-shrink-0">
+                            <Repeat className="w-4 h-4 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{cadence.title}</p>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                              <span className="capitalize">{cadence.frequency}</span>
+                              {cadence.assignedToName && (
+                                <>
+                                  <span className="text-muted-foreground/50">&bull;</span>
+                                  <span>{cadence.assignedToName}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {cadence.noCredit ? (
+                            <Badge variant="outline" className="text-xs">No Credit</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs font-mono">{cadence.creditCost} cr</Badge>
+                          )}
+                          <Badge className="bg-green-500 text-xs">Active</Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Hill Chart Tab */}
+          <TabsContent value="hill-chart" className="min-h-0">
+            {companyId && user && (
+              <HillChartPanel
+                companyId={companyId}
+                currentUserId={user.id}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="campaigns" className="space-y-4">
@@ -5221,22 +4920,92 @@ export default function CompanyDashboard() {
           </TabsContent>
 
           <TabsContent value="reporting" className="space-y-6">
-            <CompanyReportingTab companyId={companyId} companyName={company?.name || ""} tasks={tasks || []} />
+            <CompanyReportingTab companyId={companyId!} companyName={company?.name || ""} tasks={tasks || []} />
           </TabsContent>
 
-          {/* ── Checklists Tab ──────────────────────────────────────────── */}
-          <TabsContent value="checklists" className="space-y-6">
-            <CompanyChecklistsPanel
-              companyId={companyId || ""}
-              checklists={companyChecklists}
-              templates={checklistTemplates}
-              refetch={refetchChecklists}
-            />
+          <TabsContent value="emails" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Workflow Emails</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Approval requests, meeting recaps, reports, and alerts. All client emails require preview before sending.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setComposeEmailOpen(true)}
+                className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                data-testid="btn-compose-email"
+              >
+                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                Compose Email
+              </Button>
+            </div>
+            {companyId && (
+              <EmailHistory companyId={companyId} isAdmin={true} />
+            )}
           </TabsContent>
 
-          {/* ── Government Tab ──────────────────────────────────────────── */}
-          <TabsContent value="government" className="space-y-6">
-            <GovernmentFormsPanel companyId={companyId || ""} govForms={govForms} refetch={refetchGovForms} />
+          <TabsContent value="integrations" className="space-y-4">
+            {companyId && (
+              <IntegrationHealthPanel companyId={companyId} isAdmin={true} />
+            )}
+          </TabsContent>
+
+          {/* Retainer Tab */}
+          <TabsContent value="retainer" className="space-y-4">
+            {companyId && (
+              <CompanyRetainerTab companyId={companyId} companyName={company?.name} />
+            )}
+          </TabsContent>
+
+          <TabsContent value="hubspot" className="space-y-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-muted-foreground" />
+                  HubSpot Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">HubSpot Company ID</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={editHubspotId}
+                      onChange={e => setEditHubspotId(e.target.value)}
+                      placeholder="e.g. 12345678"
+                      className="font-mono text-sm"
+                      data-testid="input-hubspot-company-id"
+                      onKeyDown={e => { if (e.key === "Enter") saveHubspotIdMutation.mutate(); }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => saveHubspotIdMutation.mutate()}
+                      disabled={saveHubspotIdMutation.isPending || editHubspotId === (company?.hubspotCompanyId || "")}
+                      data-testid="button-save-hubspot-id"
+                    >
+                      {saveHubspotIdMutation.isPending ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">The HubSpot Company record ID — found in the HubSpot URL when viewing the company record.</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Link href={`/admin/companies/${companyId}/hubspot-onboarding`}>
+              <div className="flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-900/40 px-4 py-3 hover:bg-orange-100 dark:hover:bg-orange-950/30 transition-colors cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+                    <BarChart3 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-orange-700 dark:text-orange-300">HubSpot Onboarding Tracker</p>
+                    <p className="text-xs text-orange-600/70 dark:text-orange-400/70">73-item structured checklist across 6 sections</p>
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-orange-500" />
+              </div>
+            </Link>
+            <HubspotPanel companyId={companyId!} />
           </TabsContent>
         </Tabs>
       </div>
@@ -5249,9 +5018,11 @@ export default function CompanyDashboard() {
         companyId={companyId || ""}
         onNavigateToChat={(threadId) => {
           setActiveTab("chat");
+          setActiveCategory("communicate");
           setSelectedThreadId(threadId);
-          setLocation(`/admin/companies/${companyId}?tab=chat&thread=${threadId}`);
+          setLocation(`/admin/companies/${companyId}?tab=communicate&sub=chat&thread=${threadId}`);
         }}
+        onOpenTask={(t) => setSelectedTask(t)}
       />
       {/* Campaign Detail Panel */}
       <CampaignDetailPanel
@@ -5693,9 +5464,13 @@ export default function CompanyDashboard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="biweekly">Biweekly</SelectItem>
+                  <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="semi-annually">Semi-Annually</SelectItem>
+                  <SelectItem value="annually">Annually</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -5875,9 +5650,13 @@ export default function CompanyDashboard() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Biweekly</SelectItem>
+                      <SelectItem value="biweekly">Bi-Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                      <SelectItem value="semi-annually">Semi-Annually</SelectItem>
+                      <SelectItem value="annually">Annually</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -6070,6 +5849,21 @@ export default function CompanyDashboard() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Email Composer Dialog */}
+      {companyId && (
+        <EmailComposerDialog
+          open={composeEmailOpen}
+          onOpenChange={setComposeEmailOpen}
+          companyId={companyId}
+          companyName={company?.name}
+          onSuccess={() => {
+            setComposeEmailOpen(false);
+            setActiveTab("emails");
+            setActiveCategory("admin");
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -6112,6 +5906,7 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const removeTagMutation = useMutation({
+    ...retryTransient,
     mutationFn: async (tagId: string) => {
       return apiRequest("DELETE", `/api/admin/users/${user.id}/tags/${tagId}`);
     },
@@ -6125,6 +5920,7 @@ function UserTagCard({ user, allTags, companyId, customRoles = [] }: UserTagCard
   });
 
   const changeRoleMutation = useMutation({
+    ...retryTransient,
     mutationFn: async ({ role, customRoleId }: { role: string; customRoleId?: string }) => {
       return apiRequest("PATCH", `/api/admin/members/${user.memberId}/role`, { role, customRoleId });
     },
@@ -6293,6 +6089,7 @@ function CompanyReportingTab({ companyId, companyName, tasks }: { companyId: str
   }, [reportNote, noteLoading]);
 
   const saveNotesMutation = useMutation({
+    ...retryTransient,
     mutationFn: async () => {
       await apiRequest("PUT", `/api/admin/companies/${companyId}/report-notes`, { month, year, notes: notesText });
     },
@@ -6836,567 +6633,171 @@ function TaskAssigneeAvatars({ taskId }: { taskId: string }) {
   );
 }
 
-// ── Company Checklists Panel ─────────────────────────────────────────────────
-function CompanyChecklistsPanel({ companyId, checklists, templates, refetch }: { companyId: string; checklists: any[]; templates: any[]; refetch: () => void }) {
+// ── GBP Connection Panel ──────────────────────────────────────────────────────
+
+interface GbpConnectionPanelProps {
+  companyId: string;
+  company: Company;
+}
+
+function GbpConnectionPanel({ companyId, company }: GbpConnectionPanelProps) {
   const { toast } = useToast();
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("none");
-  const [selectedChecklist, setSelectedChecklist] = useState<any | null>(null);
-  const [newItemText, setNewItemText] = useState("");
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingItemText, setEditingItemText] = useState("");
+  const [accountId, setAccountId] = useState(company.gbpAccountId ?? "");
+  const [locationId, setLocationId] = useState(company.gbpLocationId ?? "");
+  const [locationName, setLocationName] = useState(company.gbpLocationName ?? "");
+  const [connectedStatus, setConnectedStatus] = useState(company.gbpConnectedStatus ?? "disconnected");
+  const [permissionStatus, setPermissionStatus] = useState(company.gbpPermissionStatus ?? "");
+  const [notes, setNotes] = useState(company.gbpConnectionNotes ?? "");
 
-  const refreshedChecklist = selectedChecklist ? checklists.find(c => c.id === selectedChecklist.id) ?? selectedChecklist : null;
-
-  const createMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/checklists`, {
-        name: newName.trim(),
-        templateId: selectedTemplateId === "none" ? null : selectedTemplateId,
+      const res = await apiRequest("PATCH", `/api/companies/${companyId}`, {
+        gbpAccountId: accountId || null,
+        gbpLocationId: locationId || null,
+        gbpLocationName: locationName || null,
+        gbpConnectedStatus: connectedStatus || null,
+        gbpPermissionStatus: permissionStatus || null,
+        gbpConnectionNotes: notes || null,
       });
       return res.json();
     },
-    onSuccess: (created) => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
-      toast({ title: "Checklist created" });
-      setShowCreate(false);
-      setNewName("");
-      setSelectedTemplateId("none");
-      setSelectedChecklist(created);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
+      toast({ title: "GBP connection saved" });
     },
-    onError: () => toast({ title: "Failed to create checklist", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/companies/${companyId}/checklists/${id}`, {}),
-    onSuccess: () => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
-      toast({ title: "Checklist deleted" });
-      setSelectedChecklist(null);
-    },
-    onError: () => toast({ title: "Failed to delete checklist", variant: "destructive" }),
-  });
-
-  const addItemMutation = useMutation({
-    mutationFn: async ({ checklistId, text }: { checklistId: string; text: string }) => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/checklists/${checklistId}/items`, { text });
-      return res.json();
-    },
-    onSuccess: () => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
-      setNewItemText("");
-    },
-    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
-  });
-
-  const updateItemMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => apiRequest("PATCH", `/api/company-checklist-items/${id}`, data),
-    onSuccess: () => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
-      setEditingItemId(null);
-      setEditingItemText("");
-    },
-    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
-  });
-
-  const deleteItemMutation = useMutation({
-    mutationFn: async (id: string) => apiRequest("DELETE", `/api/company-checklist-items/${id}`, {}),
-    onSuccess: () => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId, "checklists"] });
-    },
-    onError: () => toast({ title: "Failed to delete item", variant: "destructive" }),
-  });
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    connected:    { label: "Connected",    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
+    disconnected: { label: "Disconnected", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+    pending:      { label: "Pending",      className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+    needs_reauth: { label: "Needs Reauth", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  };
+  const currentStatus = statusConfig[connectedStatus] ?? statusConfig.disconnected;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <ClipboardList className="w-5 h-5" />
-            Project Checklists
-          </h3>
-          <p className="text-sm text-muted-foreground">Manage project checklists visible in the client portal.</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-checklist">
-          <Plus className="w-4 h-4 mr-1" />New Checklist
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Checklist list */}
-        <div className="space-y-2">
-          {checklists.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center">
-                <ClipboardList className="w-7 h-7 mx-auto mb-2 text-muted-foreground opacity-40" />
-                <p className="text-sm text-muted-foreground">No checklists yet.</p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowCreate(true)}>
-                  <Plus className="w-3.5 h-3.5 mr-1" />Add one
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            checklists.map(c => {
-              const done = c.items.filter((i: any) => i.completed).length;
-              const total = c.items.length;
-              return (
-                <Card
-                  key={c.id}
-                  className={`cursor-pointer transition-colors hover-elevate ${refreshedChecklist?.id === c.id ? "border-primary" : ""}`}
-                  onClick={() => setSelectedChecklist(c)}
-                  data-testid={`card-checklist-${c.id}`}
-                >
-                  <CardHeader className="pb-2 pt-3 px-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-sm truncate">{c.name}</CardTitle>
-                      <Badge variant="secondary" className="text-xs shrink-0">{done}/{total}</Badge>
-                    </div>
-                    {total > 0 && (
-                      <div className="w-full bg-muted rounded-full h-1.5 mt-2">
-                        <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${Math.round((done / total) * 100)}%` }} />
-                      </div>
-                    )}
-                  </CardHeader>
-                </Card>
-              );
-            })
-          )}
-        </div>
-
-        {/* Checklist item editor */}
-        <div className="md:col-span-2">
-          {!refreshedChecklist ? (
-            <Card className="h-full">
-              <CardContent className="py-16 text-center">
-                <CheckSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
-                <p className="text-sm text-muted-foreground">Select a checklist to manage its items.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle>{refreshedChecklist.name}</CardTitle>
-                    {refreshedChecklist.templateId && <p className="text-xs text-muted-foreground mt-0.5">Imported from template</p>}
-                  </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive shrink-0" data-testid="button-delete-checklist">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete checklist?</AlertDialogTitle>
-                        <AlertDialogDescription>This will permanently delete "{refreshedChecklist.name}" and all its items.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteMutation.mutate(refreshedChecklist.id)} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {refreshedChecklist.items.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-3">No items. Add some below.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {refreshedChecklist.items.map((item: any, idx: number) => (
-                      <div key={item.id} className={`flex items-start gap-2 p-2 border rounded-lg group ${item.completed ? "bg-muted/40" : ""}`} data-testid={`item-checklist-${item.id}`}>
-                        <Checkbox
-                          checked={!!item.completed}
-                          onCheckedChange={(v) => updateItemMutation.mutate({ id: item.id, data: { completed: !!v } })}
-                          className="mt-0.5 shrink-0"
-                          data-testid={`checkbox-item-${item.id}`}
-                        />
-                        {editingItemId === item.id ? (
-                          <div className="flex-1 flex gap-2">
-                            <Input value={editingItemText} onChange={e => setEditingItemText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") updateItemMutation.mutate({ id: item.id, data: { text: editingItemText } }); if (e.key === "Escape") setEditingItemId(null); }} className="h-7 text-sm" autoFocus />
-                            <Button size="sm" className="h-7 px-2" onClick={() => updateItemMutation.mutate({ id: item.id, data: { text: editingItemText } })} disabled={updateItemMutation.isPending}>Save</Button>
-                            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setEditingItemId(null)}><X className="w-3.5 h-3.5" /></Button>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="flex-1 min-w-0">
-                              <span className={`text-sm ${item.completed ? "line-through text-muted-foreground" : ""}`}>{item.text}</span>
-                              {item.completed && item.completedBy && (
-                                <p className="text-xs text-muted-foreground mt-0.5">Completed by {item.completedBy}</p>
-                              )}
-                            </div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => { setEditingItemId(item.id); setEditingItemText(item.text); }}><Pencil className="w-3 h-3" /></Button>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive" onClick={() => deleteItemMutation.mutate(item.id)}><Trash2 className="w-3 h-3" /></Button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Separator />
-                <div className="flex gap-2">
-                  <Input placeholder="Add a checklist item..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && newItemText.trim()) addItemMutation.mutate({ checklistId: refreshedChecklist.id, text: newItemText.trim() }); }} className="h-8 text-sm" data-testid="input-new-checklist-item" />
-                  <Button size="sm" className="h-8" disabled={!newItemText.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ checklistId: refreshedChecklist.id, text: newItemText.trim() })} data-testid="button-add-checklist-item">
-                    <Plus className="w-3.5 h-3.5 mr-1" />Add
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Create checklist dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>New Checklist</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label>Checklist Name *</Label>
-              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Onboarding Steps" className="mt-1" data-testid="input-checklist-name" />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              Google Business Profile Connection
+            </span>
+            <Badge className={`text-xs font-medium ${currentStatus.className}`}>
+              {currentStatus.label}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">GBP Account ID</Label>
+              <Input
+                value={accountId}
+                onChange={e => setAccountId(e.target.value)}
+                placeholder="e.g. accounts/123456789"
+                className="font-mono text-sm"
+                data-testid="input-gbp-account-id"
+              />
             </div>
-            {templates.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Location ID</Label>
+              <Input
+                value={locationId}
+                onChange={e => setLocationId(e.target.value)}
+                placeholder="e.g. locations/987654321"
+                className="font-mono text-sm"
+                data-testid="input-gbp-location-id"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Location Name</Label>
+              <Input
+                value={locationName}
+                onChange={e => setLocationName(e.target.value)}
+                placeholder="Business name as shown on GBP"
+                data-testid="input-gbp-location-name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Connection Status</Label>
+              <Select value={connectedStatus} onValueChange={setConnectedStatus}>
+                <SelectTrigger data-testid="select-gbp-connected-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disconnected">Disconnected</SelectItem>
+                  <SelectItem value="connected">Connected</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="needs_reauth">Needs Reauth</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Permission Level</Label>
+              <Select value={permissionStatus || "_none"} onValueChange={v => setPermissionStatus(v === "_none" ? "" : v)}>
+                <SelectTrigger data-testid="select-gbp-permission-status">
+                  <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Not set</SelectItem>
+                  <SelectItem value="owner">Owner</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="site_manager">Site Manager</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Connection Notes</Label>
+            <Textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Any notes about this GBP connection, access issues, or credentials location…"
+              rows={3}
+              data-testid="textarea-gbp-notes"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="bg-orange-500 hover:bg-orange-600 text-white"
+            data-testid="btn-save-gbp-connection"
+          >
+            {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
+            Save Connection
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Read-only sync / publish status */}
+      {(company.gbpLastSyncTime || company.gbpLastPublishStatus) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Last Activity</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-4 text-sm">
+            {company.gbpLastSyncTime && (
               <div>
-                <Label>Import from Template (optional)</Label>
-                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                  <SelectTrigger className="mt-1" data-testid="select-checklist-template">
-                    <SelectValue placeholder="No template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Start from scratch</SelectItem>
-                    {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.name} ({t.items?.length ?? 0} items)</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground mb-0.5">Last Sync</p>
+                <p className="font-medium">{new Date(company.gbpLastSyncTime).toLocaleString()}</p>
               </div>
             )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={() => createMutation.mutate()} disabled={!newName.trim() || createMutation.isPending} data-testid="button-confirm-create-checklist">
-              {createMutation.isPending ? "Creating…" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// ── Government Forms Panel ──────────────────────────────────────────────────
-function GovernmentFormsPanel({ companyId, govForms, refetch }: { companyId: string; govForms: any[]; refetch: () => void }) {
-  const { toast } = useToast();
-  const [showCreate, setShowCreate] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newNotes, setNewNotes] = useState("");
-  const [newFormType, setNewFormType] = useState("wosb");
-  const [viewSubmission, setViewSubmission] = useState<any>(null);
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/government-forms`, {
-        formType: newFormType,
-        recipientEmail: newEmail,
-        recipientName: newName,
-        notes: newNotes,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Form created" });
-      setShowCreate(false);
-      setNewEmail(""); setNewName(""); setNewNotes(""); setNewFormType("wosb");
-      refetch();
-    },
-    onError: () => toast({ title: "Error creating form", variant: "destructive" }),
-  });
-
-  const sendMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("POST", `/api/government-forms/${id}/send`, {});
-      return res.json();
-    },
-    onSuccess: () => { toast({ title: "Form sent via email" }); refetch(); },
-    onError: () => toast({ title: "Failed to send form", variant: "destructive" }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/government-forms/${id}`, {});
-    },
-    onSuccess: () => { toast({ title: "Form deleted" }); refetch(); },
-    onError: () => toast({ title: "Failed to delete form", variant: "destructive" }),
-  });
-
-  const statusBadge = (status: string) => {
-    if (status === "completed") return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Completed</Badge>;
-    if (status === "sent") return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">Sent</Badge>;
-    return <Badge variant="outline">Draft</Badge>;
-  };
-
-  const formLabel = (type: string) =>
-    type === "wosb" ? "WOSB Certification" :
-    type === "edwosb" ? "EDWOSB Certification" :
-    type.toUpperCase();
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold flex items-center gap-2">
-            <Landmark className="w-4 h-4" /> Government Forms
-          </h3>
-          <p className="text-sm text-muted-foreground mt-0.5">Send government certification forms to this company's contacts.</p>
-        </div>
-        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-gov-form">
-          <Plus className="w-4 h-4 mr-1" /> New Form
-        </Button>
-      </div>
-
-      {/* Forms list */}
-      {govForms.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Landmark className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-            <p className="font-medium">No forms yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Create a form to send to this company's contacts for completion.</p>
+            {company.gbpLastPublishStatus && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Last Publish Status</p>
+                <p className="font-medium capitalize">{company.gbpLastPublishStatus}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-3">
-          {govForms.map((form: any) => (
-            <Card key={form.id} data-testid={`card-gov-form-${form.id}`}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{formLabel(form.formType)}</span>
-                      {statusBadge(form.status)}
-                    </div>
-                    {form.recipientName && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Recipient: <span className="font-medium">{form.recipientName}</span>
-                        {form.recipientEmail && ` · ${form.recipientEmail}`}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Created {new Date(form.createdAt).toLocaleDateString()}
-                      {form.sentAt && ` · Sent ${new Date(form.sentAt).toLocaleDateString()}`}
-                      {form.completedAt && ` · Completed ${new Date(form.completedAt).toLocaleDateString()}`}
-                    </p>
-                    {form.notes && <p className="text-xs text-muted-foreground mt-1 italic">{form.notes}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {form.status === "completed" && (
-                      <Button size="sm" variant="outline" onClick={() => setViewSubmission(form)} data-testid={`button-view-submission-${form.id}`}>
-                        <Eye className="w-4 h-4 mr-1" /> View
-                      </Button>
-                    )}
-                    {form.status !== "completed" && form.recipientEmail && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => sendMutation.mutate(form.id)}
-                        disabled={sendMutation.isPending}
-                        data-testid={`button-send-form-${form.id}`}
-                      >
-                        <SendHorizonal className="w-4 h-4 mr-1" />
-                        {form.status === "sent" ? "Resend" : "Send"}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => deleteMutation.mutate(form.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-form-${form.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-                {form.status !== "completed" && form.token && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Form link:</span>
-                    <code className="text-xs bg-muted px-2 py-0.5 rounded truncate max-w-xs">{`${window.location.origin}/form/${form.token}`}</code>
-                    <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/form/${form.token}`); toast({ title: "Link copied" }); }} data-testid={`button-copy-link-${form.id}`}>
-                      <Copy className="w-3 h-3" />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )}
-
-      {/* Create dialog */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-md" data-testid="dialog-create-gov-form">
-          <DialogHeader>
-            <DialogTitle>New Government Form</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label>Form Type <span className="text-destructive">*</span></Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNewFormType("wosb")}
-                  className={`p-3 rounded-lg border-2 text-left transition-colors ${newFormType === "wosb" ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" : "border-border hover:border-muted-foreground/40"}`}
-                  data-testid="button-select-wosb"
-                >
-                  <p className="text-sm font-medium">WOSB</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Women-Owned Small Business</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewFormType("edwosb")}
-                  className={`p-3 rounded-lg border-2 text-left transition-colors ${newFormType === "edwosb" ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" : "border-border hover:border-muted-foreground/40"}`}
-                  data-testid="button-select-edwosb"
-                >
-                  <p className="text-sm font-medium">EDWOSB</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Economically Disadvantaged</p>
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="gov-recipient-email">Recipient Email <span className="text-destructive">*</span></Label>
-              <Input id="gov-recipient-email" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="client@example.com" data-testid="input-gov-email" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="gov-recipient-name">Recipient Name</Label>
-              <Input id="gov-recipient-name" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Jane Smith" data-testid="input-gov-name" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="gov-notes">Internal Notes (optional)</Label>
-              <Textarea id="gov-notes" rows={2} value={newNotes} onChange={e => setNewNotes(e.target.value)} data-testid="input-gov-notes" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button onClick={() => createMutation.mutate()} disabled={!newEmail || createMutation.isPending} data-testid="button-save-gov-form">
-              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Create Form
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* View submission dialog */}
-      {viewSubmission && (() => {
-        let parsed: any = null;
-        try { parsed = JSON.parse(viewSubmission.formData || "{}"); } catch {}
-        return (
-          <Dialog open={!!viewSubmission} onOpenChange={() => setViewSubmission(null)}>
-            <DialogContent className="max-w-2xl flex flex-col" style={{ maxHeight: "90vh" }} data-testid="dialog-view-submission">
-              <DialogHeader className="shrink-0">
-                <DialogTitle>{formLabel(viewSubmission.formType)} — Submission</DialogTitle>
-                <p className="text-sm text-muted-foreground">Completed {viewSubmission.completedAt ? new Date(viewSubmission.completedAt).toLocaleDateString() : ""}</p>
-              </DialogHeader>
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
-                {parsed?.businessInfo && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Business Information</h4>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      {[["Legal Name", parsed.businessInfo.legalName], ["DBA", parsed.businessInfo.dba], ["Address", [parsed.businessInfo.streetAddress, parsed.businessInfo.city, parsed.businessInfo.state, parsed.businessInfo.zip].filter(Boolean).join(", ")], ["Phone", parsed.businessInfo.phone], ["Email", parsed.businessInfo.email], ["Website", parsed.businessInfo.website], ["EIN", parsed.businessInfo.ein], ["SAM UEI", parsed.businessInfo.samUei], ["NAICS", parsed.businessInfo.naicsCodes]].filter(([, v]) => v).map(([k, v]) => (
-                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
-                      ))}
-                    </dl>
-                    {parsed.businessInfo.businessDescription && <p className="text-sm mt-2"><span className="text-muted-foreground">Business: </span>{parsed.businessInfo.businessDescription}</p>}
-                  </div>
-                )}
-                {parsed?.structureSize && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Structure & Size</h4>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      {[["Structure", parsed.structureSize.businessStructure?.replace(/_/g, " ")], ["State of Org", parsed.structureSize.stateOfOrg], ["Established", parsed.structureSize.dateEstablished], ["Employees", parsed.structureSize.numEmployees], ["Receipts " + parsed.structureSize.receiptsYear1Label, parsed.structureSize.receiptsYear1 ? `$${Number(parsed.structureSize.receiptsYear1).toLocaleString()}` : ""], ["Receipts " + parsed.structureSize.receiptsYear2Label, parsed.structureSize.receiptsYear2 ? `$${Number(parsed.structureSize.receiptsYear2).toLocaleString()}` : ""], ["Receipts " + parsed.structureSize.receiptsYear3Label, parsed.structureSize.receiptsYear3 ? `$${Number(parsed.structureSize.receiptsYear3).toLocaleString()}` : ""]].filter(([, v]) => v).map(([k, v]) => (
-                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-                {parsed?.ownership?.owners?.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Ownership</h4>
-                    <div className="space-y-3">
-                      {parsed.ownership.owners.map((o: any, i: number) => (
-                        <div key={i} className="text-sm p-3 bg-muted/30 rounded-lg">
-                          <p className="font-medium">{o.fullName} — {o.title} — {o.percentOwned}%</p>
-                          <p className="text-muted-foreground text-xs mt-1">Gender: {o.gender} · US Citizen: {o.usCitizen} · Veteran: {o.veteran}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {parsed?.womanOwners?.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Woman Owners & Financial Statements</h4>
-                    <div className="space-y-4">
-                      {parsed.womanOwners.map((o: any, i: number) => {
-                        const sum = (...vals: string[]) => vals.reduce((a: number, v: string) => a + (parseFloat((v || "").replace(/,/g, "")) || 0), 0);
-                        const totalAssets = sum(o.cashChecking, o.savings, o.retirement, o.stocks, o.realEstate, o.lifeInsurance, o.otherAssets);
-                        const totalLiabilities = sum(o.notesPayable, o.installmentLoans, o.otherLiabilities);
-                        const excluded = sum(o.primaryResidenceEquity, o.businessOwnershipValue);
-                        const netWorth = totalAssets - totalLiabilities - excluded;
-                        return (
-                          <div key={i} className="text-sm p-3 bg-muted/30 rounded-lg space-y-2">
-                            <p className="font-medium">{o.fullName} — {o.title} — {o.percentOwned}% · DOB: {o.dob || "—"}</p>
-                            <p className="text-muted-foreground text-xs">US Citizen: {o.usCitizen} · Home: {[o.homeAddress, o.homeCity, o.homeState].filter(Boolean).join(", ")}</p>
-                            {o.spouseName && <p className="text-xs text-muted-foreground">Spouse: {o.spouseName}{o.spouseBusinessInterests ? ` — ${o.spouseBusinessInterests}` : ""}</p>}
-                            <div className="grid grid-cols-3 gap-2 pt-1 text-xs">
-                              <div><span className="text-muted-foreground">Total Assets</span><br /><span className="font-semibold">${totalAssets.toLocaleString()}</span></div>
-                              <div><span className="text-muted-foreground">Total Liabilities</span><br /><span className="font-semibold">${totalLiabilities.toLocaleString()}</span></div>
-                              <div><span className="text-muted-foreground">Adj. Net Worth</span><br /><span className={`font-semibold ${netWorth < 850000 ? "text-green-600" : "text-red-600"}`}>${netWorth.toLocaleString()}</span></div>
-                            </div>
-                            {(o.grossIncomeYear1 || o.grossIncomeYear2 || o.grossIncomeYear3) && (
-                              <p className="text-xs text-muted-foreground">Income: {o.grossIncomeYear1Label} ${Number(o.grossIncomeYear1 || 0).toLocaleString()} · {o.grossIncomeYear2Label} ${Number(o.grossIncomeYear2 || 0).toLocaleString()} · {o.grossIncomeYear3Label} ${Number(o.grossIncomeYear3 || 0).toLocaleString()}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                {parsed?.control && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Control</h4>
-                    <dl className="space-y-2 text-sm">
-                      {[["Women own 51%+", parsed.control.womenMajority51], ["Highest Officer", `${parsed.control.highestOfficerName} (${parsed.control.highestOfficerTitle})`], ["HRO is Woman", parsed.control.highestOfficerIsWoman], ["Day-to-Day Manager", parsed.control.dayToDayManager ? `${parsed.control.dayToDayManager} (${parsed.control.dayToDayManagerTitle})` : ""], ["Mgr is Woman", parsed.control.dayToDayIsWoman], ["Non-woman control", parsed.control.nonWomanControl], ["Explanation", parsed.control.nonWomanControlExplanation]].filter(([, v]) => v).map(([k, v]) => (
-                        <div key={k as string} className="flex gap-2"><dt className="text-muted-foreground w-40 shrink-0">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-                {parsed?.certification && (
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2 border-b pb-1">Certification</h4>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      {[["Signed By", parsed.certification.certName], ["Title", parsed.certification.certTitle], ["Date", parsed.certification.certDate]].filter(([, v]) => v).map(([k, v]) => (
-                        <div key={k as string}><dt className="text-muted-foreground">{k as string}</dt><dd className="font-medium">{v as string}</dd></div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-              </div>
-              <DialogFooter className="shrink-0 pt-3 border-t">
-                <Button variant="outline" onClick={() => setViewSubmission(null)}>Close</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
     </div>
   );
 }

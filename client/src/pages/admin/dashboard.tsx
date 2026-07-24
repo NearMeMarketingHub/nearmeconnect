@@ -1,216 +1,389 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { parseLocalDate } from "@/lib/utils";
-import { useAuth } from "@/hooks/use-auth";
 import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
-import { Building2, ListTodo, Clock, AlertTriangle, Calendar } from "lucide-react";
-import type { Company, Task } from "@shared/schema";
+import { cn } from "@/lib/utils";
+import { TaskDetailPanel } from "@/components/task-detail-panel";
+import {
+  AlertTriangle,
+  BookOpen,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  ExternalLink,
+  ListTodo,
+  User,
+  Wrench,
+} from "lucide-react";
+import type { Task } from "@shared/schema";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type CreditHealthRow = {
+  companyId: string;
+  companyName: string;
+  subscriptionTier: string;
+  totalMonthlyCredits: number;
+  creditsUsed: number;
+  creditsRemaining: number;
+  status: "paused" | "over_budget" | "at_risk" | "healthy";
+};
+
+type CreditHealthResponse = {
+  companies: CreditHealthRow[];
+  totals: {
+    totalAvailable: number;
+    totalUsedThisMonth: number;
+    totalMonthlyAllocation: number;
+    activeClients: number;
+  };
+};
+
+type MyWorkTask = Task & { companyName: string; categoryName: string | null };
+
+type InternalTask = Task & {
+  companyName: string | null;
+  assigneeName: string | null;
+  resource: { id: string; title: string; url: string | null; resourceType: string } | null;
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const tierLabels: Record<string, string> = {
+  essentials: "Essentials",
+  growth: "Growth",
+  accelerator: "Accelerator",
+};
+
+const healthStatusConfig: Record<CreditHealthRow["status"], { label: string; className: string }> = {
+  healthy: { label: "Healthy", className: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30" },
+  at_risk: { label: "At Risk", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" },
+  over_budget: { label: "Over Budget", className: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30" },
+  paused: { label: "Paused", className: "bg-muted text-muted-foreground border-border" },
+};
+
+const taskStatusLabels: Record<string, string> = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  needs_approval: "Needs Approval",
+  in_review: "In Review",
+  revision_requested: "Revision",
+};
+
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function bucketTasks(tasks: MyWorkTask[]) {
+  const today = startOfDay(new Date());
+  const in7 = new Date(today.getTime() + 7 * 86400000);
+  const in14 = new Date(today.getTime() + 14 * 86400000);
+
+  const overdue: MyWorkTask[] = [];
+  const dueToday: MyWorkTask[] = [];
+  const dueThisWeek: MyWorkTask[] = [];
+  const nextWeek: MyWorkTask[] = [];
+  const later: MyWorkTask[] = [];
+
+  for (const t of tasks) {
+    if (!t.dueDate) {
+      later.push(t);
+      continue;
+    }
+    const due = startOfDay(new Date(t.dueDate + "T00:00:00"));
+    if (due < today) overdue.push(t);
+    else if (due.getTime() === today.getTime()) dueToday.push(t);
+    else if (due < in7) dueThisWeek.push(t);
+    else if (due < in14) nextWeek.push(t);
+    else later.push(t);
+  }
+
+  return { overdue, dueToday, dueThisWeek, nextWeek, later };
+}
+
+function formatDue(dueDate: string | null): string {
+  if (!dueDate) return "No due date";
+  const d = new Date(dueDate + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
-  const { data: companies, isLoading: companiesLoading } = useQuery<Company[]>({
-    queryKey: ["/api/companies"],
+  const { data: creditHealth, isLoading: healthLoading } = useQuery<CreditHealthResponse>({
+    queryKey: ["/api/admin/credit-health"],
   });
 
-  const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
-    queryKey: ["/api/tasks"],
+  const { data: myWork = [], isLoading: myWorkLoading } = useQuery<MyWorkTask[]>({
+    queryKey: ["/api/admin/my-work"],
   });
 
-  const pendingTasks = tasks?.filter((t) => t.status === "pending") || [];
-  const inProgressTasks = tasks?.filter((t) => t.status === "in_progress") || [];
-  const urgentTasks = tasks?.filter((t) => t.priority === "urgent" && t.status !== "completed") || [];
+  const { data: internalTasks = [], isLoading: internalLoading } = useQuery<InternalTask[]>({
+    queryKey: ["/api/admin/internal-tasks"],
+  });
+
+  const openTask = (task: Task) => {
+    setSelectedTask(task);
+    setPanelOpen(true);
+  };
+
+  const buckets = bucketTasks(Array.isArray(myWork) ? myWork : []);
+
+  const myWorkGroups: Array<{ key: string; label: string; icon: typeof Clock; tasks: MyWorkTask[]; accent?: string }> = [
+    { key: "overdue", label: "Overdue", icon: AlertTriangle, tasks: buckets.overdue, accent: "text-red-600 dark:text-red-400" },
+    { key: "due-today", label: "Due Today", icon: Clock, tasks: buckets.dueToday, accent: "text-amber-600 dark:text-amber-400" },
+    { key: "due-this-week", label: "Due This Week", icon: Calendar, tasks: buckets.dueThisWeek },
+    { key: "next-week", label: "Next Week", icon: Calendar, tasks: buckets.nextWeek },
+    ...(buckets.later.length > 0
+      ? [{ key: "later", label: "Later / No Due Date", icon: ListTodo, tasks: buckets.later } as const]
+      : []),
+  ];
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
         <div>
-          <h1 className="text-2xl font-semibold">
-            Welcome back{user?.firstName ? `, ${user.firstName}` : ""}
-          </h1>
-          <p className="text-muted-foreground">
-            Here's an overview of your agency's client portal.
-          </p>
+          <h1 className="text-2xl font-semibold" data-testid="text-dashboard-title">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Agency command center</p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Companies</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {companiesLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-companies">{companies?.length || 0}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Tasks</CardTitle>
-              <ListTodo className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-pending">{pendingTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold font-mono" data-testid="stat-in-progress">{inProgressTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Urgent</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold font-mono text-destructive" data-testid="stat-urgent">{urgentTasks.length}</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* ── Row 1: Active Retainers & Credit Health ─────────────────────── */}
+        <Card data-testid="card-credit-health">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-muted-foreground" />
+              Active Retainers &amp; Credit Health
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {healthLoading ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                </div>
+                <Skeleton className="h-40 rounded-lg" />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-lg border p-3" data-testid="stat-total-available">
+                    <div className="text-xs text-muted-foreground">Total Credits Available</div>
+                    <div className="text-xl font-semibold font-mono">{creditHealth?.totals.totalAvailable ?? 0}</div>
+                  </div>
+                  <div className="rounded-lg border p-3" data-testid="stat-total-used">
+                    <div className="text-xs text-muted-foreground">Used This Month</div>
+                    <div className="text-xl font-semibold font-mono">{creditHealth?.totals.totalUsedThisMonth ?? 0}</div>
+                  </div>
+                  <div className="rounded-lg border p-3" data-testid="stat-monthly-allocation">
+                    <div className="text-xs text-muted-foreground">Monthly Allocation</div>
+                    <div className="text-xl font-semibold font-mono">{creditHealth?.totals.totalMonthlyAllocation ?? 0}</div>
+                  </div>
+                  <div className="rounded-lg border p-3" data-testid="stat-active-clients">
+                    <div className="text-xs text-muted-foreground">Active Clients</div>
+                    <div className="text-xl font-semibold font-mono">{creditHealth?.totals.activeClients ?? 0}</div>
+                  </div>
+                </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle>Companies Overview</CardTitle>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/admin/companies" data-testid="link-view-all-companies">View All</Link>
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {companiesLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : companies && companies.length > 0 ? (
-                <div className="space-y-3">
-                  {[...companies]
-                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                    .slice(0, 6)
-                    .map((company) => (
-                    <Link key={company.id} href={`/admin/companies/${company.id}`} data-testid={`company-row-${company.id}`}>
-                      <div className="flex items-center justify-between p-3 rounded-lg border hover-elevate cursor-pointer">
-                        <div>
-                          <p className="font-medium">{company.name}</p>
-                          <p className="text-sm text-muted-foreground capitalize">
-                            {company.subscriptionTier} tier
-                          </p>
-                        </div>
-                        <Badge variant="secondary" className="font-mono">
-                          {company.credits} credits
-                        </Badge>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">
-                  No companies yet. Create your first company to get started.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                {(creditHealth?.companies || []).length === 0 ? (
+                  <div className="text-sm text-muted-foreground py-6 text-center" data-testid="empty-credit-health">
+                    No client companies yet.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-muted-foreground border-b">
+                          <th className="py-2 pr-3 font-medium">Client</th>
+                          <th className="py-2 pr-3 font-medium">Retainer Tier</th>
+                          <th className="py-2 pr-3 font-medium text-right">Monthly Credits</th>
+                          <th className="py-2 pr-3 font-medium text-right">Used</th>
+                          <th className="py-2 pr-3 font-medium text-right">Remaining</th>
+                          <th className="py-2 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(creditHealth?.companies || []).map((row) => (
+                          <tr key={row.companyId} className="border-b last:border-0" data-testid={`row-credit-health-${row.companyId}`}>
+                            <td className="py-2.5 pr-3">
+                              <Link
+                                href={`/admin/companies/${row.companyId}`}
+                                className="font-medium hover:underline flex items-center gap-2"
+                                data-testid={`link-company-${row.companyId}`}
+                              >
+                                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                {row.companyName}
+                              </Link>
+                            </td>
+                            <td className="py-2.5 pr-3 capitalize">{tierLabels[row.subscriptionTier] || row.subscriptionTier}</td>
+                            <td className="py-2.5 pr-3 text-right font-mono">{row.totalMonthlyCredits}</td>
+                            <td className="py-2.5 pr-3 text-right font-mono">{row.creditsUsed}</td>
+                            <td className={cn(
+                              "py-2.5 pr-3 text-right font-mono",
+                              row.creditsRemaining <= 0 && "text-red-600 dark:text-red-400 font-semibold",
+                            )}>
+                              {row.creditsRemaining}
+                            </td>
+                            <td className="py-2.5">
+                              <Badge variant="outline" className={cn("text-xs", healthStatusConfig[row.status].className)} data-testid={`status-${row.companyId}`}>
+                                {healthStatusConfig[row.status].label}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle>Tasks Requiring Attention</CardTitle>
-              <Button variant="outline" size="sm" asChild>
-                <Link href="/admin/tasks" data-testid="link-view-all-tasks">View All</Link>
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {tasksLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : pendingTasks.length > 0 || urgentTasks.length > 0 ? (
-                <div className="space-y-3">
-                  {[...urgentTasks, ...pendingTasks.filter(t => t.priority !== "urgent")]
-                    .sort((a, b) => {
-                      if (!a.dueDate && !b.dueDate) return 0;
-                      if (!a.dueDate) return 1;
-                      if (!b.dueDate) return -1;
-                      return parseLocalDate(a.dueDate).getTime() - parseLocalDate(b.dueDate).getTime();
-                    })
-                    .slice(0, 6)
-                    .map((task) => {
-                      const company = companies?.find(c => c.id === task.companyId);
-                      const formatDueDate = (dueDate: string | null) => {
-                        if (!dueDate) return null;
-                        const date = parseLocalDate(dueDate);
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const taskDate = new Date(date);
-                        taskDate.setHours(0, 0, 0, 0);
-                        const diffDays = Math.ceil((taskDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                        if (diffDays < 0) return { text: `Overdue`, color: "text-destructive" };
-                        if (diffDays === 0) return { text: "Today", color: "text-orange-600 dark:text-orange-400" };
-                        if (diffDays === 1) return { text: "Tomorrow", color: "text-yellow-600 dark:text-yellow-400" };
-                        return { text: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }), color: "text-muted-foreground" };
-                      };
-                      const dueDateInfo = formatDueDate(task.dueDate);
-                      return (
-                        <Link key={task.id} href={`/admin/companies/${task.companyId}`} data-testid={`task-row-${task.id}`}>
-                          <div className="flex items-center justify-between p-3 rounded-lg border hover-elevate cursor-pointer">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{task.title}</p>
-                              <div className="flex items-center gap-2 text-sm flex-wrap">
-                                <span className="text-muted-foreground">{company?.name || "Unknown company"}</span>
-                                {dueDateInfo && (
-                                  <>
-                                    <span className="text-muted-foreground">•</span>
-                                    <span className={dueDateInfo.color}>
-                                      <Calendar className="w-3 h-3 inline mr-1" />
-                                      {dueDateInfo.text}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
+        {/* ── Row 2: My Work ──────────────────────────────────────────────── */}
+        <Card data-testid="card-my-work">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="w-4 h-4 text-muted-foreground" />
+              My Work
+              {!myWorkLoading && (
+                <Badge variant="secondary" className="text-xs font-normal">{(myWork || []).length}</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {myWorkLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+              </div>
+            ) : (myWork || []).length === 0 ? (
+              <div className="text-sm text-muted-foreground py-8 text-center flex flex-col items-center gap-2" data-testid="empty-my-work">
+                <CheckCircle2 className="w-8 h-8 text-green-500/60" />
+                Nothing assigned to you right now. Nice and clear!
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {myWorkGroups.filter((g) => g.tasks.length > 0).map((group) => (
+                  <div key={group.key} data-testid={`group-${group.key}`}>
+                    <div className={cn("flex items-center gap-2 text-xs font-semibold uppercase tracking-wide mb-2", group.accent || "text-muted-foreground")}>
+                      <group.icon className="w-3.5 h-3.5" />
+                      {group.label}
+                      <span className="font-normal normal-case">({group.tasks.length})</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {group.tasks.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => openTask(t)}
+                          className="w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left hover-elevate"
+                          data-testid={`row-my-task-${t.id}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-sm truncate">{t.title}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {t.companyName}
+                              {t.categoryName ? ` · ${t.categoryName}` : ""}
                             </div>
-                            <Badge variant={task.priority === "urgent" ? "destructive" : "secondary"} className="flex-shrink-0 ml-2">
-                              {task.priority}
-                            </Badge>
                           </div>
-                        </Link>
-                      );
-                    })}
-                </div>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">
-                  No tasks requiring attention.
-                </p>
+                          <Badge variant="secondary" className="text-xs shrink-0 hidden sm:inline-flex">
+                            {taskStatusLabels[t.status] || t.status}
+                          </Badge>
+                          <span className={cn(
+                            "text-xs shrink-0 font-mono",
+                            group.key === "overdue" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+                          )}>
+                            {formatDue(t.dueDate)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Row 3: Agency Operations & SOPs ─────────────────────────────── */}
+        <Card data-testid="card-agency-ops">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-muted-foreground" />
+              Agency Operations &amp; SOPs
+              {!internalLoading && (
+                <Badge variant="secondary" className="text-xs font-normal">{(internalTasks || []).length}</Badge>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {internalLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+              </div>
+            ) : (internalTasks || []).length === 0 ? (
+              <div className="text-sm text-muted-foreground py-8 text-center flex flex-col items-center gap-2" data-testid="empty-internal-tasks">
+                <BookOpen className="w-8 h-8 text-muted-foreground/40" />
+                No internal tasks or SOPs. Mark a task as internal to see it here.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {(internalTasks || []).map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-3 rounded-lg border px-3 py-2"
+                    data-testid={`row-internal-task-${t.id}`}
+                  >
+                    <button onClick={() => openTask(t)} className="min-w-0 flex-1 text-left" data-testid={`button-open-internal-${t.id}`}>
+                      <div className="font-medium text-sm truncate">{t.title}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {t.assigneeName ? `Assigned to ${t.assigneeName}` : "Unassigned"}
+                        {t.companyName ? ` · ${t.companyName}` : ""}
+                        {t.dueDate ? ` · Due ${formatDue(t.dueDate)}` : ""}
+                      </div>
+                    </button>
+                    {t.resource && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => {
+                          if (t.resource?.url) {
+                            window.open(t.resource.url, "_blank", "noopener,noreferrer");
+                          } else {
+                            window.location.href = "/admin/resource-library";
+                          }
+                        }}
+                        data-testid={`button-resource-${t.id}`}
+                      >
+                        <ExternalLink className="w-3 h-3 mr-1" />
+                        <span className="truncate max-w-[140px]">{t.resource.title}</span>
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      <TaskDetailPanel
+        task={selectedTask}
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        isAdmin={true}
+        companyId={selectedTask?.companyId || ""}
+      />
     </AdminLayout>
   );
 }

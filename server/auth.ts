@@ -8,7 +8,6 @@ import { db } from "./db";
 import { users, adminUsers, adminInvitations, companyMembers, companyInvitations, companies, chatThreads, chatThreadMembers, passwordResetTokens } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "./email";
-import { getBaseUrl } from "./baseUrl";
 import { syncContactToHubSpot, isHubSpotConnected } from "./hubspot";
 
 declare module "express-session" {
@@ -17,14 +16,19 @@ declare module "express-session" {
   }
 }
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-  };
+declare global {
+  namespace Express {
+    interface User {
+      id: string;
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      profileImageUrl?: string;
+    }
+  }
 }
+
+export type AuthenticatedRequest = Request;
 
 export function setupAuth(app: Express) {
   app.set("trust proxy", 1);
@@ -346,7 +350,8 @@ export function registerAuthRoutes(app: Express) {
             await db.insert(chatThreadMembers).values({
               threadId: companyWideThread.id,
               userId: newUser.id,
-              role: "member",
+              isAdmin: false,
+              joinedAt: new Date().toISOString(),
             });
           }
         }
@@ -416,7 +421,16 @@ export function registerAuthRoutes(app: Express) {
           createdAt: new Date().toISOString(),
         });
 
-        const resetUrl = `${getBaseUrl(req)}/reset-password?token=${token}`;
+        const origin = req.headers.origin || req.headers.referer?.replace(/\/+$/, "");
+        const baseUrl = origin
+          ? origin.replace(/\/+$/, "")
+          : process.env.REPLIT_DEPLOYMENT
+            ? `https://${(process.env.REPLIT_DOMAINS || process.env.REPLIT_DEV_DOMAIN || "").split(",")[0]}`
+            : process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : "http://localhost:5000";
+
+        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
         sendPasswordResetEmail({
           recipientEmail: user.email!,

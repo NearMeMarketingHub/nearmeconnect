@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, useSearch } from "wouter";
+import { useLocation } from "wouter";
 import { parseLocalDate } from "@/lib/utils";
 import { ClientLayout } from "@/components/client-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +18,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileTabMenu } from "@/components/mobile-tab-menu";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, ListTodo, Circle, CheckCircle2, Users, User, ImageUp, Clock, AlertTriangle, Building2, Zap, Target, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { queryClient, apiRequest, retryTransient } from "@/lib/queryClient";
+import { Plus, ListTodo, Circle, CheckCircle2, Users, User, ImageUp, Clock, AlertTriangle, Building2, Zap, Target, ChevronLeft, ChevronRight, Calendar, List, LayoutGrid, Kanban } from "lucide-react";
+import { TaskBoardView } from "@/components/task-board-view";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TaskDetailPanel } from "@/components/task-detail-panel";
 import { CampaignDetailPanel } from "@/components/campaign-detail-panel";
-import type { Task, Company, DeliverableType, CampaignRequest } from "@shared/schema";
+import type { Task, TaskStatus, Company, DeliverableType, CampaignRequest } from "@shared/schema";
 
 interface UserInfo {
   userId: string;
@@ -42,7 +43,6 @@ interface ClientTasksProps {
 export default function ClientTasks({ companyId, embedded = false }: ClientTasksProps) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const searchString = useSearch();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -54,6 +54,7 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
   const [showAllTasks, setShowAllTasks] = useState(true);
   const [taskTab, setTaskTab] = useState("all");
   const [taskMonthDate, setTaskMonthDate] = useState(() => new Date());
+  const [viewMode, setViewMode] = useState<"list" | "category" | "stage">("list");
 
   const { data: userInfo } = useQuery<UserInfo>({
     queryKey: ["/api/auth/user"],
@@ -78,17 +79,15 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     enabled: !!companyId,
   });
 
-  // Auto-open task from ?taskId= URL param (e.g. from notification links)
-  const urlTaskId = useMemo(() => new URLSearchParams(searchString).get("taskId"), [searchString]);
-  const [urlTaskOpened, setUrlTaskOpened] = useState(false);
-  useEffect(() => {
-    if (!urlTaskId || !allTasks || urlTaskOpened) return;
-    const match = allTasks.find(t => t.id === urlTaskId);
-    if (match) {
-      setSelectedTask(match);
-      setUrlTaskOpened(true);
-    }
-  }, [urlTaskId, allTasks, urlTaskOpened]);
+  const { data: secondaryTaskIds } = useQuery<string[]>({
+    queryKey: ["/api/tasks/my-secondary-task-ids", { companyId }],
+    queryFn: async () => {
+      const response = await fetch(`/api/tasks/my-secondary-task-ids?companyId=${companyId}`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!companyId && !!userId,
+  });
 
   const { data: taskCategoriesData } = useQuery<any[]>({
     queryKey: ["/api/companies", companyId, "task-categories"],
@@ -156,6 +155,54 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     },
   });
 
+  const clientStatusMutation = useMutation({
+    ...retryTransient,
+    mutationFn: async ({ taskId, status }: { taskId: string; status: TaskStatus }) => {
+      const res = await apiRequest("PATCH", `/api/tasks/${taskId}`, { status });
+      return res.json() as Promise<Task>;
+    },
+    onMutate: async ({ taskId, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/tasks", { companyId }] });
+      const previous = queryClient.getQueryData<Task[]>(["/api/tasks", { companyId }]);
+      if (previous) {
+        queryClient.setQueryData<Task[]>(
+          ["/api/tasks", { companyId }],
+          previous.map((t) => (t.id === taskId ? { ...t, status } : t))
+        );
+      }
+      return { previous };
+    },
+    onSuccess: (updatedTask) => {
+      queryClient.setQueryData<Task[]>(["/api/tasks", { companyId }], (old) =>
+        old ? old.map((t) => (t.id === updatedTask.id ? updatedTask : t)) : old
+      );
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/tasks", { companyId }], context.previous);
+      }
+      toast({ title: "Failed to update task status", variant: "destructive" });
+    },
+  });
+
+  const handleClientStatusChange = (taskId: string, newStatus: TaskStatus) => {
+    const task = allTasks?.find((t) => t.id === taskId);
+    if (!task) return;
+    if (task.taskOwnership === "client") {
+      clientStatusMutation.mutate({ taskId, status: newStatus });
+      return;
+    }
+    if (task.status === "review" && newStatus === "approved" && isAdminOrOwner) {
+      clientStatusMutation.mutate({ taskId, status: newStatus });
+      return;
+    }
+    toast({
+      title: "Permission denied",
+      description: "You cannot change the status of this task.",
+      variant: "destructive",
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -176,9 +223,10 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
     });
   };
 
+  const secondaryTaskIdSet = new Set(secondaryTaskIds || []);
   const tasks = showAllTasks || !isAdminOrOwner
     ? allTasks
-    : allTasks?.filter((t) => t.assignedBy === userId || t.assignedTo === userId);
+    : allTasks?.filter((t) => t.assignedBy === userId || t.assignedTo === userId || secondaryTaskIdSet.has(t.id));
 
   const monthFilteredTasks = useMemo(() => {
     if (!tasks) return [];
@@ -372,6 +420,36 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
         </div>
       </div>
 
+      <div className="flex items-center justify-end gap-1" data-testid="view-mode-toggle">
+        <Button
+          variant={viewMode === "list" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("list")}
+          data-testid="view-toggle-list"
+        >
+          <List className="w-4 h-4 mr-1" />
+          List
+        </Button>
+        <Button
+          variant={viewMode === "category" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("category")}
+          data-testid="view-toggle-category"
+        >
+          <LayoutGrid className="w-4 h-4 mr-1" />
+          Category
+        </Button>
+        <Button
+          variant={viewMode === "stage" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setViewMode("stage")}
+          data-testid="view-toggle-stage"
+        >
+          <Kanban className="w-4 h-4 mr-1" />
+          Stage
+        </Button>
+      </div>
+
       <Tabs value={taskTab} onValueChange={setTaskTab}>
         <MobileTabMenu
           tabs={[
@@ -399,34 +477,56 @@ export default function ClientTasks({ companyId, embedded = false }: ClientTasks
           )}
         </TabsList>
 
-        <TabsContent value="all" className="mt-4">
-          <TaskList tasks={activeTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="pending" className="mt-4">
-          <TaskList tasks={pendingTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="in_progress" className="mt-4">
-          <TaskList tasks={inProgressTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        <TabsContent value="review" className="mt-4">
-          {reviewTasks.length === 0 && !isLoading ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <ListTodo className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No tasks awaiting your review.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <TaskList tasks={reviewTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-          )}
-        </TabsContent>
-        <TabsContent value="completed" className="mt-4">
-          <TaskList tasks={completedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-        </TabsContent>
-        {rejectedTasks.length > 0 && (
-          <TabsContent value="rejected" className="mt-4">
-            <TaskList tasks={rejectedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} showRejectedBadge campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
-          </TabsContent>
+        {viewMode !== "list" ? (
+          <div className="mt-4" data-testid="client-board-view">
+            <TaskBoardView
+              tasks={
+                taskTab === "pending" ? pendingTasks
+                : taskTab === "in_progress" ? inProgressTasks
+                : taskTab === "review" ? reviewTasks
+                : taskTab === "completed" ? completedTasks
+                : taskTab === "rejected" ? rejectedTasks
+                : activeTasks
+              }
+              categories={taskCategoriesData || []}
+              mode={viewMode === "category" ? "category" : "stage"}
+              onTaskClick={setSelectedTask}
+              onStatusChange={viewMode === "stage" ? handleClientStatusChange : undefined}
+              allowDrag={viewMode === "stage"}
+            />
+          </div>
+        ) : (
+          <>
+            <TabsContent value="all" className="mt-4">
+              <TaskList tasks={activeTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="pending" className="mt-4">
+              <TaskList tasks={pendingTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="in_progress" className="mt-4">
+              <TaskList tasks={inProgressTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            <TabsContent value="review" className="mt-4">
+              {reviewTasks.length === 0 && !isLoading ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <ListTodo className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">No tasks awaiting your review.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <TaskList tasks={reviewTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+              )}
+            </TabsContent>
+            <TabsContent value="completed" className="mt-4">
+              <TaskList tasks={completedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+            </TabsContent>
+            {rejectedTasks.length > 0 && (
+              <TabsContent value="rejected" className="mt-4">
+                <TaskList tasks={rejectedTasks} isLoading={isLoading} onTaskClick={setSelectedTask} showRejectedBadge campaignRequests={campaignRequests} onCampaignClick={setSelectedCampaign} taskCategories={taskCategoriesData} />
+              </TabsContent>
+            )}
+          </>
         )}
       </Tabs>
 

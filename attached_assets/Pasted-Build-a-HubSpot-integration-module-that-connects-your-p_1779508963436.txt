@@ -1,0 +1,137 @@
+Build a HubSpot integration module that connects your portal to each client's 
+HubSpot account. All clients are on HubSpot — this is the bridge between the two systems.
+
+=== ARCHITECTURE ===
+
+The integration has 3 layers:
+  Layer 1: OAuth Connection (one per company — stored in hubspot_connections table)
+  Layer 2: Data Sync (contacts, companies, deals, tasks, campaigns, social)  
+  Layer 3: Webhook Listeners (HubSpot fires events → your portal reacts)
+
+=== LAYER 1: OAUTH CONNECTION ===
+
+Route: GET /api/hubspot/connect/:companyId
+  Redirect to HubSpot OAuth with these scopes:
+    crm.objects.contacts.read, crm.objects.contacts.write,
+    crm.objects.companies.read, crm.objects.companies.write,
+    crm.objects.deals.read, crm.objects.deals.write,
+    crm.objects.tasks.read, crm.objects.tasks.write,
+    content, social, automation, reports, 
+    tickets, e-commerce, analytics.behavioral_events.send,
+    cms.knowledge_base.articles.read
+
+Route: GET /api/hubspot/callback
+  Handle OAuth code exchange → save tokens to hubspot_connections
+  Encrypt access_token and refresh_token at rest (AES-256)
+  Start initial sync job
+  Redirect to company detail page with success toast
+
+Route: POST /api/hubspot/refresh/:companyId
+  Use refresh_token to get new access_token
+  Update hubspot_connections record
+  Call automatically when 401 returned from any HubSpot API call
+
+Route: DELETE /api/hubspot/disconnect/:companyId
+  Revoke token, mark is_active = false, nullify tokens
+
+UI — Add "Connect HubSpot" button to company detail page:
+  If no connection: show orange "Connect HubSpot" button
+  If connected: show green "HubSpot Connected" badge + last synced time 
+    + "Sync Now" button + "Disconnect" link
+  Connection status widget also shows: Portal ID, Hub Domain, 
+    scopes granted, connected by whom
+
+=== LAYER 2: DATA SYNC ===
+
+Implement these sync functions (callable manually + run on schedule):
+
+syncCompanyToHubSpot(companyId):
+  Read from companies + client_onboarding + brand_profiles tables
+  Create or update HubSpot Company object:
+    name, domain (from client_onboarding.website),
+    industry, phone, city, state, country,
+    custom properties: near_me_client_id, subscription_tier,
+    account_manager, content_pillar_count
+
+syncTasksToHubSpot(companyId):
+  For each task in tasks table WHERE company_id = X:
+    Create/update HubSpot Task:
+      subject = task.title, notes = task.description,
+      status = mapped from task.status,
+      hs_timestamp = task.due_date,
+      associated to HubSpot Company record
+  Store hubspot_task_id back to tasks.hubspot_task_id
+
+pullHubSpotContacts(companyId):
+  Fetch all contacts from HubSpot for this company's portal
+  For display in the portal (do not duplicate — read-only view)
+  Show in company profile under "HubSpot Contacts" tab
+
+pullHubSpotDeals(companyId):
+  Fetch open and recently closed deals
+  Display in company profile
+  Used to trigger automation workflows (deal closed → send review email etc.)
+
+pullHubSpotCampaigns(companyId):
+  Fetch email campaigns, social posts, ad campaigns from HubSpot
+  Show performance metrics: open rate, click rate, reach
+  Link to campaign_requests table for tracking
+
+pushContentToHubSpotSocial(calendarItemId):
+  Read content_calendar_items record
+  Use HubSpot Social API to schedule the post:
+    POST /marketing/v3/social/posts
+  Store hubspot_post_id back to content_calendar_items
+  Update status to 'scheduled'
+  Works for: Facebook, Instagram, LinkedIn (HubSpot-connected accounts)
+
+=== LAYER 3: WEBHOOK LISTENERS ===
+
+Route: POST /api/hubspot/webhooks
+  Verify HubSpot signature (X-HubSpot-Signature header)
+  Handle these webhook event types:
+
+  deal.propertyChange (dealstage):
+    When deal moves to "Closed Won":
+      → Auto-create tasks from template (onboarding checklist tasks)
+      → Trigger notification to account manager
+      → Log to notifications table
+
+  contact.creation:
+    → Add to company's contact feed display
+    → Notify team via notifications table
+
+  contact.propertyChange (hs_lead_status):
+    When lead becomes MQL/SQL:
+      → Create a task: "Follow up with [contact name]"
+      → Assign to account manager
+
+  ticket.creation:
+    → Mirror as a task in portal with type = 'support'
+
+  email.sent / email.open / email.click:
+    → Update campaign performance data
+
+=== HUBSPOT DATA PANEL (on Company Detail Page) ===
+
+Add a "HubSpot" tab to the company detail page with 4 sub-tabs:
+
+  CRM Overview:
+    - Contact count, Deal pipeline value, Open deals
+    - Last 5 contacts added (name, email, lead status)
+    - Last 5 deals (name, stage, amount, close date)
+    - Links to open HubSpot records directly
+
+  Campaigns:
+    - List of active email campaigns + metrics (open rate, click rate, sent)
+    - List of active social campaigns
+    - "Push to Calendar" button on each — creates a content_calendar_item
+
+  Workflows Active:
+    - Show which HubSpot workflows are active for this company
+    - Status: Active / Paused / Draft
+    - Link to open workflow in HubSpot
+
+  Sync Log:
+    - Timestamp log of all sync activity
+    - Errors if any with retry button

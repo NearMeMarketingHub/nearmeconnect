@@ -14,16 +14,18 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import AdminCompanies from "@/pages/admin/companies";
 import AdminAddCompany from "@/pages/admin/add-company";
 import AdminDeliverableTypes from "@/pages/admin/deliverable-types";
-import AdminTaskCategories from "@/pages/admin/task-categories";
+import AdminRetainerTemplates from "@/pages/admin/retainer-templates";
+import AdminOnboardingTemplates from "@/pages/admin/onboarding-templates";
+import AdminServiceTracks from "@/pages/admin/service-tracks";
+import AdminTaskTemplates from "@/pages/admin/task-templates";
 import AdminCampaigns from "@/pages/admin/campaigns";
-import AdminCampaignTypes from "@/pages/admin/campaign-types";
+import AdminRejections from "@/pages/admin/rejections";
 import AdminMeetings from "@/pages/admin/meetings";
 import AdminTraining from "@/pages/admin/training";
 import AdminMediaProfiles from "@/pages/admin/media-profiles";
 import AdminMediaSubmissions from "@/pages/admin/media-submissions";
 import AdminCreditStore from "@/pages/admin/credit-store";
 import AdminSettings from "@/pages/admin/settings";
-import AdminChecklistTemplates from "@/pages/admin/checklist-templates";
 import ClientDashboard from "@/pages/client/dashboard";
 import ClientTasks from "@/pages/client/tasks";
 import ClientCredits from "@/pages/client/credits";
@@ -40,19 +42,28 @@ import AdminCalendar from "@/pages/admin/calendar";
 import AdminChat from "@/pages/admin/chat";
 import AdminTasks from "@/pages/admin/tasks";
 import AdminSandbox from "@/pages/admin/sandbox";
+import AdminGovernment from "@/pages/admin/government";
 import AdminReporting from "@/pages/admin/reporting";
 import AdminUserManagement from "@/pages/admin/user-management";
 import AdminCustomRoles from "@/pages/admin/custom-roles";
 import AdminSubscriptionTiers from "@/pages/admin/subscription-tiers";
 import CompanyDashboard from "@/pages/admin/company-dashboard";
-import GovernmentFormPage from "@/pages/government-form";
+
+import HubspotOnboarding from "@/pages/admin/hubspot-onboarding";
+import AiBriefPage from "@/pages/admin/ai-brief";
+import AdminAiTemplates from "@/pages/admin/ai-templates";
+import WorkflowLibraryPage from "@/pages/admin/workflow-library";
+import AdminCheckIns from "@/pages/admin/check-ins";
+import AdminResourceLibrary from "@/pages/admin/resource-library";
+import AdminSeo from "@/pages/admin/seo";
+import AdminIntegrations from "@/pages/admin/integrations";
+import AdminStrategyBoard from "@/pages/admin/strategy-board";
+import ClientResourceLibrary from "@/pages/client/resource-library";
+import ClientGovernment from "@/pages/client/government";
+import ClientGovernmentHub from "@/pages/client/government-hub";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import SignPage from "@/pages/sign";
-import PricingPage from "@/pages/pricing";
-import SubscribePage from "@/pages/subscribe";
-import SubscribeSuccessPage from "@/pages/subscribe-success";
-import ClientSubscription from "@/pages/client/subscription";
 import NotFound from "@/pages/not-found";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -123,17 +134,6 @@ function AppContent() {
     return null;
   }
 
-  // Public marketing / subscription pages — no auth required
-  if (location.startsWith("/pricing")) {
-    return <PricingPage />;
-  }
-  if (location.startsWith("/subscribe/success")) {
-    return <SubscribeSuccessPage />;
-  }
-  if (location.startsWith("/subscribe")) {
-    return <SubscribePage />;
-  }
-
   // Always allow access to signup page, regardless of auth state
   if (location.startsWith("/signup")) {
     return <InviteSignup />;
@@ -157,11 +157,6 @@ function AppContent() {
     return <SignPage />;
   }
 
-  // Allow access to government form without authentication
-  if (location.startsWith("/form/")) {
-    return <GovernmentFormPage />;
-  }
-
   if (authLoading || (isAuthenticated && userInfoLoading)) {
     return <LoadingScreen />;
   }
@@ -181,29 +176,44 @@ function AppContent() {
   if (userInfo?.isAdmin) {
     return (
       <Switch>
-        <Route path="/admin/dashboard" component={AdminDashboard} />
-        <Route path="/admin/tasks" component={AdminTasks} />
-        <Route path="/admin/companies" component={AdminCompanies} />
-        <Route path="/admin/companies/new" component={AdminAddCompany} />
-        <Route path="/admin/companies/:id" component={CompanyDashboard} />
-        <Route path="/admin/deliverables" component={AdminDeliverableTypes} />
-        <Route path="/admin/task-categories" component={AdminTaskCategories} />
-        <Route path="/admin/checklist-templates" component={AdminChecklistTemplates} />
-        <Route path="/admin/campaigns" component={AdminCampaigns} />
-        <Route path="/admin/campaign-types" component={AdminCampaignTypes} />
-        <Route path="/admin/meetings" component={AdminMeetings} />
-        <Route path="/admin/training" component={AdminTraining} />
-        <Route path="/admin/media-profiles" component={AdminMediaProfiles} />
-        <Route path="/admin/media-submissions" component={AdminMediaSubmissions} />
-        <Route path="/admin/calendar" component={AdminCalendar} />
-        <Route path="/admin/chat" component={AdminChat} />
-        <Route path="/admin/credit-store" component={AdminCreditStore} />
-        <Route path="/admin/settings" component={AdminSettings} />
-        <Route path="/admin/sandbox" component={AdminSandbox} />
-        <Route path="/admin/reporting" component={AdminReporting} />
-        <Route path="/admin/user-management" component={AdminUserManagement} />
-        <Route path="/admin/custom-roles" component={AdminCustomRoles} />
-        <Route path="/admin/subscription-tiers" component={AdminSubscriptionTiers} />
+        <Route path="/admin/dashboard">{() => <ErrorBoundary showNav><AdminDashboard /></ErrorBoundary>}</Route>
+        <Route path="/admin/tasks">{() => <ErrorBoundary showNav><AdminTasks /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/new">{() => <ErrorBoundary showNav><AdminAddCompany /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/:id/hubspot-onboarding">{() => <ErrorBoundary showNav><HubspotOnboarding /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies/:id">{() => <ErrorBoundary showNav><CompanyDashboard /></ErrorBoundary>}</Route>
+        <Route path="/admin/companies">{() => <ErrorBoundary showNav><AdminCompanies /></ErrorBoundary>}</Route>
+        <Route path="/admin/deliverables">{() => <ErrorBoundary showNav><AdminDeliverableTypes /></ErrorBoundary>}</Route>
+        <Route path="/admin/retainer-templates">{() => <ErrorBoundary showNav><AdminRetainerTemplates /></ErrorBoundary>}</Route>
+        <Route path="/admin/onboarding-templates">{() => <ErrorBoundary showNav><AdminOnboardingTemplates /></ErrorBoundary>}</Route>
+        <Route path="/admin/service-tracks">{() => <ErrorBoundary showNav><AdminServiceTracks /></ErrorBoundary>}</Route>
+        <Route path="/admin/task-templates">{() => <ErrorBoundary showNav><AdminTaskTemplates /></ErrorBoundary>}</Route>
+        <Route path="/admin/campaigns">{() => <ErrorBoundary showNav><AdminCampaigns /></ErrorBoundary>}</Route>
+        <Route path="/admin/rejections">{() => <ErrorBoundary showNav><AdminRejections /></ErrorBoundary>}</Route>
+        <Route path="/admin/meetings">{() => <ErrorBoundary showNav><AdminMeetings /></ErrorBoundary>}</Route>
+        <Route path="/admin/training">{() => <ErrorBoundary showNav><AdminTraining /></ErrorBoundary>}</Route>
+        <Route path="/admin/media-profiles">{() => <ErrorBoundary showNav><AdminMediaProfiles /></ErrorBoundary>}</Route>
+        <Route path="/admin/media-submissions">{() => <ErrorBoundary showNav><AdminMediaSubmissions /></ErrorBoundary>}</Route>
+        <Route path="/admin/calendar">{() => <ErrorBoundary showNav><AdminCalendar /></ErrorBoundary>}</Route>
+        <Route path="/admin/chat">{() => <ErrorBoundary showNav><AdminChat /></ErrorBoundary>}</Route>
+        <Route path="/admin/credit-store">{() => <ErrorBoundary showNav><AdminCreditStore /></ErrorBoundary>}</Route>
+        <Route path="/admin/settings">{() => <ErrorBoundary showNav><AdminSettings /></ErrorBoundary>}</Route>
+        <Route path="/admin/sandbox">{() => <ErrorBoundary showNav><AdminSandbox /></ErrorBoundary>}</Route>
+        <Route path="/admin/government">{() => <ErrorBoundary showNav><AdminGovernment /></ErrorBoundary>}</Route>
+        <Route path="/admin/reporting">{() => <ErrorBoundary showNav><AdminReporting /></ErrorBoundary>}</Route>
+        <Route path="/admin/user-management">{() => <ErrorBoundary showNav><AdminUserManagement /></ErrorBoundary>}</Route>
+        <Route path="/admin/custom-roles">{() => <ErrorBoundary showNav><AdminCustomRoles /></ErrorBoundary>}</Route>
+        <Route path="/admin/subscription-tiers">{() => <ErrorBoundary showNav><AdminSubscriptionTiers /></ErrorBoundary>}</Route>
+
+        <Route path="/admin/ai-brief/:companyId">{() => <ErrorBoundary showNav><AiBriefPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/ai-brief">{() => <ErrorBoundary showNav><AiBriefPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/ai-templates">{() => <ErrorBoundary showNav><AdminAiTemplates /></ErrorBoundary>}</Route>
+        <Route path="/admin/workflow-library">{() => <ErrorBoundary showNav><WorkflowLibraryPage /></ErrorBoundary>}</Route>
+        <Route path="/admin/check-ins">{() => <ErrorBoundary showNav><AdminCheckIns /></ErrorBoundary>}</Route>
+        <Route path="/admin/resource-library">{() => <ErrorBoundary showNav><AdminResourceLibrary /></ErrorBoundary>}</Route>
+        <Route path="/admin/seo">{() => <ErrorBoundary showNav><AdminSeo /></ErrorBoundary>}</Route>
+        <Route path="/admin/integrations">{() => <ErrorBoundary showNav><AdminIntegrations /></ErrorBoundary>}</Route>
+        <Route path="/admin/strategy/:companyId">{() => <ErrorBoundary showNav><AdminStrategyBoard /></ErrorBoundary>}</Route>
+        <Route path="/admin/strategy">{() => <ErrorBoundary showNav><AdminStrategyBoard /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );
@@ -214,40 +224,42 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/client/dashboard">
-          {() => <ClientDashboard companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientDashboard companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/tasks">
-          {() => <ClientTasks companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientTasks companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/credits">
-          {() => <ClientCredits companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCredits companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/settings">
-          {() => <ClientSettings companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientSettings companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/onboarding">
-          {() => <ClientOnboarding companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientOnboarding companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/media-uploads">
-          {() => <ClientMediaUploads companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientMediaUploads companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/calendar">
-          {() => <ClientCalendar companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCalendar companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/chat">{() => <ClientChat />}</Route>
+        <Route path="/client/chat">{() => <ErrorBoundary showNav><ClientChat /></ErrorBoundary>}</Route>
         <Route path="/client/campaigns">
-          {() => <ClientCampaigns companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientCampaigns companyId={companyId} /></ErrorBoundary>}
         </Route>
         <Route path="/client/meetings">
-          {() => <ClientMeetings companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientMeetings companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/training">{() => <ClientTraining />}</Route>
+        <Route path="/client/training">{() => <ErrorBoundary showNav><ClientTraining /></ErrorBoundary>}</Route>
         <Route path="/client/team">
-          {() => <ClientTeam companyId={companyId} />}
+          {() => <ErrorBoundary showNav><ClientTeam companyId={companyId} /></ErrorBoundary>}
         </Route>
-        <Route path="/client/subscription">
-          {() => <ClientSubscription companyId={companyId} />}
+        <Route path="/client/resources">
+          {() => <ErrorBoundary showNav><ClientResourceLibrary companyId={companyId} /></ErrorBoundary>}
         </Route>
+        <Route path="/client/government">{() => <ErrorBoundary showNav><ClientGovernment /></ErrorBoundary>}</Route>
+        <Route path="/client/government-hub">{() => <ErrorBoundary showNav><ClientGovernmentHub /></ErrorBoundary>}</Route>
         <Route component={NotFound} />
       </Switch>
     );

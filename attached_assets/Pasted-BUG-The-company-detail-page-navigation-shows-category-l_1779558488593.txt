@@ -1,0 +1,143 @@
+BUG: The company detail page navigation shows category labels (OVERVIEW, WORK, 
+COMMUNICATE, ADMIN) on the same row as the tab links but they are not 
+grouping the items under them — everything is flat on one or two rows.
+
+LOOKING AT THE SCREENSHOT the current navigation tabs are:
+  Row 1: OVERVIEW | Marketing Hub | Details | WORK | Tasks(8) | Campaigns(1) | 
+          Content Calendar | Calendar | Cadences | COMMUNICATE | Chat | Meetings | ADMIN
+  Row 2: Users(0) | Credit History | Info Hub | Reporting | HubSpot | Workflows
+
+FIX: Rebuild the company detail page navigation as a TWO-LEVEL system:
+  Level 1: Category tabs (the main bar)
+  Level 2: Sub-navigation (appears below the main bar when a category is active)
+
+THE NEW STRUCTURE:
+
+MAIN TAB BAR (always visible, one row):
+  [ Overview ] [ Work ] [ Marketing ] [ Communicate ] [ Admin ]
+
+When "Overview" is active → show NO sub-tabs, just the overview content
+When "Work" is active → show sub-tab row below:
+  [ Tasks ] [ Campaigns ] [ Content Calendar ] [ Calendar ] [ Cadences ]
+When "Marketing" is active → show sub-tab row below:
+  [ Marketing Hub ] [ Info Hub ] [ HubSpot ] [ Workflows ]
+When "Communicate" is active → show sub-tab row below:
+  [ Chat ] [ Meetings ]
+When "Admin" is active → show sub-tab row below:
+  [ Users ] [ Credit History ] [ Reporting ] [ Details ]
+
+IMPLEMENTATION:
+
+const NAVIGATION = {
+  overview: {
+    label: 'Overview',
+    icon: 'Home',
+    subTabs: []  // no sub-tabs, goes directly to overview content
+  },
+  work: {
+    label: 'Work',
+    icon: 'CheckCircle',
+    subTabs: [
+      { key: 'tasks', label: 'Tasks', badge: taskCount },
+      { key: 'campaigns', label: 'Campaigns', badge: campaignCount },
+      { key: 'content-calendar', label: 'Content Calendar' },
+      { key: 'calendar', label: 'Calendar' },
+      { key: 'cadences', label: 'Cadences' }
+    ]
+  },
+  marketing: {
+    label: 'Marketing',
+    icon: 'Zap',
+    subTabs: [
+      { key: 'marketing-hub', label: 'Marketing Hub' },
+      { key: 'info-hub', label: 'Info Hub' },
+      { key: 'hubspot', label: 'HubSpot' },
+      { key: 'workflows', label: 'Workflows' }
+    ]
+  },
+  communicate: {
+    label: 'Communicate', 
+    icon: 'MessageSquare',
+    subTabs: [
+      { key: 'chat', label: 'Chat' },
+      { key: 'meetings', label: 'Meetings' }
+    ]
+  },
+  admin: {
+    label: 'Admin',
+    icon: 'Settings',
+    subTabs: [
+      { key: 'users', label: 'Users', badge: userCount },
+      { key: 'credit-history', label: 'Credit History' },
+      { key: 'reporting', label: 'Reporting' },
+      { key: 'details', label: 'Details' }
+    ]
+  }
+}
+
+VISUAL DESIGN:
+  Main tab bar: 
+    Tabs are bold, slightly larger text
+    Active tab: solid background (your primary color) with white text
+    Inactive: gray text, hover shows light background
+    Height: ~44px
+  
+  Sub-tab bar (appears below when a category is active):
+    Thinner bar (~36px), lighter background (gray-50 or gray-100)
+    Active sub-tab: underline indicator or subtle filled pill
+    Inactive: muted text, hover shows background
+  
+  Transition: sub-tab bar slides in smoothly when category changes
+
+URL STATE:
+  Use URL params to remember active tab: 
+  /companies/:id?tab=work&sub=tasks
+  So the browser back button and sharing links work correctly.
+  On page load, read tab + sub from URL params to set initial active state.
+
+DO NOT change any of the actual content panels — only change the navigation 
+structure. All existing tab content stays identical.
+
+ALSO apply the same two-level grouping to the MAIN SIDEBAR navigation 
+(the left sidebar that appears on all pages):
+
+Main sidebar groups (collapsible with arrow indicator):
+
+  ▼ Dashboard  (no sub-items — direct link)
+  
+  ▼ Clients
+      All Companies
+      Add Company
+  
+  ▼ Work  
+      All Tasks
+      Content Calendar
+      Cadences
+      Campaigns
+  
+  ▼ Marketing
+      Strategy Board
+      AI Brief Generator
+      Asset Library
+      Workflows Library
+  
+  ▼ Communicate
+      Messages
+      Meetings
+  
+  ▼ Admin  [admin/agency users only]
+      Users
+      Reporting
+      Training
+      Deliverable Types
+      Campaign Types
+      Check-ins
+  
+  ▼ Account  (always at bottom)
+      Notifications
+      Settings
+      Logout
+
+Groups are expanded by default. Clicking the group header 
+collapses/expands it. Save collapsed state to localStorage 
+so it persists across page loads.
